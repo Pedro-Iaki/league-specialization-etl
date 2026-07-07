@@ -1,7 +1,4 @@
-"""Fetch a Riot player list and store it in the raw data folder.
-
-The script defaults to a placeholder API key so the request shape is visible
-even before a real key is configured.
+"""Fetch a Riot player list and store it in the raw data folder, under a partitioned structure based on region, queue, tier, and date.
 """
 
 from __future__ import annotations
@@ -12,46 +9,32 @@ from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import load_dotenv
 import requests
+import random
 
 
 BASE_DIR = Path(__file__).resolve().parents[2] #this puts us in the root of the project
-OUTPUT_PATH = BASE_DIR / "data" / "raw"
+OUTPUT_PATH = BASE_DIR / "data" / "raw" / "players"
 DEFAULT_REGION = "na1"
 DEFAULT_QUEUE = "RANKED_SOLO_5x5"
 DEFAULT_TIER = "DIAMOND"
 DEFAULT_DIVISION = "I"
 
-QUEUE_SHORT_CODES = {
-	"RANKED_SOLO_5x5": "S",
-	"RANKED_FLEX_SR": "F",
-	"RANKED_FLEX_TT": "T"
-}
-
-TIER_SHORT_CODES = {
-	"IRON": "I",
-	"BRONZE": "B",
-	"SILVER": "S",
-	"GOLD": "G",
-	"PLATINUM": "P",
-	"EMERALD": "E",
-	"DIAMOND": "D",
-	"MASTER": "M",
-	"GRANDMASTER": "GM",
-	"CHALLENGER": "C",
-}
-
-def build_players_filename(region: str, queue: str, tier: str, division: str) -> str:
+def build_players_filename(division: str, time: str = None) -> str:
 	"""Build the compact output filename for player extraction."""
 
-	timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-	return f"players_{region}_{QUEUE_SHORT_CODES[queue]}_{TIER_SHORT_CODES[tier]}_{division}_{timestamp}.json"
+	timestamp = time if time else datetime.now(timezone.utc).strftime("%H%M%S")
+	return f"players_{division}_{timestamp}.json"
 
 
-def fetch_players(region: str = DEFAULT_REGION, api_key: str = None, queue: str = DEFAULT_QUEUE, tier: str = DEFAULT_TIER, division: str = DEFAULT_DIVISION) -> list[dict]:
+def fetch_players(region: str = DEFAULT_REGION, api_key: str = None, queue: str = DEFAULT_QUEUE, tier: str = DEFAULT_TIER, random_division: bool = False, forced_division: str = DEFAULT_DIVISION) -> list[dict]:
 	"""Fetch the current player list from Riot's challenger league endpoint."""
 
 	if api_key is None: raise ValueError("No Riot API key provided. Please set the RIOT_API_KEY environment variable.")
-
+	if random_division:
+		division = random.choice(["I", "II", "III", "IV"])
+	else:
+		division = forced_division
+  
 	url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}"
 	response = requests.get(
 		url,
@@ -61,8 +44,24 @@ def fetch_players(region: str = DEFAULT_REGION, api_key: str = None, queue: str 
 	response.raise_for_status()
 
 	payload = response.json()
-	return payload
+	return payload, division
 
+def get_partitioned_path(base_path: Path, region: str, queue: str, tier: str, date: str = None) -> Path:
+	"""Get a partitioned path based on region, queue, and tier."""
+
+	region_folder_name = f"region={region}"
+	region_folder = base_path / region_folder_name
+	region_folder.mkdir(parents=True, exist_ok=True)
+	queue_folder_name = f"queue={queue}"
+	queue_folder = region_folder / queue_folder_name
+	queue_folder.mkdir(parents=True, exist_ok=True)
+	tier_folder_name = f"tier={tier}"
+	tier_folder = queue_folder / tier_folder_name
+	tier_folder.mkdir(parents=True, exist_ok=True)	
+	date_folder_name = "dt=" + (date if date else datetime.now(timezone.utc).strftime("%y%m%d"))
+	date_folder = tier_folder / date_folder_name
+	date_folder.mkdir(parents=True, exist_ok=True)
+	return date_folder
 
 def save_players(
 	players: list[dict],
@@ -71,16 +70,12 @@ def save_players(
 	queue: str = DEFAULT_QUEUE,
 	tier: str = DEFAULT_TIER,
 	division: str = DEFAULT_DIVISION,
+	date: str = None,
+	time: str = None,
 ) -> Path:
 	"""Persist the fetched player list as raw JSON."""
- 
-	output_path = output_path / build_players_filename(
-		region=region,
-		queue=queue,
-		tier=tier,
-		division=division,
-	)
-	output_path.parent.mkdir(parents=True, exist_ok=True)
+
+	output_path = get_partitioned_path(output_path, region, queue, tier, date) / build_players_filename(division, time)
 
 	payload = {
 		"source": "riot-api",
@@ -96,18 +91,27 @@ def save_players(
 	return output_path
 
 
-def main() -> None:
+def run() -> dict:
 	load_dotenv(BASE_DIR / "config" / "RIOT_API_KEY.env")
 	api_key = os.getenv("RIOT_API_KEY")
 	region = DEFAULT_REGION
 	queue = DEFAULT_QUEUE
 	tier = DEFAULT_TIER
-	division = DEFAULT_DIVISION
+	#Although it seems overkill, we should still store the time first so we avoid 
+	#any race conditions with the date changing between the date and time fetches
+	time = datetime.now(timezone.utc).strftime("%H%M%S")
+	date = datetime.now(timezone.utc).strftime("%y%m%d")
 
-	players = fetch_players(region=region, api_key=api_key, queue=queue, tier=tier, division=division)
-	output_path = save_players(players, region=region, queue=queue, tier=tier, division=division)
+	players, division = fetch_players(region=region, api_key=api_key, queue=queue, tier=tier, random_division=True)
+	output_path = save_players(players, region=region, queue=queue, tier=tier, division=division, date=date, time=time)
 	print(f"Saved {len(players)} players to {output_path}")
-
-
-if __name__ == "__main__":
-	main()
+	return {
+		"region": region,
+		"queue": queue,
+		"tier": tier,
+		"division": division,
+		"date": date,
+		"time": time,
+		"player_path": str(output_path),
+		"player_count": len(players)
+	}
