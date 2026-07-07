@@ -1,5 +1,6 @@
 certifi==2026.6.17
 charset-normalizer==3.4.8
+dotenv==0.9.9
 greenlet==3.5.3
 idna==3.18
 panda==0.3.1
