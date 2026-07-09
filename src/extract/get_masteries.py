@@ -18,7 +18,6 @@ DEFAULT_REGION = "na1"
 DEFAULT_QUEUE = "RANKED_SOLO_5x5"
 DEFAULT_TIER = "DIAMOND"
 OUTPUT_PATH = BASE_DIR / "data" / "raw" / "masteries"
-DEFAULT_COUNT = 20
 
 
 def load_players(players_input_path: Path = None) -> tuple[list[dict], str]:
@@ -33,8 +32,7 @@ def load_players(players_input_path: Path = None) -> tuple[list[dict], str]:
 def fetch_player_masteries(
 	puuid: str,
 	region: str = None,
-	api_key: str | None = None,
-	count: int = DEFAULT_COUNT,
+	api_key: str | None = None
 ) -> list[dict]:
 	"""Fetch top champion mastery entries for one player."""
 
@@ -43,11 +41,10 @@ def fetch_player_masteries(
 	if not region:
 		raise ValueError("No region provided. Please set the region parameter.")
 
-	url = f"https://{region}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}/top"
+	url = f"https://{region}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}"
 	
 	response = requests.get(
 		url,
-		params={"count": count},
 		headers={"X-Riot-Token": api_key},
 		timeout=30,
 	)
@@ -141,8 +138,7 @@ def run(manifest: dict) -> None:
 		mastery_response = fetch_player_masteries(
 			puuid=puuid,
 			region=region,
-			api_key=api_key,
-			count=DEFAULT_COUNT,
+			api_key=api_key
 		)
 		if mastery_response is None:
 			print(f"No mastery data found for player {puuid}.")
