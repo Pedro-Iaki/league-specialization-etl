@@ -1,15 +1,15 @@
 """Fetch mastery data for several stored Riot players and save it in the raw data folder, under a partitioned structure based on region, queue, tier, and date."""
 
-from __future__ import annotations
+from __future__ import annotations, division
 
 import json
 import os
 from datetime import datetime, time, timezone
 from pathlib import Path
 from time import sleep
-
 import requests
 from dotenv import load_dotenv
+import pipeline_db as db
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -32,7 +32,8 @@ def load_players(players_input_path: Path = None) -> tuple[list[dict], str]:
 def fetch_player_masteries(
 	puuid: str,
 	region: str = None,
-	api_key: str | None = None
+	api_key: str | None = None,
+	task_id: int | None = None
 ) -> list[dict]:
 	"""Fetch top champion mastery entries for one player."""
 
@@ -40,20 +41,24 @@ def fetch_player_masteries(
 		raise ValueError("No Riot API key provided. Please set the RIOT_API_KEY environment variable.")
 	if not region:
 		raise ValueError("No region provided. Please set the region parameter.")
+	if task_id is not None:
+			db.update_mastery_task(task_id, "in_progress")
+			#print(f"No task found for player {puuid}. Skipping.")
 
 	url = f"https://{region}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}"
-	
 	response = requests.get(
 		url,
 		headers={"X-Riot-Token": api_key},
-		timeout=30,
+		timeout=60,
 	)
 	
 	if(response.status_code == 429):
 		print(f"Rate limit reached for player {puuid}.")
-		sleep(30)
-	else:
-		response.raise_for_status()
+		sleep(60)
+		return fetch_player_masteries(puuid=puuid, region=region, api_key=api_key, task_id=task_id)
+	elif not response.ok:
+		db.update_mastery_task(task_id, "failed", error_message=f"Error: {response.status_code} - {response.text}")
+		return None
 
 	return response
 
@@ -104,9 +109,10 @@ def save_masteries(mastery_rows: list[dict], output_path: Path = OUTPUT_PATH, ti
 		"masteries": mastery_rows,
 	}
 	this_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+	return this_path
 
 
-def run(manifest: dict) -> None:
+def run(manifest: dict, run_id: int) -> None:
 	load_dotenv(BASE_DIR / "config" / "RIOT_API_KEY.env")
 	api_key = os.getenv("RIOT_API_KEY")
 	region = manifest.get("region")
@@ -125,6 +131,11 @@ def run(manifest: dict) -> None:
 	if players is None:
 		raise ValueError("No players JSON found. Please ensure the players JSON file exists in the expected location.")
 
+	task_ids = []
+	for player in players:
+		puuid = player.get("puuid")
+		if puuid:
+			task_ids.append(db.add_mastery_task(run_id, region, queue, tier, division, puuid))
 
 	output_path = get_partitioned_path(region, queue, tier, date)
 	outputted_players = []
@@ -134,15 +145,22 @@ def run(manifest: dict) -> None:
 			#print(f"Skipping player {puuid} as it has already been processed or is invalid.")
 			continue
 
+		task_id = db.get_task_from_list_with_puuid(task_ids, puuid)
+
 		mastery_response = fetch_player_masteries(
 			puuid=puuid,
 			region=region,
-			api_key=api_key
+			api_key=api_key,
+			task_id=task_id
 		)
 		if mastery_response is None:
 			#print(f"No mastery data found for player {puuid}.")
 			continue
-		save_masteries(mastery_response.json(), output_path=output_path, time=time, division=division, puuid=puuid)
+
+		this_path = save_masteries(mastery_response.json(), output_path=output_path, time=time, division=division, puuid=puuid)
 		outputted_players.append(puuid)
+		db.update_mastery_task(task_id, "success", file_path=str(this_path))
+
 		handle_rate_limit(mastery_response)
+
 		print(f"Saved new mastery data. Remaining: {len(players) - len(outputted_players)}.")
