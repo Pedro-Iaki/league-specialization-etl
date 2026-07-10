@@ -47,12 +47,14 @@ masteries_dump = [m['masteries'] for m in masteries_payloads]
 all_masteries_list = []
 for player_ms in masteries_dump:
     for champion_ms in player_ms:
-        all_masteries_list.append(champion_ms)
+        if isinstance(champion_ms, dict):
+            all_masteries_list.append(champion_ms)
 
 all_players_list = []
 for page in players_payloads:
     for player in page['players']:
-        all_players_list.append(player)
+        if isinstance(player, dict):
+            all_players_list.append(player)
 
 payload = {
     "source": "riot-api",
@@ -64,5 +66,5 @@ payload = {
 
 cleaned_data_dir = current_dir / "Cleaned_Data"
 cleaned_data_dir.mkdir(parents=True, exist_ok=True)
-output_path = cleaned_data_dir / f"fulldata_{datetime.now(timezone.utc).strftime('%y%m%d%H%M%S')}"
+output_path = cleaned_data_dir / f"fulldata_{datetime.now(timezone.utc).strftime('%y%m%d%H%M%S')}.json"
 output_path.write_text(json.dumps(payload,indent = 2, ensure_ascii=True), encoding="utf-8")
