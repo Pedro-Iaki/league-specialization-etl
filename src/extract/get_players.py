@@ -10,6 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import requests
 import random
+from time import sleep
 
 
 BASE_DIR = Path(__file__).resolve().parents[2] #this puts us in the root of the project
@@ -44,7 +45,7 @@ def fetch_players(region: str = DEFAULT_REGION, api_key: str = None, queue: str 
 	response.raise_for_status()
 
 	payload = response.json()
-	return payload, division
+	return payload, division, response
 
 def get_partitioned_path(base_path: Path, region: str, queue: str, tier: str, date: str = None) -> Path:
 	"""Get a partitioned path based on region, queue, and tier."""
@@ -90,21 +91,53 @@ def save_players(
 	output_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
 	return output_path
 
+def handle_rate_limit(response):
+	# Check the response headers for rate limit information, and wait accordingly
+	limit_header = response.headers.get("X-App-Rate-Limit")
+	count_header = response.headers.get("X-App-Rate-Limit-Count")
+	if limit_header and count_header:
+		intervals = [item.split(":") for item in count_header.split(",")]
+		for count, period in intervals:
+			count = int(count)
+			period = int(period)
+			if count >= period*.8: #if the count is greater than or equal to 80% of the limit				
+				print(f"Rate limit close. Waiting for {period/10} seconds before retrying...")
+				sleep(period/10) #wait for 10% of the period before retrying
+				return True
+			if count >= period: #if the count is greater than or equal to the limit
+				print(f"Rate limit reached. Waiting for {period} seconds before retrying...")
+				sleep(period/2) #wait for 50% of the period before retrying
+				return False
+	else:
+		raise ValueError("Rate limit headers not found in the response.")
+
+def pick_least_populated_tier(region: str, queue: str, date: str, output_path: Path = OUTPUT_PATH) -> str:
+	"""Pick the tier with the least number of files in the output path."""
+
+	tiers = ["DIAMOND", "EMERALD", "PLATINUM", "GOLD", "SILVER", "BRONZE", "IRON"]
+	tier_counts = {}
+	for tier_option in tiers:
+		tier_path = get_partitioned_path(output_path, region, queue, tier_option, date)
+		file_count = len(list(tier_path.glob("*.json")))
+		tier_counts[tier_option] = file_count
+
+	return min(tier_counts, key=tier_counts.get)
 
 def run() -> dict:
 	load_dotenv(BASE_DIR / "config" / "RIOT_API_KEY.env")
 	api_key = os.getenv("RIOT_API_KEY")
 	region = DEFAULT_REGION
 	queue = DEFAULT_QUEUE
-	tier = DEFAULT_TIER
 	#Although it seems overkill, we should still store the time first so we avoid 
 	#any race conditions with the date changing between the date and time fetches
 	time = datetime.now(timezone.utc).strftime("%H%M%S")
 	date = datetime.now(timezone.utc).strftime("%y%m%d")
+	tier = pick_least_populated_tier(region, queue, date)
 
-	players, division = fetch_players(region=region, api_key=api_key, queue=queue, tier=tier, random_division=True)
+	players, division, response = fetch_players(region=region, api_key=api_key, queue=queue, tier=tier, random_division=True)
 	output_path = save_players(players, region=region, queue=queue, tier=tier, division=division, date=date, time=time)
-	print(f"Saved {len(players)} players to {output_path}")
+	handle_rate_limit(response)
+	
 	return {
 		"region": region,
 		"queue": queue,

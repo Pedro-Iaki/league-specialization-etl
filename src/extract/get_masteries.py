@@ -59,7 +59,6 @@ def fetch_player_masteries(
 
 def handle_rate_limit(response):
 	# Check the response headers for rate limit information, and wait accordingly
-	print(response.headers)
 	limit_header = response.headers.get("X-App-Rate-Limit")
 	count_header = response.headers.get("X-App-Rate-Limit-Count")
 	if limit_header and count_header:
@@ -68,11 +67,11 @@ def handle_rate_limit(response):
 			count = int(count)
 			period = int(period)
 			if count >= period*.8: #if the count is greater than or equal to 80% of the limit				
-				print(f"Rate limit close. Waiting for {period/10} seconds before retrying...")
+				#print(f"Rate limit close. Waiting for {period/10} seconds before retrying...")
 				sleep(period/10) #wait for 10% of the period before retrying
 				return True
 			if count >= period: #if the count is greater than or equal to the limit
-				print(f"Rate limit reached. Waiting for {period} seconds before retrying...")
+				#print(f"Rate limit reached. Waiting for {period} seconds before retrying...")
 				sleep(period/2) #wait for 50% of the period before retrying
 				return False
 	else:
@@ -132,7 +131,7 @@ def run(manifest: dict) -> None:
 	for player in players:
 		puuid = player.get("puuid")
 		if not puuid or puuid in outputted_players:
-			print(f"Skipping player {puuid} as it has already been processed or is invalid.")
+			#print(f"Skipping player {puuid} as it has already been processed or is invalid.")
 			continue
 
 		mastery_response = fetch_player_masteries(
@@ -141,9 +140,9 @@ def run(manifest: dict) -> None:
 			api_key=api_key
 		)
 		if mastery_response is None:
-			print(f"No mastery data found for player {puuid}.")
+			#print(f"No mastery data found for player {puuid}.")
 			continue
 		save_masteries(mastery_response.json(), output_path=output_path, time=time, division=division, puuid=puuid)
 		outputted_players.append(puuid)
 		handle_rate_limit(mastery_response)
-		print(f"Saved mastery data for player {puuid} to {output_path}")
+		print(f"Saved new mastery data. Remaining: {len(players) - len(outputted_players)}.")
