@@ -17,91 +17,51 @@ from loguru import logger
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 PLAYERS_INPUT_PATH = BASE_DIR / "data" / "raw" / "players"
-DEFAULT_REGION = "na1"
-DEFAULT_QUEUE = "RANKED_SOLO_5x5"
-DEFAULT_TIER = "DIAMOND"
 OUTPUT_PATH = BASE_DIR / "data" / "raw" / "masteries"
-
-
-def load_players(players_input_path: Path = None) -> tuple[list[dict], str]:
-	"""Load previously fetched players from raw JSON."""
-
-	if players_input_path is None:
-		raise ValueError("No players input path provided. Please set the players_input_path parameter.")
-	payload = json.loads(players_input_path.read_text(encoding="utf-8"))
-	return payload.get("players", None)
-
 
 def fetch_player_masteries(
 	puuid: str,
 	region: str = None,
-	api_key: str | None = None,
+	api_client: API = None,
 	task_id: int | None = None
-) -> tuple[list[dict], requests.Response]:
-	"""Fetch top champion mastery entries for one player."""
+) -> list[dict]:
+	"""Fetch champion mastery entries for a player."""
 
-	if not api_key:
-		raise ValueError("No Riot API key provided. Please set the RIOT_API_KEY environment variable.")
-	if not region:
-		raise ValueError("No region provided. Please set the region parameter.")
+	if not api_client:
+		logger.error("No API client provided. Please set the RIOT_API_KEY environment variable and provide a valid API client.")
+		return None
 	if task_id is not None:
-			db.update_mastery_task(task_id, "in_progress")
-			#print(f"No task found for player {puuid}. Skipping.")
+		db.update_mastery_task(task_id, "in_progress")
 
 	url = f"https://{region}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}"
-	response = requests.get(
-		url,
-		headers={"X-Riot-Token": api_key},
-		timeout=60,
-	)
+	response = api_client.get(url)
 	
-	if(response.status_code == 429):
-		print(f"Rate limit reached for player {puuid}.")
-		sleep(60)
-		return fetch_player_masteries(puuid=puuid, region=region, api_key=api_key, task_id=task_id)
-	elif not response.ok:
+	if not response.ok:
 		db.update_mastery_task(task_id, "failed", error_message=f"Error: {response.status_code} - {response.text}")
-		return None, response
+		return None
 
 	raw_payload = response.json()
 	try:
-		validated_masteries = [models.RiotChampionMastery.model_validate(m).model_dump() for m in raw_payload]
-		return validated_masteries, response
+		validated_masteries = [models.ChampionMasteryEntry.model_validate(m).model_dump() for m in raw_payload]
+		return validated_masteries
 	except Exception as e:
-		print(f"Error validating mastery data for player {puuid}: {e}")
+		logger.error(f"Error validating mastery data for player {puuid}: {e}")
 		db.update_mastery_task(task_id, "failed", error_message=f"Validation error: {e}")
-		return None, response
+		return None
 
-def handle_rate_limit(response):
-	# Check the response headers for rate limit information, and wait accordingly
-	limit_header = response.headers.get("X-App-Rate-Limit")
-	count_header = response.headers.get("X-App-Rate-Limit-Count")
-	if limit_header and count_header:
-		intervals = [item.split(":") for item in count_header.split(",")]
-		for count, period in intervals:
-			count = int(count)
-			period = int(period)
-			if count >= period*.8: #if the count is greater than or equal to 80% of the limit				
-				#print(f"Rate limit close. Waiting for {period/10} seconds before retrying...")
-				sleep(period/10) #wait for 10% of the period before retrying
-				return True
-			if count >= period: #if the count is greater than or equal to the limit
-				#print(f"Rate limit reached. Waiting for {period} seconds before retrying...")
-				sleep(period/2) #wait for 50% of the period before retrying
-				return False
-	else:
-		raise ValueError("Rate limit headers not found in the response.")
-
-def get_partitioned_path(region: str, queue: str, tier: str, date: str = None) -> Path:
+def get_partitioned_path(info: dict) -> Path:
 	"""Get a partitioned path based on region, queue, and tier."""
+	
+	date = info.get("latest_logged_at")
+	date = date.strftime("%y%m%d") if date else None
 
-	region_folder_name = f"region={region}"
+	region_folder_name = f"region={info.get('region')}"
 	region_folder = OUTPUT_PATH / region_folder_name
 	region_folder.mkdir(parents=True, exist_ok=True)
-	queue_folder_name = f"queue={queue}"
+	queue_folder_name = f"queue={info.get('queue')}"
 	queue_folder = region_folder / queue_folder_name
 	queue_folder.mkdir(parents=True, exist_ok=True)
-	tier_folder_name = f"tier={tier}"
+	tier_folder_name = f"tier={info.get('tier')}"
 	tier_folder = queue_folder / tier_folder_name
 	tier_folder.mkdir(parents=True, exist_ok=True)	
 	date_folder_name = "dt=" + (date if date else "ERROR!DATE_NOT_PROVIDED") #this shouldnt happen, if it does, we cannot afford to have the date be different.
@@ -109,10 +69,10 @@ def get_partitioned_path(region: str, queue: str, tier: str, date: str = None) -
 	date_folder.mkdir(parents=True, exist_ok=True)
 	return date_folder
 
-def save_masteries(mastery_rows: list[dict], output_path: Path = OUTPUT_PATH, time: str = None, division: str = None, puuid: str = None) -> Path:
+def save_masteries(mastery_rows: list[dict], output_path: Path = OUTPUT_PATH, date: str = None, division: str = None, puuid: str = None) -> Path:
 	"""Persist all fetched masteries as raw JSON."""
 
-	this_path = output_path / f"masteries_{division}_{time}_{puuid}.json"
+	this_path = output_path / f"masteries_{division}_{date.strftime('%H%M%S')}_{puuid}.json"
 	payload = {
 		"source": "riot-api",
 		"fetched_at": datetime.now(timezone.utc).isoformat(),
@@ -121,58 +81,69 @@ def save_masteries(mastery_rows: list[dict], output_path: Path = OUTPUT_PATH, ti
 	this_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
 	return this_path
 
+def get_player_info(puuid: str) -> dict:
+	"""Get the player info from the database."""
+	info = db.get_player_info(puuid)
+	if not info:
+		logger.error(f"No player info found for {puuid}.")
+		return {}
 
-def run(manifest: dict, run_id: int, api_key: str, api_client: API) -> None:
-	region = manifest.get("region")
-	queue = manifest.get("queue")
-	tier = manifest.get("tier")
-	date = manifest.get("date")
-	time = manifest.get("time")
-	division = manifest.get("division")
-	player_path = manifest.get("player_path")
-	if not region or not queue or not tier or not date or not time or not division or not player_path:
-		logger.error("Manifest must contain 'region', 'queue', 'tier', 'date', 'time', 'division', and 'player_path' fields.")
-		return
-	elif not api_key:
-		logger.error("No Riot API key provided. Please set the RIOT_API_KEY environment variable.")
-		return
+	region = info.get("region")
+	queue = info.get("queue")
+	tier = info.get("tier")
+	date = info.get("latest_logged_at")
+	if not region or not queue or not tier or not date:
+		logger.error(f"Missing required information for player {puuid}: region={region}, queue={queue}, tier={tier}, date={date}")
 
-	players = load_players(Path(player_path))
-	if players is None:
-		logger.error("No players JSON found. Please ensure the players JSON file exists in the expected location.")
+	return info
+
+def run(run_id: int, api_client: API, limit: int) -> None:
+	players = db.get_players_missing_masteries(True, limit)
+	if players is None or len(players) == 0:
+		logger.error("No players missing masteries found.")
 		return
+	else:
+		logger.info(f"{len(players)} players missing masteries found.")
 
 	# Add the mastery tasks for each player before creating them
+	logger.info(f"Adding mastery task for players.")
 	task_ids = []
-	for player in players:
-		puuid = player.get("puuid")
+	for puuid in players:
 		if puuid:
-			task_ids.append(db.add_mastery_task(run_id, region, queue, tier, division, puuid))
+			task_ids.append(db.add_mastery_task(run_id, puuid))
 
-	output_path = get_partitioned_path(region, queue, tier, date)
-	processed_players = []
-	for player in players:
-		puuid = player.get("puuid")
-		if not puuid or puuid in processed_players:
-			#print(f"Skipping player {puuid} as it has already been processed or is invalid.")
+	processed = 0
+	for puuid in players:
+		if not puuid or db.get_mastery_status_for_player(puuid) == "in_progress":
+			# We skip player in progress in case another thread is working on it already
+			logger.info(f"Skipping player {puuid} as they are already in progress or invalid.")
 			continue
+		
+		logger.info(f"Fetching mastery data for player {puuid}.")
+		player_info = get_player_info(puuid)
+		task_id = db.get_mastery_id_from_list(task_ids, puuid)
 
-		task_id = db.get_task_from_list_with_puuid(task_ids, puuid)
-
-		mastery_payload, response = fetch_player_masteries(
+		mastery_payload = fetch_player_masteries(
 			puuid=puuid,
-			region=region,
-			api_key=api_key,
+			region=player_info.get("region"),
+			api_client=api_client,
 			task_id=task_id
 		)
 		if mastery_payload is None:
-			#print(f"No mastery data found for player {puuid}.")
+			logger.error(f"No mastery data found for player {puuid}.")
 			continue
 
-		this_path = save_masteries(mastery_payload, output_path=output_path, time=time, division=division, puuid=puuid)
-		processed_players.append(puuid)
+
+		output_path = get_partitioned_path(player_info)
+		this_path = save_masteries(mastery_payload, output_path=output_path, date=player_info.get("latest_logged_at"), division=player_info.get("division"), puuid=puuid)
 		db.update_mastery_task(task_id, "success", file_path=str(this_path))
-
-		handle_rate_limit(response)
-
-		print(f"Saved new mastery data. Remaining: {len(players) - len(processed_players)}.")
+	
+		processed += 1
+		logger.info(f"Saved new mastery data. Remaining: {min(limit, len(players)) - processed}.")
+		if processed >= limit:
+			break
+	
+	if len(players) > limit:
+		logger.info(f"Reached the limit of {limit} processed players. Stopping.")
+	else:
+		logger.info(f"Processed all {len(players)} players missing masteries.")

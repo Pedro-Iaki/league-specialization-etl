@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from setuptools.command.build_ext import if_dl
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 PLAYERS_INPUT_PATH = BASE_DIR / "data" / "raw" / "players"
@@ -38,7 +37,6 @@ def verify_integrity() -> None:
 				all_puuids_players.append((player_file, puuid))
 
 		except Exception as e:
-			print(f"Error processing {player_file}: {e}")
 			continue
 	
 	#get all masteries
@@ -57,7 +55,6 @@ def verify_integrity() -> None:
 				all_puuids_masteries.append((mastery_file, puuid))
 
 		except Exception as e:
-			print(f"Error processing {mastery_file}: {e}")
 			continue
 
 	for mastery_file, puuid in all_puuids_masteries:
@@ -79,41 +76,20 @@ def verify_integrity() -> None:
 		uniques = sum(1 for item in all_puuids_players if item[1] == puuid)
 		if uniques > 1 and puuid not in duplicated_player_puuids:
 			duplicated_player_puuids[puuid] = [str(player_file) for player_file, p in all_puuids_players if p == puuid]
-
-	passed_test = True
-	if duplicated_player_puuids:
-		passed_test = False
-		print(f"Found {len(duplicated_player_puuids)} duplicated player files for the following PUUIDs:")
-		if len(duplicated_player_puuids) < 5:
-			for puuid in duplicated_player_puuids:
-				print(f"  - {puuid} (from {', '.join(str(f) for f in duplicated_player_puuids[puuid])})")
-	if duplicated_masteries_puuids:
-		passed_test = False
-		print(f"Found {len(duplicated_masteries_puuids)} duplicated mastery files for the following PUUIDs:")
-		if len(duplicated_masteries_puuids) < 5:
-			for puuid in duplicated_masteries_puuids:
-					print(f"  - {puuid} (from {', '.join(str(f) for f in duplicated_masteries_puuids[puuid])})")
-	if missing_masteries_puuids:		
-		passed_test = False
-		print(f"Missing mastery data for {len(missing_masteries_puuids)} PUUIDs:")
-		if len(missing_masteries_puuids) < 5:
-			for puuid, source_file in missing_masteries_puuids.items():
-				print(f"  - {puuid} (from {source_file})")
-	if missing_player_puuids:
-		passed_test = False
-		print(f"Found mastery data for {len(missing_player_puuids)} PUUIDs without corresponding player data:")
-		if len(missing_player_puuids) < 5:
-			for puuid, source_file in missing_player_puuids.items():
-				print(f"  - {puuid} (from {source_file})")
-	if broken_files:
-		passed_test = False
-		print(f"Found {len(broken_files)} broken files:")
-		if len(broken_files) < 5:
-			for broken_file in broken_files:
-				print(f"  - {broken_file}")
-	
+		
+	total_evaluated = len(all_puuids_players) + len(all_puuids_masteries)
+	total_errors = len(missing_masteries_puuids) + len(missing_player_puuids) + len(broken_files)
+	error_rate = f"{(total_errors / total_evaluated if total_evaluated > 0 else 1) * 100:.2f}%"
+	duplicated_player_rate = f"{(len(duplicated_player_puuids) / len(all_puuids_players) if all_puuids_players else 0) * 100:.2f}%"
+	duplicated_mastery_rate = f"{(len(duplicated_masteries_puuids) / len(all_puuids_masteries) if all_puuids_masteries else 0) * 100:.2f}%"
+		
 	# Log results to JSON file
 	log_data = {
+		"total_evaluated": total_evaluated,
+		"total_errors": total_errors,
+		"error_rate": error_rate,
+		"duplicated_player_rate": duplicated_player_rate,
+		"duplicated_mastery_rate": duplicated_mastery_rate,
 		"duplicated_masteries": duplicated_masteries_puuids,
 		"duplicated_players": duplicated_player_puuids,
 		"missing_masteries": [{"puuid": puuid, "source_file": source_file} for puuid, source_file in missing_masteries_puuids.items()],
@@ -122,16 +98,10 @@ def verify_integrity() -> None:
 		"all_masteries": [{"puuid": puuid, "source_file": str(mastery_file)} for mastery_file, puuid in all_puuids_masteries],
 		"broken_files": [{"source_file": str(broken_file)} for broken_file in broken_files],
 	}
-	
+		
 	log_file = LOGS_PATH / "integrity_check.json"
 	log_file.parent.mkdir(parents=True, exist_ok=True)
 	log_file.write_text(json.dumps(log_data, indent=2), encoding="utf-8")
-	
-	if passed_test:
-		print(":D All players have corresponding mastery data!")
-	else:
-		print(f"Integrity check failed. Details logged to {log_file}")
-
 
 if __name__ == "__main__":
 	verify_integrity()

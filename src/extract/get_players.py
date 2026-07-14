@@ -18,10 +18,6 @@ from loguru import logger
 
 BASE_DIR = Path(__file__).resolve().parents[2]  # this puts us in the root of the project
 OUTPUT_PATH = BASE_DIR / "data" / "raw" / "players"
-DEFAULT_REGION = "na1"
-DEFAULT_QUEUE = "RANKED_SOLO_5x5"
-DEFAULT_TIER = "DIAMOND"
-DEFAULT_DIVISION = "I"
 
 
 def build_players_filename(division: str, time: str=None) -> str:
@@ -31,11 +27,11 @@ def build_players_filename(division: str, time: str=None) -> str:
 	return f"players_{division}_{timestamp}.json"
 
 
-def fetch_players(task_id: int, api_key: str=None, api_client: API=None, region: str=DEFAULT_REGION, queue: str=DEFAULT_QUEUE, tier: str=DEFAULT_TIER, division: str=DEFAULT_DIVISION) -> list[dict] | None:
+def fetch_players(task_id: int, api_client: API, region: str, queue: str, tier: str, division: str) -> list[dict] | None:
 	"""Fetch the current player list from Riot's challenger league endpoint."""
 
-	if api_key is None or api_client is None:
-		logger.error("No Riot API key or API client provided. Please set the RIOT_API_KEY environment variable and provide a valid API client.")
+	if api_client is None:
+		logger.error("No API client provided. Please set the RIOT_API_KEY environment variable and provide a valid API client.")
 		return None
 
 	url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}"
@@ -77,11 +73,11 @@ def get_partitioned_path(base_path: Path, region: str, queue: str, tier: str, da
 
 def save_players(
 	players: list[dict],
-	output_path: Path=OUTPUT_PATH,
-	region: str=DEFAULT_REGION,
-	queue: str=DEFAULT_QUEUE,
-	tier: str=DEFAULT_TIER,
-	division: str=DEFAULT_DIVISION,
+	output_path: Path,
+	region: str,
+	queue: str,
+	tier: str,
+	division: str,
 	date: str=None,
 	time: str=None,
 ) -> Path:
@@ -115,34 +111,29 @@ def pick_least_populated_tier(region: str, queue: str, date: str, output_path: P
 	return min(tier_counts, key=tier_counts.get)
 
 
-def run(run_id: int, api_key: str, api_client: API) -> dict:
-	region = DEFAULT_REGION
-	queue = DEFAULT_QUEUE
+def run(run_id: int, api_client: API, region: str, queue: str):
 	time = datetime.now(timezone.utc).strftime("%H%M%S")	# Although it seems overkill, we should still store the time first so we avoid 
 	date = datetime.now(timezone.utc).strftime("%y%m%d")	# any race conditions with the date changing between the date and time fetches
 	tier = pick_least_populated_tier(region, queue, date)
 	division = random.choice(["I", "II", "III", "IV"])
-	task_id = db.add_player_task(run_id, region, queue, tier, division)
+	task_id = db.add_player_task(run_id)
 
-	players = fetch_players(task_id=task_id, region=region, api_key=api_key, queue=queue, tier=tier, division=division)
+	players = fetch_players(task_id=task_id, api_client=api_client, region=region, queue=queue, tier=tier, division=division)
 	if players is None:
 		return None
 
-	output_path = save_players(players, region=region, queue=queue, tier=tier, division=division, date=date, time=time)
+	# Discard snapshots fully recorded in the database the past week, partial matches are fine.
+	recorded_players = set(db.get_players_in_timespan(region=region, queue=queue, tier=tier, division=division, days_ago=7))
+	snapshot_players = [player["puuid"] for player in players if player.get("puuid")]
+	if sum(1 for item in snapshot_players if item not in recorded_players) == 0:
+		logger.info(f"No new players found for {region} {queue} {tier} {division}.")
+		db.update_player_task(task_id, "success", file_path=None)
+		return
+
+	output_path = save_players(players, output_path=OUTPUT_PATH, region=region, queue=queue, tier=tier, division=division, date=date, time=time)
 
 	db.update_player_task(task_id, "success", file_path=str(output_path))
 	for player in players:
 		puuid = player.get("puuid")
 		if puuid:
-			db.add_player_records(puuid, str(output_path))
-
-	return {
-		"region": region,
-		"queue": queue,
-		"tier": tier,
-		"division": division,
-		"date": date,
-		"time": time,
-		"player_path": str(output_path),
-		"player_count": len(players)
-	}
+			db.add_player_records(puuid, str(output_path), region=region, queue=queue, tier=tier, division=division, player_task_id=task_id)
