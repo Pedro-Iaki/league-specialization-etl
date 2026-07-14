@@ -10,6 +10,9 @@ from time import sleep
 import requests
 from dotenv import load_dotenv
 import pipeline_db as db
+import pydantic_models as models
+from client import RiotAPIClient as API
+from loguru import logger
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -34,7 +37,7 @@ def fetch_player_masteries(
 	region: str = None,
 	api_key: str | None = None,
 	task_id: int | None = None
-) -> list[dict]:
+) -> tuple[list[dict], requests.Response]:
 	"""Fetch top champion mastery entries for one player."""
 
 	if not api_key:
@@ -58,9 +61,16 @@ def fetch_player_masteries(
 		return fetch_player_masteries(puuid=puuid, region=region, api_key=api_key, task_id=task_id)
 	elif not response.ok:
 		db.update_mastery_task(task_id, "failed", error_message=f"Error: {response.status_code} - {response.text}")
-		return None
+		return None, response
 
-	return response
+	raw_payload = response.json()
+	try:
+		validated_masteries = [models.RiotChampionMastery.model_validate(m).model_dump() for m in raw_payload]
+		return validated_masteries, response
+	except Exception as e:
+		print(f"Error validating mastery data for player {puuid}: {e}")
+		db.update_mastery_task(task_id, "failed", error_message=f"Validation error: {e}")
+		return None, response
 
 def handle_rate_limit(response):
 	# Check the response headers for rate limit information, and wait accordingly
@@ -112,9 +122,7 @@ def save_masteries(mastery_rows: list[dict], output_path: Path = OUTPUT_PATH, ti
 	return this_path
 
 
-def run(manifest: dict, run_id: int) -> None:
-	load_dotenv(BASE_DIR / "config" / "RIOT_API_KEY.env")
-	api_key = os.getenv("RIOT_API_KEY")
+def run(manifest: dict, run_id: int, api_key: str, api_client: API) -> None:
 	region = manifest.get("region")
 	queue = manifest.get("queue")
 	tier = manifest.get("tier")
@@ -123,14 +131,18 @@ def run(manifest: dict, run_id: int) -> None:
 	division = manifest.get("division")
 	player_path = manifest.get("player_path")
 	if not region or not queue or not tier or not date or not time or not division or not player_path:
-		raise ValueError("Manifest must contain 'region', 'queue', 'tier', 'date', 'time', 'division', and 'player_path' fields.")
+		logger.error("Manifest must contain 'region', 'queue', 'tier', 'date', 'time', 'division', and 'player_path' fields.")
+		return
 	elif not api_key:
-		raise ValueError("No Riot API key provided. Please set the RIOT_API_KEY environment variable.")
+		logger.error("No Riot API key provided. Please set the RIOT_API_KEY environment variable.")
+		return
 
 	players = load_players(Path(player_path))
 	if players is None:
-		raise ValueError("No players JSON found. Please ensure the players JSON file exists in the expected location.")
+		logger.error("No players JSON found. Please ensure the players JSON file exists in the expected location.")
+		return
 
+	# Add the mastery tasks for each player before creating them
 	task_ids = []
 	for player in players:
 		puuid = player.get("puuid")
@@ -138,29 +150,29 @@ def run(manifest: dict, run_id: int) -> None:
 			task_ids.append(db.add_mastery_task(run_id, region, queue, tier, division, puuid))
 
 	output_path = get_partitioned_path(region, queue, tier, date)
-	outputted_players = []
+	processed_players = []
 	for player in players:
 		puuid = player.get("puuid")
-		if not puuid or puuid in outputted_players:
+		if not puuid or puuid in processed_players:
 			#print(f"Skipping player {puuid} as it has already been processed or is invalid.")
 			continue
 
 		task_id = db.get_task_from_list_with_puuid(task_ids, puuid)
 
-		mastery_response = fetch_player_masteries(
+		mastery_payload, response = fetch_player_masteries(
 			puuid=puuid,
 			region=region,
 			api_key=api_key,
 			task_id=task_id
 		)
-		if mastery_response is None:
+		if mastery_payload is None:
 			#print(f"No mastery data found for player {puuid}.")
 			continue
 
-		this_path = save_masteries(mastery_response.json(), output_path=output_path, time=time, division=division, puuid=puuid)
-		outputted_players.append(puuid)
+		this_path = save_masteries(mastery_payload, output_path=output_path, time=time, division=division, puuid=puuid)
+		processed_players.append(puuid)
 		db.update_mastery_task(task_id, "success", file_path=str(this_path))
 
-		handle_rate_limit(mastery_response)
+		handle_rate_limit(response)
 
-		print(f"Saved new mastery data. Remaining: {len(players) - len(outputted_players)}.")
+		print(f"Saved new mastery data. Remaining: {len(players) - len(processed_players)}.")

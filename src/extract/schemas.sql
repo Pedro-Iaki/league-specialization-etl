@@ -2,7 +2,8 @@
 CREATE TABLE runs (
     run_id INTEGER PRIMARY KEY AUTOINCREMENT,
     pipeline_name TEXT NOT NULL,
-    started_at TEXT NOT NULL,      -- ISO8601 timestamps as text
+    started_at TEXT NOT NULL,
+	last_heartbeat TEXT NOT NULL,
     finished_at TEXT,
     status TEXT NOT NULL DEFAULT 'running',  -- running, success, failed
     error_message TEXT
@@ -45,8 +46,11 @@ CREATE TABLE mastery_tasks (
 -- Every player that has been recorded in the database, along with the paths of the files where they were found and their mastery status.
 CREATE TABLE players_recorded (
     player_id TEXT PRIMARY KEY,
+	player_task_ids TEXT NOT NULL, -- JSON array of player_task_ids where this player was found
     paths TEXT NOT NULL, -- JSON array of file paths where this player was found
-    mastery_status TEXT NOT NULL, -- 'pending', 'success', 'failed'
+    paths_logged_at TEXT NOT NULL, -- JSON array of timestamps when this record was logged
+	mastery_task_id INTEGER REFERENCES mastery_tasks(task_id), -- reference to the mastery task for this player, if any
+    mastery_status TEXT NOT NULL, -- 'pending', 'in_progress', 'success', 'failed'
 	mastery_path TEXT UNIQUE REFERENCES mastery_tasks(file_path), -- path to the mastery file if added, null otherwise
-    logged_at TEXT NOT NULL -- JSON array of timestamps when this record was logged
+	mastery_logged_at TEXT -- timestamp when the mastery status was last updated
 );

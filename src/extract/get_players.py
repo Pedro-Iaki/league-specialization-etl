@@ -12,6 +12,9 @@ import requests
 import random
 from time import sleep
 import pipeline_db as db
+import pydantic_models as models
+from client import RiotAPIClient as API
+from loguru import logger
 
 BASE_DIR = Path(__file__).resolve().parents[2]  # this puts us in the root of the project
 OUTPUT_PATH = BASE_DIR / "data" / "raw" / "players"
@@ -28,29 +31,30 @@ def build_players_filename(division: str, time: str=None) -> str:
 	return f"players_{division}_{timestamp}.json"
 
 
-def fetch_players(task_id: int, region: str=DEFAULT_REGION, api_key: str=None, queue: str=DEFAULT_QUEUE, tier: str=DEFAULT_TIER, division: str=DEFAULT_DIVISION) -> list[dict]:
+def fetch_players(task_id: int, api_key: str=None, api_client: API=None, region: str=DEFAULT_REGION, queue: str=DEFAULT_QUEUE, tier: str=DEFAULT_TIER, division: str=DEFAULT_DIVISION) -> list[dict] | None:
 	"""Fetch the current player list from Riot's challenger league endpoint."""
 
-	if api_key is None: raise ValueError("No Riot API key provided. Please set the RIOT_API_KEY environment variable.")
+	if api_key is None or api_client is None:
+		logger.error("No Riot API key or API client provided. Please set the RIOT_API_KEY environment variable and provide a valid API client.")
+		return None
 
 	url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}"
 	db.update_player_task(task_id, "in_progress")
-	response = requests.get(
-		url,
-		headers={"X-Riot-Token": api_key},
-		timeout=60,
-	)
-	if response.status_code == 429:
-		print(f"Rate limit reached for {region} {queue} {tier} {division}.")
-		sleep(60)
-		return fetch_players(task_id=task_id, region=region, api_key=api_key, queue=queue, tier=tier, division=division)
-	elif not response.ok:
-		print(f"Error fetching players for {region} {queue} {tier} {division}: {response.status_code} - {response.text}")
+	response = api_client.get(url)
+	if not response.ok:
+		logger.error(f"Error fetching players for {region} {queue} {tier} {division}: {response.status_code} - {response.text}")
 		db.update_player_task(task_id, "failed", error_message=f"Error: {response.status_code} - {response.text}")
-		return None, response
+		return None
 
-	payload = response.json()
-	return payload, response
+	raw_payload = response.json()
+
+	try:
+		validated_players = [models.RiotPlayerEntry.model_validate(p).model_dump() for p in raw_payload]
+		return validated_players
+	except Exception as e:
+		logger.error(f"Error validating player data for {region} {queue} {tier} {division}: {e}")
+		db.update_player_task(task_id, "failed", error_message=f"Validation error: {e}")
+		return None
 
 
 def get_partitioned_path(base_path: Path, region: str, queue: str, tier: str, date: str=None) -> Path:
@@ -98,28 +102,6 @@ def save_players(
 	output_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
 	return output_path
 
-
-def handle_rate_limit(response):
-	# Check the response headers for rate limit information, and wait accordingly
-	limit_header = response.headers.get("X-App-Rate-Limit")
-	count_header = response.headers.get("X-App-Rate-Limit-Count")
-	if limit_header and count_header:
-		intervals = [item.split(":") for item in count_header.split(",")]
-		for count, period in intervals:
-			count = int(count)
-			period = int(period)
-			if count >= period * .8:  # if the count is greater than or equal to 80% of the limit				
-				print(f"Rate limit close. Waiting for {period/10} seconds before retrying...")
-				sleep(period / 10)  # wait for 10% of the period before retrying
-				return True
-			if count >= period:  # if the count is greater than or equal to the limit
-				print(f"Rate limit reached. Waiting for {period} seconds before retrying...")
-				sleep(period / 2)  # wait for 50% of the period before retrying
-				return False
-	else:
-		raise ValueError("Rate limit headers not found in the response.")
-
-
 def pick_least_populated_tier(region: str, queue: str, date: str, output_path: Path=OUTPUT_PATH) -> str:
 	"""Pick the tier with the least number of files in the output path."""
 
@@ -133,9 +115,7 @@ def pick_least_populated_tier(region: str, queue: str, date: str, output_path: P
 	return min(tier_counts, key=tier_counts.get)
 
 
-def run(run_id: int) -> dict:
-	load_dotenv(BASE_DIR / "config" / "RIOT_API_KEY.env")
-	api_key = os.getenv("RIOT_API_KEY")
+def run(run_id: int, api_key: str, api_client: API) -> dict:
 	region = DEFAULT_REGION
 	queue = DEFAULT_QUEUE
 	time = datetime.now(timezone.utc).strftime("%H%M%S")	# Although it seems overkill, we should still store the time first so we avoid 
@@ -144,7 +124,7 @@ def run(run_id: int) -> dict:
 	division = random.choice(["I", "II", "III", "IV"])
 	task_id = db.add_player_task(run_id, region, queue, tier, division)
 
-	players, response = fetch_players(task_id=task_id, region=region, api_key=api_key, queue=queue, tier=tier, division=division)
+	players = fetch_players(task_id=task_id, region=region, api_key=api_key, queue=queue, tier=tier, division=division)
 	if players is None:
 		return None
 
@@ -155,8 +135,6 @@ def run(run_id: int) -> dict:
 		puuid = player.get("puuid")
 		if puuid:
 			db.add_player_records(puuid, str(output_path))
-
-	handle_rate_limit(response)
 
 	return {
 		"region": region,
