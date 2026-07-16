@@ -1,9 +1,7 @@
-"""Verify data integrity by checking if all fetched players have corresponding mastery data."""
-
-from __future__ import annotations
-
+from collections import defaultdict
 import json
 from pathlib import Path
+import pipeline_db as db
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 PLAYERS_INPUT_PATH = BASE_DIR / "data" / "raw" / "players"
@@ -11,16 +9,16 @@ MASTERIES_PATH = BASE_DIR / "data" / "raw" / "masteries"
 LOGS_PATH = BASE_DIR / "data" / "logs"
 
 
-def verify_integrity() -> None:
-	"""Loop through every .json in a players folder and verify mastery data exists. \n Then, loop through every .json in a masteries folder and verify player data exists. \n Print out any missing or duplicate data."""
-
+def verify_files_integrity() -> None:
 	missing_masteries_puuids = {}
 	missing_player_puuids = {}
-	duplicated_player_puuids = {}
+	duplicated_player_puuids = []
 	duplicated_masteries_puuids = {}
 	broken_files = []
-	all_puuids_players = []
-	all_puuids_masteries = []
+	all_puuids_players = defaultdict(list)
+	all_puuids_masteries = {}
+	
+	db.cleanup_stale_runs()
 
 	#get all players
 	for player_file in PLAYERS_INPUT_PATH.rglob("*.json"):
@@ -34,7 +32,7 @@ def verify_integrity() -> None:
 				puuid = player.get("puuid")
 				if not puuid:
 					continue
-				all_puuids_players.append((player_file, puuid))
+				all_puuids_players[puuid].append(player_file)
 
 		except Exception as e:
 			continue
@@ -52,50 +50,52 @@ def verify_integrity() -> None:
 				puuid = first_mastery.get("puuid")
 				if not puuid:
 					continue
-				all_puuids_masteries.append((mastery_file, puuid))
+				all_puuids_masteries[puuid] = mastery_file
 
 		except Exception as e:
 			continue
 
-	for mastery_file, puuid in all_puuids_masteries:
+	for puuid, mastery_file in all_puuids_masteries.items():
 		#if a puuid not present in players but present in masteries, add to missing_player_puuids
-		if puuid not in [p[1] for p in all_puuids_players]:
+		if puuid not in all_puuids_players:
 			missing_player_puuids[puuid] = str(mastery_file)
 
 		#if a puuid is present twice in masteries, add to duplicated_puuids
 		uniques = sum(1 for item in all_puuids_masteries if item[1] == puuid)
 		if uniques > 1 and puuid not in duplicated_masteries_puuids:
-			duplicated_masteries_puuids[puuid] = [str(mastery_file) for mastery_file, p in all_puuids_masteries if p == puuid]
+			duplicated_masteries_puuids[puuid] = [str(mastery_file) for mastery_file, p in all_puuids_masteries.items() if p == puuid]
 
-	for player_file, puuid in all_puuids_players:
+	for puuid, paths in all_puuids_players.items():
 		#if a puuid is present in players but not present in masteries, add to missing_masteries_puuids
-		if puuid not in [m[1] for m in all_puuids_masteries]:
-			missing_masteries_puuids[puuid] = str(player_file)
+		if puuid not in all_puuids_masteries:
+			missing_masteries_puuids[puuid] = puuid
 		
-		#if a puuid is present twice in players, add to duplicated_puuids
-		uniques = sum(1 for item in all_puuids_players if item[1] == puuid)
-		if uniques > 1 and puuid not in duplicated_player_puuids:
-			duplicated_player_puuids[puuid] = [str(player_file) for player_file, p in all_puuids_players if p == puuid]
+		#if a puuid has more than one file, add to duplicated_puuids
+		if len(paths) > 1:
+			duplicated_player_puuids.append(puuid)
 		
 	total_evaluated = len(all_puuids_players) + len(all_puuids_masteries)
 	total_errors = len(missing_masteries_puuids) + len(missing_player_puuids) + len(broken_files)
 	error_rate = f"{(total_errors / total_evaluated if total_evaluated > 0 else 1) * 100:.2f}%"
 	duplicated_player_rate = f"{(len(duplicated_player_puuids) / len(all_puuids_players) if all_puuids_players else 0) * 100:.2f}%"
 	duplicated_mastery_rate = f"{(len(duplicated_masteries_puuids) / len(all_puuids_masteries) if all_puuids_masteries else 0) * 100:.2f}%"
+	average_duplicity_per_player_file = sum(len(v) for v in all_puuids_players.values()) / len(all_puuids_players) if len(all_puuids_players) else 0 #sum all puuid paths and divide by number of files
 		
-	# Log results to JSON file
 	log_data = {
 		"total_evaluated": total_evaluated,
+		"total_player_files": len(all_puuids_players),
+		"total_mastery_files": len(all_puuids_masteries),
 		"total_errors": total_errors,
 		"error_rate": error_rate,
+		"missing_masteries": len(missing_masteries_puuids),
+		"missing_players": len(missing_player_puuids),
 		"duplicated_player_rate": duplicated_player_rate,
+		"average_duplicity_per_player_file": f"{average_duplicity_per_player_file:.2f}",
+		"duplicated_players": duplicated_player_puuids,
 		"duplicated_mastery_rate": duplicated_mastery_rate,
 		"duplicated_masteries": duplicated_masteries_puuids,
-		"duplicated_players": duplicated_player_puuids,
 		"missing_masteries": [{"puuid": puuid, "source_file": source_file} for puuid, source_file in missing_masteries_puuids.items()],
 		"missing_players": [{"puuid": puuid, "source_file": source_file} for puuid, source_file in missing_player_puuids.items()],
-		"all_players": [{"puuid": puuid, "source_file": str(player_file)} for player_file, puuid in all_puuids_players],
-		"all_masteries": [{"puuid": puuid, "source_file": str(mastery_file)} for mastery_file, puuid in all_puuids_masteries],
 		"broken_files": [{"source_file": str(broken_file)} for broken_file in broken_files],
 	}
 		
@@ -103,5 +103,120 @@ def verify_integrity() -> None:
 	log_file.parent.mkdir(parents=True, exist_ok=True)
 	log_file.write_text(json.dumps(log_data, indent=2), encoding="utf-8")
 
+def verify_db_integrity() -> None:
+	conn = db.get_connection()
+	
+	player_tasks = conn.execute("SELECT * FROM player_tasks").fetchall()
+	player_tasks = {row["task_id"]: dict(row) for row in player_tasks}
+	
+	mastery_tasks = conn.execute("SELECT * FROM mastery_tasks").fetchall()
+	mastery_tasks = {row["task_id"]: dict(row) for row in mastery_tasks}
+	
+	player_records = conn.execute("SELECT * FROM players_recorded").fetchall()
+	player_records = {row["player_id"]: dict(row) for row in player_records}
+	
+	conn.close()
+	
+	player_task_errors = [t for t in player_tasks.values() if t["status"] == "failed"]
+	mastery_task_errors = [t for t in mastery_tasks.values() if t["status"] == "failed"]
+	player_task_error_rate = f"{(len(player_task_errors) / len(player_tasks) if player_tasks else 0) * 100:.2f}%"
+	mastery_task_error_rate = f"{(len(mastery_task_errors) / len(mastery_tasks) if mastery_tasks else 0) * 100:.2f}%"
+	no_path_tasks = len([t for t in player_tasks.values() if not t["file_path"] or t["file_path"].strip() == ""])
+	
+	player_error_messages = {}
+	for task in player_task_errors:
+		msg = task.get("error_message", "none")
+		player_error_messages[msg] = player_error_messages.get(msg, 0) + 1
+	
+	mastery_error_messages = {}
+	for task in mastery_task_errors:
+		msg = task.get("error_message", "none")
+		mastery_error_messages[msg] = mastery_error_messages.get(msg, 0) + 1
+	
+	faulty_records = []
+	multipath_records = []
+	paths_counts = []
+	
+	for record in player_records.values():
+		issues = []
+		
+		mastery_status = record.get("mastery_status")
+
+		if mastery_status != "success":
+			issues.append(f"mastery_status: {mastery_status}")
+		
+		paths = record.get("paths")
+		if not paths:
+			issues.append("no_paths")
+		else:
+			try:
+				paths_list = json.loads(paths) if isinstance(paths, str) else paths
+				if not paths_list or len(paths_list) == 0:
+					issues.append("empty_paths")
+				else:
+					if len(paths_list) > 1:
+						multipath_records.append(record["player_id"])
+					paths_counts.append(len(paths_list))
+			except:
+				issues.append("invalid_paths")
+
+		
+		player_task_ids = record.get("player_task_ids")
+		if not player_task_ids:
+			issues.append("no_player_task_ids")
+		else:
+			try:
+				task_ids = json.loads(player_task_ids) if isinstance(player_task_ids, str) else player_task_ids
+				if not task_ids:
+					issues.append("empty_player_task_ids")
+				else:
+					for task_id in task_ids:
+						if task_id in player_tasks and player_tasks[task_id]["status"] != "success":
+							issues.append(f"player_task_{task_id}_not_success")
+			except:
+				issues.append("invalid_player_task_ids")
+		
+		mastery_task_id = record.get("mastery_task_id")
+		if not mastery_task_id:
+			issues.append("no_mastery_task_id")
+		else:
+			if mastery_status == "success" and not mastery_task_id:
+				issues.append("success_but_no_mastery_task_id")
+			elif mastery_task_id:
+				if mastery_task_id in mastery_tasks and mastery_tasks[mastery_task_id]["status"] != "success":
+						issues.append(f"mastery_task_{mastery_task_id}_not_success")
+		
+		if not record.get("region") or not record.get("queue") or not record.get("tier") or not record.get("division"):
+			issues.append("missing_rank_info")
+		
+		if issues:
+			faulty_records.append({
+				"player_id": record["player_id"],
+				"issues": issues
+			})
+	
+	log_data = {
+		"total_player_tasks": len(player_tasks),
+		"total_mastery_tasks": len(mastery_tasks),
+		"total_player_records": len(player_records),
+		"discarded_player_tasks": no_path_tasks,
+		"player_task_error_rate": player_task_error_rate,
+		"mastery_task_error_rate": mastery_task_error_rate,
+		"player_task_errors_by_message": player_error_messages,
+		"mastery_task_errors_by_message": mastery_error_messages,
+		"faulty_records_count": len(faulty_records),
+		"faulty_records": faulty_records,
+		"paths_by_player_mean": sum(paths_counts) / len(paths_counts) if paths_counts else 0,
+		"multipath_players_count": len(multipath_records),
+		"multipath_player_rate": f"{(len(multipath_records) / len(player_records) if player_records else 0) * 100:.2f}%",
+		"multipath_players": multipath_records,
+	}
+	
+	log_file = LOGS_PATH / "db_integrity_check.json"
+	log_file.parent.mkdir(parents=True, exist_ok=True)
+	log_file.write_text(json.dumps(log_data, indent=2), encoding="utf-8")
+
+
 if __name__ == "__main__":
-	verify_integrity()
+	verify_files_integrity()
+	verify_db_integrity()

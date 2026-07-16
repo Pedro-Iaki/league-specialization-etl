@@ -33,7 +33,7 @@ class RiotAPIClient:
             if rate_limit_header:
                 self.buckets = self.setup_buckets(rate_limit_header)
                 for b in self.buckets:
-                    b.consume()  # Consume a token for the current request to ensure we start it right
+                    b.consume()  # Consume a token for the current request to ensure we start it right away
         
         if response.status_code == 429:
             logger.warning("429 Too Many Requests received, rate limited")

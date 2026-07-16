@@ -1,35 +1,22 @@
-"""Fetch a Riot player list and store it in the raw data folder, under a partitioned structure based on region, queue, tier, and date.
-"""
-
-from __future__ import annotations
-
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
-from dotenv import load_dotenv
-import requests
 import random
-from time import sleep
 import pipeline_db as db
 import pydantic_models as models
 from client import RiotAPIClient as API
 from loguru import logger
 
-BASE_DIR = Path(__file__).resolve().parents[2]  # this puts us in the root of the project
+BASE_DIR = Path(__file__).resolve().parents[2]
 OUTPUT_PATH = BASE_DIR / "data" / "raw" / "players"
 
 
 def build_players_filename(division: str, time: str=None) -> str:
-	"""Build the compact output filename for player extraction."""
-
 	timestamp = time if time else datetime.now(timezone.utc).strftime("%H%M%S")
 	return f"players_{division}_{timestamp}.json"
 
 
 def fetch_players(task_id: int, api_client: API, region: str, queue: str, tier: str, division: str) -> list[dict] | None:
-	"""Fetch the current player list from Riot's challenger league endpoint."""
-
 	if api_client is None:
 		logger.error("No API client provided. Please set the RIOT_API_KEY environment variable and provide a valid API client.")
 		return None
@@ -54,8 +41,6 @@ def fetch_players(task_id: int, api_client: API, region: str, queue: str, tier: 
 
 
 def get_partitioned_path(base_path: Path, region: str, queue: str, tier: str, date: str=None) -> Path:
-	"""Get a partitioned path based on region, queue, and tier."""
-
 	region_folder_name = f"region={region}"
 	region_folder = base_path / region_folder_name
 	region_folder.mkdir(parents=True, exist_ok=True)
@@ -81,8 +66,6 @@ def save_players(
 	date: str=None,
 	time: str=None,
 ) -> Path:
-	"""Persist the fetched player list as raw JSON."""
-
 	output_path = get_partitioned_path(output_path, region, queue, tier, date) / build_players_filename(division, time)
 
 	payload = {
@@ -99,8 +82,6 @@ def save_players(
 	return output_path
 
 def pick_least_populated_tier(region: str, queue: str, date: str, output_path: Path=OUTPUT_PATH) -> str:
-	"""Pick the tier with the least number of files in the output path."""
-
 	tiers = ["DIAMOND", "EMERALD", "PLATINUM", "GOLD", "SILVER", "BRONZE", "IRON"]
 	tier_counts = {}
 	for tier_option in tiers:
@@ -129,6 +110,8 @@ def run(run_id: int, api_client: API, region: str, queue: str):
 		logger.info(f"No new players found for {region} {queue} {tier} {division}.")
 		db.update_player_task(task_id, "success", file_path=None)
 		return
+
+	logger.info(f"Fetched {len(players)} players for {region} {queue} {tier} {division}.")
 
 	output_path = save_players(players, output_path=OUTPUT_PATH, region=region, queue=queue, tier=tier, division=division, date=date, time=time)
 

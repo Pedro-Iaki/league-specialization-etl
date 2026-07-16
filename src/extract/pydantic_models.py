@@ -1,4 +1,3 @@
-from __future__ import annotations
 from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -19,6 +18,15 @@ class RiotPlayerEntry(BaseModel):
     hotStreak: bool
 
 
+class NextSeasonMilestone(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    
+    requireGradeCounts: dict
+    rewardMarks: int
+    bonus: bool
+    totalGamesRequires: int
+
+
 class ChampionMasteryEntry(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -34,11 +42,3 @@ class ChampionMasteryEntry(BaseModel):
     championSeasonMilestone: int = None
     milestoneGrades: List = Field(default_factory=list)
     nextSeasonMilestone: Optional[NextSeasonMilestone] = None
-
-class NextSeasonMilestone(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    
-    requireGradeCounts: dict
-    rewardMarks: int
-    bonus: bool
-    totalGamesRequires: int

@@ -45,7 +45,7 @@ CREATE TABLE players_recorded (
     paths TEXT, -- JSON array of file paths where this player was found
     paths_logged_at TEXT, -- JSON array of timestamps when this record was logged
 	mastery_task_id INTEGER REFERENCES mastery_tasks(task_id), -- reference to the mastery task for this player, if any
-    mastery_status TEXT NOT NULL, -- 'pending', 'in_progress', 'success', 'failed'
+    mastery_status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'in_progress', 'success', 'failed'
 	mastery_path TEXT UNIQUE REFERENCES mastery_tasks(file_path), -- path to the mastery file if added, null otherwise
 	mastery_logged_at TEXT -- timestamp when the mastery status was last updated
 );

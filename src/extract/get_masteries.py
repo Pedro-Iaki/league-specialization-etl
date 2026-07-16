@@ -1,14 +1,6 @@
-"""Fetch mastery data for several stored Riot players and save it in the raw data folder, under a partitioned structure based on region, queue, tier, and date."""
-
-from __future__ import annotations, division
-
 import json
-import os
-from datetime import datetime, time, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from time import sleep
-import requests
-from dotenv import load_dotenv
 import pipeline_db as db
 import pydantic_models as models
 from client import RiotAPIClient as API
