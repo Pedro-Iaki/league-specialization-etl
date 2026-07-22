@@ -211,21 +211,37 @@ def cleanup_stale_runs():
 	
 	# Get list of run IDs where the run stalled for over an hour
 	cur = conn.execute(
-		"SELECT run_id FROM runs WHERE status == 'running' AND datetime(last_heartbeat) < datetime('now', '-1 hour')"
+		"SELECT run_id FROM runs WHERE status = 'running' AND datetime(last_heartbeat) < datetime('now', '-1 hour')"
 	)
 	stalled_run_ids = [row["run_id"] for row in cur.fetchall()]
+	if stalled_run_ids:
+		runs_placeholder = ','.join(['?'] * len(stalled_run_ids))
+		query = f"""
+			UPDATE runs 
+			SET status = 'failed', 
+				finished_at = ?, 
+				error_message = 'Run stalled or silent cancelled' 
+			WHERE run_id IN ({runs_placeholder})
+		"""
+		params = [now()] + stalled_run_ids
+		conn.execute(query, params)
+			
+	logger.info(f"Found {len(stalled_run_ids)} stalled runs to clean up.")
 	for run in stalled_run_ids:
-		cleanup_failed_run(run)
+		cleanup_failed_run(run, conn)
 
 	conn.commit()
 	conn.close()
 
 
-def cleanup_failed_run(run_id: int):
+def cleanup_failed_run(run_id: int, conn: sqlite3.Connection|None = None):
 	"""
 	Clear the tasks and associated player records of a failed run.
 	"""
-	conn = get_connection()
+	conn_supplied = conn
+	if not conn_supplied:
+		conn = get_connection()
+	logger.info(f"Cleaning up failed run {run_id}.")
 	failed_player_tasks = conn.execute("SELECT task_id FROM player_tasks WHERE run_id = ? AND status != 'success'", (run_id,)).fetchall()
 	failed_mastery_tasks = conn.execute("SELECT task_id FROM mastery_tasks WHERE run_id = ? AND status != 'success'", (run_id,)).fetchall()
 	failed_player_task_ids = [row["task_id"] for row in failed_player_tasks]
@@ -254,7 +270,7 @@ def cleanup_failed_run(run_id: int):
 	conn.execute(
 		"""
 		UPDATE player_tasks
-		SET status='failed', finished_at=?, error_message='Run failed'
+		SET status='failed', finished_at=?, error_message='Run failed or cancelled'
 		WHERE run_id = ? AND status != 'success'
 		""",
 		(now(), run_id)
@@ -262,13 +278,14 @@ def cleanup_failed_run(run_id: int):
 	conn.execute(
 		"""
 		UPDATE mastery_tasks
-		SET status='failed', finished_at=?, error_message='Run failed'
+		SET status='failed', finished_at=?, error_message='Run failed or cancelled'
 		WHERE run_id = ? AND status != 'success'
 		""",
 		(now(), run_id)
 	)
-	conn.commit()
-	conn.close()
+	if not conn_supplied:
+		conn.commit()
+		conn.close()
 
 
 def get_players_missing_masteries(include_stale_success: bool=False, limit: int|None=None) -> list[str]:
@@ -400,7 +417,7 @@ def get_players_in_patch(patch: str, region: OptStr=None, queue: OptStr=None, ti
 
 def get_page_info(region: str, queue: str, patch: str, tiers: list[str] | tuple[str, ...], divisions: list[str] | tuple[str, ...]) -> dict[tuple[str, str], tuple[int, int]]:
 	"""
-	Returns a dictionary of (tier, division) -> (loop_count, last_player_count) for the given region, queue, patch, tiers, and divisions.
+	Returns a dictionary of (tier, division) -> (loop_count, players_in_division) for the given region, queue, patch, tiers, and divisions.
 	\nMissing tiers or divisions will return an empty dictionary.
 	\nMissing rows are treated as zeroed defaults so the selector can still pick a candidate.
 	"""
@@ -418,7 +435,7 @@ def get_page_info(region: str, queue: str, patch: str, tiers: list[str] | tuple[
 	tier_placeholders = ",".join(["?"] * len(tiers))
 	division_placeholders = ",".join(["?"] * len(divisions))
 	query = f"""
-		SELECT tier, division, loop_count, last_player_count
+		SELECT tier, division, loop_count
 		FROM tier_division_pages
 		WHERE region = ?
 		AND queue = ?
@@ -427,8 +444,18 @@ def get_page_info(region: str, queue: str, patch: str, tiers: list[str] | tuple[
 		AND division IN ({division_placeholders})
 	"""
 	rows = conn.execute(query, (region, queue, patch, *tiers, *divisions)).fetchall()
+	
 	for row in rows:
-		stats[(row["tier"], row["division"])] = (int(row["loop_count"]), int(row["last_player_count"]))
+		player_count_row = conn.execute( # looping queries is inefficient but it will never go beyond 28 queries, so it works perfectly to give this method more autonomy. the alternative could be storing that info on the database but this is a better tradeoff.
+			"""
+			SELECT COUNT(*) AS division_player_count
+			FROM players_recorded
+			WHERE region = ? AND queue = ? AND tier = ? AND division = ? AND mastery_patch = ?
+			""",
+			(region, queue, row["tier"], row["division"], patch),
+		).fetchone()
+		player_count = int(player_count_row["division_player_count"]) if player_count_row else 0
+		stats[(row["tier"], row["division"])] = (int(row["loop_count"]), player_count)
 
 	conn.close()
 	return stats

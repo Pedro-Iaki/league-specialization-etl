@@ -38,24 +38,22 @@ def run_pipeline():
 
 	api_client = client.RiotAPIClient(api_key=api_key)
 	pages_per_division = int(players_fetch_depth) # this is the number you'll likely want to configure, it controls how many pages we fetch per division-tier combination.
-	count = pages_per_division*28 # a bit of a "magic number", 28 is the total division-tier combinations
+	runs_remaining = pages_per_division*28 # a bit of a "magic number", 28 is the total division-tier combinations
 	date = datetime.now().isoformat()
 	try:
-		while count > 0:
-			run_id = db.start_run(f"local_{version}_{count}_{date}")
+		while runs_remaining > 0:
+			run_id = db.start_run(f"local_{version}_{runs_remaining}_{date}")
 			logger.info(f"Starting new pipeline run with ID: {run_id}.")
 			extract_players(run_id, api_client=api_client, region=DEFAULT_REGION, queue=DEFAULT_QUEUE)
-			extract_masteries(run_id, api_client=api_client, limit=210) # set a bit higher than the limit riot gives us (205 at the time of writing) but thats so we can find some extra masteries if we missed some players in the last run, while not freezing the application searching through potentially thousands of players for masteries
+			extract_masteries(run_id, api_client=api_client, limit=225, runs_remaining=runs_remaining) # set a bit higher than the limit riot gives us (205 at the time of writing) but thats so we can find some extra masteries if we missed some players in the last run, while not freezing the application searching through potentially thousands of players for masteries
 			db.finish_run(run_id, "success")
-			count -= 1
+			runs_remaining -= 1
 	except Exception as e:
 		logger.exception(f"An error occurred during the pipeline run: {e}")
 		db.finish_run(run_id, "failed")
 		db.cleanup_failed_run(run_id)
 
-	integrity_log = verify.run_integrity_check(full_check)
-	database_log = integrity_log.get("database", {})
-	logger.info(f"\nIntegrity check completed, check ./data/logs for in-depth results. Summary: \nTotal players in database: {database_log.get('total_player_records', 0)}\nFaulty or incomplete records: {database_log.get('faulty_records_count', 0)}\nDuplicated player rate: {database_log.get('duplicated_players', 0)}\nDiscarded duplicated snapshots: {database_log.get('discarded_player_tasks', 0)}\nPlayer task error rate: {database_log.get('player_task_error_rate', 0)}\nMastery task error rate: {database_log.get('mastery_task_error_rate', 0)}")
+	verify.run_integrity_check(full_check)	
 
 if __name__ == "__main__":
 	run_pipeline()

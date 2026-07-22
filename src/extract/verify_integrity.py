@@ -1,7 +1,11 @@
+from asyncio.log import logger
 from collections import defaultdict
 import json
 from pathlib import Path
 import pipeline_db as db
+from tqdm import tqdm
+from loguru import logger
+
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 PLAYERS_INPUT_PATH = BASE_DIR / "data" / "raw" / "players"
@@ -12,9 +16,15 @@ def run_integrity_check(full: bool = False):
 	"""Run a full integrity check on the files and database.\n
  		Fast mode skips the file integrity check, which can be lengthy."""
 	results = {}
+	logger.info(f"Starting integrity check. Full mode: {full}")
 	if full:
-		results["files"] = verify_files_integrity()
-	results["database"] = verify_db_integrity()
+		logger.info("Running files integrity check, this may take a while...")
+		files_log = verify_files_integrity()
+		results["files"] = files_log
+	logger.info("Running database integrity check...")
+	database_log = verify_db_integrity()
+	results["database"] = database_log
+	logger.info(f"\nIntegrity check completed, check ./data/logs for in-depth results. Summary: \nTotal players in database: {database_log.get('total_player_records', 0)}\nFaulty or incomplete records: {database_log.get('faulty_records_count', 0)}\nDuplicated player rate: {database_log.get('duplicated_players', 0)}\nDiscarded duplicated snapshots: {database_log.get('discarded_player_tasks', 0)}\nPlayer task error rate: {database_log.get('player_task_error_rate', 0)}\nMastery task error rate: {database_log.get('mastery_task_error_rate', 0)}")
 	return results
 
 def verify_files_integrity() -> dict[any]: # type: ignore #
@@ -29,7 +39,8 @@ def verify_files_integrity() -> dict[any]: # type: ignore #
 	db.cleanup_stale_runs()
 
 	#get all players
-	for player_file in PLAYERS_INPUT_PATH.rglob("*.json"):
+	player_files = set(PLAYERS_INPUT_PATH.rglob("*.json"))
+	for player_file in tqdm(player_files, desc="Verifying player files", unit="file"):
 		try:
 			payload = json.loads(player_file.read_text(encoding="utf-8"))
 			players = payload.get("players", [])
@@ -46,7 +57,8 @@ def verify_files_integrity() -> dict[any]: # type: ignore #
 			continue
 	
 	#get all masteries
-	for mastery_file in MASTERIES_PATH.rglob("*.json"):
+	mastery_files = set(MASTERIES_PATH.rglob("*.json"))
+	for mastery_file in tqdm(mastery_files, desc="Verifying mastery files", unit="file"):
 		try:
 			payload = json.loads(mastery_file.read_text(encoding="utf-8"))
 			masteries = payload.get("masteries", [])
@@ -63,7 +75,7 @@ def verify_files_integrity() -> dict[any]: # type: ignore #
 		except Exception as e:
 			continue
 
-	for puuid, mastery_file in all_puuids_masteries.items():
+	for puuid, mastery_file in tqdm(all_puuids_masteries.items(), desc="Verifying mastery records", unit="record"):
 		#if a puuid not present in players but present in masteries, add to missing_player_puuids
 		if puuid not in all_puuids_players:
 			missing_player_puuids[puuid] = str(mastery_file)
@@ -73,7 +85,7 @@ def verify_files_integrity() -> dict[any]: # type: ignore #
 		if uniques > 1 and puuid not in duplicated_masteries_puuids:
 			duplicated_masteries_puuids[puuid] = [str(mastery_file) for mastery_file, p in all_puuids_masteries.items() if p == puuid]
 
-	for puuid, paths in all_puuids_players.items():
+	for puuid, paths in tqdm(all_puuids_players.items(), desc="Verifying player records", unit="record"):
 		#if a puuid is present in players but not present in masteries, add to missing_masteries_puuids
 		if puuid not in all_puuids_masteries:
 			missing_masteries_puuids[puuid] = puuid
@@ -85,20 +97,20 @@ def verify_files_integrity() -> dict[any]: # type: ignore #
 	total_evaluated = len(all_puuids_players) + len(all_puuids_masteries)
 	total_errors = len(missing_masteries_puuids) + len(missing_player_puuids) + len(broken_files)
 	error_rate = f"{(total_errors / total_evaluated if total_evaluated > 0 else 1) * 100:.2f}%"
-	duplicated_player_rate = f"{(len(duplicated_player_puuids) / len(all_puuids_players) if all_puuids_players else 0) * 100:.2f}%"
 	duplicated_mastery_rate = f"{(len(duplicated_masteries_puuids) / len(all_puuids_masteries) if all_puuids_masteries else 0) * 100:.2f}%"
+	duplicated_player_rate = f"{(len(duplicated_player_puuids) / len(all_puuids_players) if all_puuids_players else 0) * 100:.2f}%"
 	average_duplicity_per_player_file = sum(len(v) for v in all_puuids_players.values()) / len(all_puuids_players) if len(all_puuids_players) else 0 #sum all puuid paths and divide by number of files
 		
 	log_data = {
 		"total_evaluated": total_evaluated,
 		"total_player_files": len(all_puuids_players),
 		"total_mastery_files": len(all_puuids_masteries),
-		"total_errors": total_errors,
+		"total_errors_or_missing": total_errors,
 		"error_rate": error_rate,
 		"missing_masteries": len(missing_masteries_puuids),
 		"missing_players": len(missing_player_puuids),
 		"duplicated_player_rate": duplicated_player_rate,
-		"average_duplicity_per_player_file": f"{average_duplicity_per_player_file:.2f}",
+		"average_duplicity_per_player_file": f"{average_duplicity_per_player_file:.3f}",
 		"duplicated_players": duplicated_player_puuids,
 		"duplicated_mastery_rate": duplicated_mastery_rate,
 		"duplicated_masteries": duplicated_masteries_puuids,
@@ -146,7 +158,7 @@ def verify_db_integrity() -> dict[any]: # type: ignore #
 	faulty_records = []
 	paths_counts = []
 	
-	for record in player_records.values():
+	for record in tqdm(player_records.values(), desc="Verifying player records", unit="record"):
 		issues = []
 		
 		mastery_status = record.get("mastery_status")
@@ -225,4 +237,4 @@ def verify_db_integrity() -> dict[any]: # type: ignore #
 
 
 if __name__ == "__main__":
-	run_integrity_check()
+	run_integrity_check(True)

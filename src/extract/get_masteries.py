@@ -12,7 +12,7 @@ PLAYERS_INPUT_PATH = BASE_DIR / "data" / "raw" / "players"
 OUTPUT_PATH = BASE_DIR / "data" / "raw" / "masteries"
 OptStr = str | None
 
-def run(run_id: int, api_client: API, limit: int) -> None:
+def run(run_id: int, api_client: API, limit: int, runs_remaining: int|None = None) -> None:
 	players = db.get_players_missing_masteries(True, limit)
 	if players is None or len(players) == 0:
 		logger.error("No players missing masteries found.")
@@ -35,7 +35,7 @@ def run(run_id: int, api_client: API, limit: int) -> None:
 			logger.info(f"Skipping player {puuid} as they are already in progress or invalid.")
 			continue
 		
-		logger.info(f"Fetching mastery data for player {puuid}.")
+		logger.info(f"Fetching mastery data for new player...")
 		player_info = get_player_info(puuid)
 		task_id = db.get_mastery_id_from_list(task_ids, puuid)
 		if not task_id:
@@ -64,7 +64,7 @@ def run(run_id: int, api_client: API, limit: int) -> None:
 			continue
 
 		processed += 1
-		logger.info(f"Saved new mastery data. Remaining: {min(limit, len(players)) - processed}.")
+		logger.info(f"Saved new mastery data. Remaining: {min(limit, len(players)) - processed}. Runs remaining: {runs_remaining if runs_remaining is not None else 'N/A'}.")
 		if processed >= limit:
 			break
 	
