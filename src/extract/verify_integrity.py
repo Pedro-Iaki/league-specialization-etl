@@ -28,7 +28,6 @@ def verify_files_integrity() -> dict[any]: # type: ignore #
 	
 	db.cleanup_stale_runs()
 
-	players_per_file = []
 	#get all players
 	for player_file in PLAYERS_INPUT_PATH.rglob("*.json"):
 		try:
@@ -42,7 +41,6 @@ def verify_files_integrity() -> dict[any]: # type: ignore #
 				if not puuid:
 					continue
 				all_puuids_players[puuid].append(player_file)
-			players_per_file.append(len(players))
 
 		except Exception as e:
 			continue
@@ -99,7 +97,6 @@ def verify_files_integrity() -> dict[any]: # type: ignore #
 		"error_rate": error_rate,
 		"missing_masteries": len(missing_masteries_puuids),
 		"missing_players": len(missing_player_puuids),
-		"players_per_file": players_per_file,
 		"duplicated_player_rate": duplicated_player_rate,
 		"average_duplicity_per_player_file": f"{average_duplicity_per_player_file:.2f}",
 		"duplicated_players": duplicated_player_puuids,

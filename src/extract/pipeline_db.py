@@ -491,7 +491,6 @@ def update_page_info(region: str, queue: str, tier: str, division: str, patch: s
 	current_page = int(row["current_page"])
 	last_player_count = int(row["last_player_count"])
 	loop_count = int(row["loop_count"])
-	logger.info(f"current_page: {current_page}, last_player_count: {last_player_count}, new player_count: {player_count}")
 
 	if player_count < last_player_count:
 		current_page = 1
