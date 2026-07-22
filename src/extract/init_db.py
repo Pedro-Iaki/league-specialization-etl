@@ -1,3 +1,8 @@
+"""
+Initializes the local database and clears the raw data directories for players and masteries.
+This script should be run before starting a new data extraction pipeline to ensure a clean slate."""
+
+
 import sqlite3
 import os
 import shutil

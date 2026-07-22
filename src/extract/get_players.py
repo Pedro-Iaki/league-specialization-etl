@@ -1,7 +1,12 @@
+"""Fetches a player snapshot from riot api and saves it to a file\n
+		Prioritizes fetching players from the least collected divisions that patch, prioritizing those who haven't looped, then those with the least players recorded.\n
+		It partitions the files by region, queue, tier, patch, and date, and names the files with the division and time of fetch.\n
+		Each file is a json that contains some metadata, and a list of their player entries, which are validated against the RiotPlayerEntry model.\n
+		All operational information is stored in the local sqlite database.
+	"""
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-import random
 import pipeline_db as db
 import pydantic_models as models
 from client import RiotAPIClient as API
@@ -9,21 +14,79 @@ from loguru import logger
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 OUTPUT_PATH = BASE_DIR / "data" / "raw" / "players"
+OptStr = str | None
 
+def run(run_id: int, api_client: API, region: str, queue: str, tier: OptStr = None, division: OptStr = None):
+	"""Fetches a player snapshot from riot api and saves it to a file\n
+		Prioritizes fetching players from the least collected divisions that patch, prioritizing those who haven't looped, then those with the least players recorded.\n
+		It partitions the files by region, queue, tier, patch, and date, and names the files with the division and time of fetch.\n
+		Each file is a json that contains some metadata, and a list of their player entries, which are validated against the RiotPlayerEntry model.\n
+		All operational information is stored in the local sqlite database.
+	"""
+	time = datetime.now(timezone.utc).strftime("%H%M%S")	# Although it seems overkill, we should still store the time first so we avoid any race conditions with the date changing between the date and time fetches
+	date = datetime.now(timezone.utc).strftime("%y%m%d")
+	patch = str(api_client.get_patch())
+	if tier is None or division is None:
+		tier, division = pick_least_populated_division(region, queue, patch)
+	task_id = db.add_player_task(run_id)
 
-def build_players_filename(division: str, time: str=None) -> str:
-	timestamp = time if time else datetime.now(timezone.utc).strftime("%H%M%S")
-	return f"players_{division}_{timestamp}.json"
+	players = fetch_players(task_id=task_id, api_client=api_client, region=region, queue=queue, tier=tier, division=division, patch=patch)
+	if players is None:
+		return None
 
+	# Discard snapshots fully recorded in the database this patch, partial matches are fine.
+	recorded_players = set(db.get_players_in_patch(patch=patch, region=region, queue=queue, tier=tier, division=division))
+	snapshot_players = set(player["puuid"] for player in players if player.get("puuid"))
+	unique_new_players = sum(1 for item in snapshot_players if item not in recorded_players)
+	if unique_new_players == 0:
+		logger.info(f"No new players found for {region} {queue} {tier} {division}.")
+		db.update_player_task(task_id, "success", file_path=None)
+		return
 
-def fetch_players(task_id: int, api_client: API, region: str, queue: str, tier: str, division: str) -> list[dict] | None:
+	logger.info(f"Fetched {unique_new_players}/{len(players)} (unique/total) players for {region} {queue} {tier} {division}.")
+
+	output_path = save_players(players, output_path=OUTPUT_PATH, region=region, queue=queue, tier=tier, division=division, patch=patch, date=date, time=time)
+
+	db.update_player_task(task_id, "success", file_path=str(output_path))
+	for player in players:
+		puuid = player.get("puuid")
+		if puuid:
+			db.add_player_records(puuid, str(output_path), region=region, queue=queue, tier=tier, division=division, player_task_id=task_id, patch=patch)
+
+def pick_least_populated_division(region: str, queue: str, patch: str, tier: OptStr = None, division: OptStr = None) -> tuple[str, str]:
+	if tier and division:
+		return tier, division
+
+	tiers = ["DIAMOND", "EMERALD", "PLATINUM", "GOLD", "SILVER", "BRONZE", "IRON"]
+	divisions = ["I", "II", "III", "IV"]
+
+	if tier:
+		tiers = [tier]
+	if division:
+		divisions = [division]
+
+	# Get a dictionary of (tier, division) -> (loop, count)
+	stats = db.get_page_info(region=region, queue=queue, patch=patch, tiers=tiers, divisions=divisions)
+	candidate = min( # Get the smallest where:
+		stats.items(),
+		key=lambda item: (
+			item[1][0], # Smallest loop
+			item[1][1] # then, smallest count
+		),
+	 )
+	tier = candidate[0][0]
+	division = candidate[0][1]
+	return tier, division
+
+def fetch_players(task_id: int, api_client: API, region: str, queue: str, tier: str, division: str, patch: str) -> list[dict] | None:
 	if api_client is None:
 		logger.error("No API client provided. Please set the RIOT_API_KEY environment variable and provide a valid API client.")
 		return None
 
+	page, loop = db.get_page_and_loop(region, queue, tier, division, patch)
 	url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}"
 	db.update_player_task(task_id, "in_progress")
-	response = api_client.get(url)
+	response = api_client.get(url, params={"page": page})
 	if not response.ok:
 		logger.error(f"Error fetching players for {region} {queue} {tier} {division}: {response.status_code} - {response.text}")
 		db.update_player_task(task_id, "failed", error_message=f"Error: {response.status_code} - {response.text}")
@@ -33,14 +96,45 @@ def fetch_players(task_id: int, api_client: API, region: str, queue: str, tier: 
 
 	try:
 		validated_players = [models.RiotPlayerEntry.model_validate(p).model_dump() for p in raw_payload]
-		return validated_players
+		db.update_page_info(region, queue, tier, division, patch, len(validated_players))
+		if len(validated_players) == 0:
+			logger.warning(f"No players found for {region} {queue} {tier} {division}. Re-Fetching next page.")
+			return fetch_players(task_id=task_id, api_client=api_client, region=region, queue=queue, tier=tier, division=division, patch=patch)
+		else:
+			return validated_players
 	except Exception as e:
 		logger.error(f"Error validating player data for {region} {queue} {tier} {division}: {e}")
 		db.update_player_task(task_id, "failed", error_message=f"Validation error: {e}")
 		return None
 
+def save_players(
+	players: list[dict],
+	output_path: Path,
+	region: str,
+	queue: str,
+	tier: str,
+	division: str,
+	patch: str,
+	date: str,
+	time: str,
+) -> Path:
+	output_path = get_partitioned_path(output_path, region, queue, tier, patch, date) / build_players_filename(division, time)
 
-def get_partitioned_path(base_path: Path, region: str, queue: str, tier: str, date: str=None) -> Path:
+	payload = {
+		"region": region,
+		"queue": queue,
+		"tier": tier,
+		"division": division,
+		"patch": patch,
+		"loose_date": date,
+		"fetched_at": datetime.now(timezone.utc).isoformat(),
+		"players": players,
+	}
+
+	output_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+	return output_path
+
+def get_partitioned_path(base_path: Path, region: str, queue: str, tier: str, patch: str, date: str) -> Path:
 	region_folder_name = f"region={region}"
 	region_folder = base_path / region_folder_name
 	region_folder.mkdir(parents=True, exist_ok=True)
@@ -50,73 +144,14 @@ def get_partitioned_path(base_path: Path, region: str, queue: str, tier: str, da
 	tier_folder_name = f"tier={tier}"
 	tier_folder = queue_folder / tier_folder_name
 	tier_folder.mkdir(parents=True, exist_ok=True)	
-	date_folder_name = "dt=" + (date if date else datetime.now(timezone.utc).strftime("%y%m%d"))
-	date_folder = tier_folder / date_folder_name
+	patch_folder_name = "patch=" + patch
+	patch_folder = tier_folder / patch_folder_name
+	patch_folder.mkdir(parents=True, exist_ok=True)
+	date_folder_name = "date=" + date
+	date_folder = patch_folder / date_folder_name
 	date_folder.mkdir(parents=True, exist_ok=True)
 	return date_folder
 
-
-def save_players(
-	players: list[dict],
-	output_path: Path,
-	region: str,
-	queue: str,
-	tier: str,
-	division: str,
-	date: str=None,
-	time: str=None,
-) -> Path:
-	output_path = get_partitioned_path(output_path, region, queue, tier, date) / build_players_filename(division, time)
-
-	payload = {
-		"source": "riot-api",
-		"region": region,
-		"queue": queue,
-		"tier": tier,
-		"division": division,
-		"fetched_at": datetime.now(timezone.utc).isoformat(),
-		"players": players,
-	}
-
-	output_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
-	return output_path
-
-def pick_least_populated_tier(region: str, queue: str, date: str, output_path: Path=OUTPUT_PATH) -> str:
-	tiers = ["DIAMOND", "EMERALD", "PLATINUM", "GOLD", "SILVER", "BRONZE", "IRON"]
-	tier_counts = {}
-	for tier_option in tiers:
-		tier_path = get_partitioned_path(output_path, region, queue, tier_option, date)
-		file_count = len(list(tier_path.glob("*.json")))
-		tier_counts[tier_option] = file_count
-
-	return min(tier_counts, key=tier_counts.get)
-
-
-def run(run_id: int, api_client: API, region: str, queue: str):
-	time = datetime.now(timezone.utc).strftime("%H%M%S")	# Although it seems overkill, we should still store the time first so we avoid 
-	date = datetime.now(timezone.utc).strftime("%y%m%d")	# any race conditions with the date changing between the date and time fetches
-	tier = pick_least_populated_tier(region, queue, date)
-	division = random.choice(["I", "II", "III", "IV"])
-	task_id = db.add_player_task(run_id)
-
-	players = fetch_players(task_id=task_id, api_client=api_client, region=region, queue=queue, tier=tier, division=division)
-	if players is None:
-		return None
-
-	# Discard snapshots fully recorded in the database the past week, partial matches are fine.
-	recorded_players = set(db.get_players_in_timespan(region=region, queue=queue, tier=tier, division=division, days_ago=7))
-	snapshot_players = [player["puuid"] for player in players if player.get("puuid")]
-	if sum(1 for item in snapshot_players if item not in recorded_players) == 0:
-		logger.info(f"No new players found for {region} {queue} {tier} {division}.")
-		db.update_player_task(task_id, "success", file_path=None)
-		return
-
-	logger.info(f"Fetched {len(players)} players for {region} {queue} {tier} {division}.")
-
-	output_path = save_players(players, output_path=OUTPUT_PATH, region=region, queue=queue, tier=tier, division=division, date=date, time=time)
-
-	db.update_player_task(task_id, "success", file_path=str(output_path))
-	for player in players:
-		puuid = player.get("puuid")
-		if puuid:
-			db.add_player_records(puuid, str(output_path), region=region, queue=queue, tier=tier, division=division, player_task_id=task_id)
+def build_players_filename(division: str, time: OptStr=None) -> str:
+	timestamp = time if time else datetime.now(timezone.utc).strftime("%H%M%S")
+	return f"players_{division}_{timestamp}.json"

@@ -8,8 +8,16 @@ PLAYERS_INPUT_PATH = BASE_DIR / "data" / "raw" / "players"
 MASTERIES_PATH = BASE_DIR / "data" / "raw" / "masteries"
 LOGS_PATH = BASE_DIR / "data" / "logs"
 
+def run_integrity_check(full: bool = False):
+	"""Run a full integrity check on the files and database.\n
+ 		Fast mode skips the file integrity check, which can be lengthy."""
+	results = {}
+	if full:
+		results["files"] = verify_files_integrity()
+	results["database"] = verify_db_integrity()
+	return results
 
-def verify_files_integrity() -> None:
+def verify_files_integrity() -> dict[any]: # type: ignore #
 	missing_masteries_puuids = {}
 	missing_player_puuids = {}
 	duplicated_player_puuids = []
@@ -20,6 +28,7 @@ def verify_files_integrity() -> None:
 	
 	db.cleanup_stale_runs()
 
+	players_per_file = []
 	#get all players
 	for player_file in PLAYERS_INPUT_PATH.rglob("*.json"):
 		try:
@@ -33,6 +42,7 @@ def verify_files_integrity() -> None:
 				if not puuid:
 					continue
 				all_puuids_players[puuid].append(player_file)
+			players_per_file.append(len(players))
 
 		except Exception as e:
 			continue
@@ -89,6 +99,7 @@ def verify_files_integrity() -> None:
 		"error_rate": error_rate,
 		"missing_masteries": len(missing_masteries_puuids),
 		"missing_players": len(missing_player_puuids),
+		"players_per_file": players_per_file,
 		"duplicated_player_rate": duplicated_player_rate,
 		"average_duplicity_per_player_file": f"{average_duplicity_per_player_file:.2f}",
 		"duplicated_players": duplicated_player_puuids,
@@ -96,14 +107,16 @@ def verify_files_integrity() -> None:
 		"duplicated_masteries": duplicated_masteries_puuids,
 		"missing_masteries": [{"puuid": puuid, "source_file": source_file} for puuid, source_file in missing_masteries_puuids.items()],
 		"missing_players": [{"puuid": puuid, "source_file": source_file} for puuid, source_file in missing_player_puuids.items()],
-		"broken_files": [{"source_file": str(broken_file)} for broken_file in broken_files],
+		"faulty_files": [{"source_file": str(broken_file)} for broken_file in broken_files],
 	}
 		
 	log_file = LOGS_PATH / "integrity_check.json"
 	log_file.parent.mkdir(parents=True, exist_ok=True)
 	log_file.write_text(json.dumps(log_data, indent=2), encoding="utf-8")
+	
+	return log_data
 
-def verify_db_integrity() -> None:
+def verify_db_integrity() -> dict[any]: # type: ignore #
 	conn = db.get_connection()
 	
 	player_tasks = conn.execute("SELECT * FROM player_tasks").fetchall()
@@ -134,7 +147,6 @@ def verify_db_integrity() -> None:
 		mastery_error_messages[msg] = mastery_error_messages.get(msg, 0) + 1
 	
 	faulty_records = []
-	multipath_records = []
 	paths_counts = []
 	
 	for record in player_records.values():
@@ -154,8 +166,6 @@ def verify_db_integrity() -> None:
 				if not paths_list or len(paths_list) == 0:
 					issues.append("empty_paths")
 				else:
-					if len(paths_list) > 1:
-						multipath_records.append(record["player_id"])
 					paths_counts.append(len(paths_list))
 			except:
 				issues.append("invalid_paths")
@@ -206,17 +216,16 @@ def verify_db_integrity() -> None:
 		"mastery_task_errors_by_message": mastery_error_messages,
 		"faulty_records_count": len(faulty_records),
 		"faulty_records": faulty_records,
-		"paths_by_player_mean": sum(paths_counts) / len(paths_counts) if paths_counts else 0,
-		"multipath_players_count": len(multipath_records),
-		"multipath_player_rate": f"{(len(multipath_records) / len(player_records) if player_records else 0) * 100:.2f}%",
-		"multipath_players": multipath_records,
+		"duplicated_players": f"{(sum(paths_counts) / len(paths_counts) if paths_counts else 0)*100-100:.2f}%",
+		"duplicated_players_total": len([p for p in paths_counts if p > 1]),
 	}
 	
 	log_file = LOGS_PATH / "db_integrity_check.json"
 	log_file.parent.mkdir(parents=True, exist_ok=True)
 	log_file.write_text(json.dumps(log_data, indent=2), encoding="utf-8")
+	
+	return log_data
 
 
 if __name__ == "__main__":
-	verify_files_integrity()
-	verify_db_integrity()
+	run_integrity_check()

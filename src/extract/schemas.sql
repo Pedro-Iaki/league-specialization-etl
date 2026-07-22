@@ -44,8 +44,25 @@ CREATE TABLE players_recorded (
 	player_task_ids TEXT NOT NULL, -- JSON array of player_task_ids where this player was found
     paths TEXT, -- JSON array of file paths where this player was found
     paths_logged_at TEXT, -- JSON array of timestamps when this record was logged
+	patches_logged TEXT, -- JSON array of patches when this record was logged
 	mastery_task_id INTEGER REFERENCES mastery_tasks(task_id), -- reference to the mastery task for this player, if any
     mastery_status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'in_progress', 'success', 'failed'
 	mastery_path TEXT UNIQUE REFERENCES mastery_tasks(file_path), -- path to the mastery file if added, null otherwise
-	mastery_logged_at TEXT -- timestamp when the mastery status was last updated
+	mastery_logged_at TEXT, -- timestamp when the mastery status was last updated
+	mastery_patch TEXT -- patch when the mastery status was last updated
+);
+
+-- Every tier division combination, along with their corresponding pages and player counts.
+-- If the last player count is ever higher than the player count found, it means we`ve reached the end and must reset back to 1.
+CREATE TABLE tier_division_pages (
+	region TEXT NOT NULL,
+	queue TEXT NOT NULL,
+	tier TEXT NOT NULL,
+	division TEXT NOT NULL,
+	patch TEXT NOT NULL,
+	current_page INTEGER NOT NULL,
+	last_player_count INTEGER NOT NULL,
+	last_updated_at TEXT NOT NULL,
+	loop_count INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY (region, queue, tier, division, patch)
 );
