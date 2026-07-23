@@ -12,40 +12,47 @@ import pipeline_db as db
 import os
 import client
 from loguru import logger
-from dotenv.main import load_dotenv
+from dotenv import load_dotenv
 from pathlib import Path
 import verify_integrity as verify
+import pydantic_models as models
 
 BASE_DIR = Path(__file__).resolve().parents[2] 
-DEFAULT_REGION = "na1"
-DEFAULT_QUEUE = "RANKED_SOLO_5x5"
+CONFIG_PATH = BASE_DIR / "config" / "EXTRACTION_CONFIG.env"
+DEFAULT_TARGET_TIERS = ["DIAMOND", "EMERALD", "PLATINUM", "GOLD", "SILVER", "BRONZE", "IRON"]
+DEFAULT_TARGET_DIVISIONS = ["I", "II", "III", "IV"]
 
 def run_pipeline():
-	"""Run the local pipeline."""
+	config_manifest, success = get_configs(CONFIG_PATH)
+	
+	if not success:
+		logger.error("Failed to load configuration. Exiting.")
+		exit(1)
+	try:
+		validated_manifest = models.ExtractionConfigManifest.model_validate(config_manifest).model_dump()
+	except Exception as e:
+		logger.error(f"Invalid configuration: {e}")
+		exit(1)
+	
+	db.cleanup_stale_runs()
 	if not db.is_active():
 		logger.error("Cannot connect to database. Ensure init_db has been run and the database is accessible in the correct folder.")
-		return
-	db.cleanup_stale_runs()
+		exit(1)
+  
+	api_client = client.RiotAPIClient(api_key=config_manifest["api_key"])
+	extraction_loop(validated_manifest, api_client=api_client) 
 
-	load_dotenv(BASE_DIR / "config" / "EXTRACTION_CONFIG.env")
-	api_key = os.getenv("RIOT_API_KEY")
-	version = os.getenv("VERSION")
-	players_fetch_depth = os.getenv("PLAYERS_FETCH_DEPTH")
-	full_check = os.getenv("FULL_VERIFICATION_POST", "false").lower() == "true"
-	if not api_key or not version or not players_fetch_depth or not full_check:
-		logger.error("Missing required environment variables.")
-		return
-
-	api_client = client.RiotAPIClient(api_key=api_key)
-	pages_per_division = int(players_fetch_depth) # this is the number you'll likely want to configure, it controls how many pages we fetch per division-tier combination.
-	runs_remaining = pages_per_division*28 # a bit of a "magic number", 28 is the total division-tier combinations
+def extraction_loop(config_manifest: dict, api_client, target_tier: list[str] = DEFAULT_TARGET_TIERS, target_division: list[str] = DEFAULT_TARGET_DIVISIONS) -> None:
+	"""Run the local pipeline."""
+	pages_per_division = int(config_manifest["players_fetch_depth"])
+	runs_remaining = pages_per_division * len(target_tier) * len(target_division)
 	date = datetime.now().isoformat()
 	try:
 		while runs_remaining > 0:
-			run_id = db.start_run(f"local_{version}_{runs_remaining}_{date}")
+			run_id = db.start_run(f"local_{config_manifest['version']}_{runs_remaining}_{date}")
 			logger.info(f"Starting new pipeline run with ID: {run_id}.")
-			extract_players(run_id, api_client=api_client, region=DEFAULT_REGION, queue=DEFAULT_QUEUE)
-			extract_masteries(run_id, api_client=api_client, limit=225, runs_remaining=runs_remaining) # set a bit higher than the limit riot gives us (205 at the time of writing) but thats so we can find some extra masteries if we missed some players in the last run, while not freezing the application searching through potentially thousands of players for masteries
+			extract_players(run_id, api_client=api_client, region=config_manifest["region"], queue=config_manifest["queue"])
+			extract_masteries(run_id, api_client=api_client, limit=400, runs_remaining=runs_remaining) # set a higher than the limit riot gives us (205 at the time of writing) but thats so we can find some extra masteries if we missed some players in the last run, while not freezing the application searching through potentially thousands of players for masteries
 			db.finish_run(run_id, "success")
 			runs_remaining -= 1
 	except Exception as e:
@@ -53,7 +60,27 @@ def run_pipeline():
 		db.finish_run(run_id, "failed")
 		db.cleanup_failed_run(run_id)
 
-	verify.run_integrity_check(full_check)	
+	verify.run_integrity_check(config_manifest["full_check"])
+ 
+def get_configs(config_path: Path) -> tuple[dict, bool]:
+	load_dotenv(config_path)
+	api_key = os.getenv("RIOT_API_KEY")
+	version = os.getenv("VERSION")
+	players_fetch_depth = os.getenv("PLAYERS_FETCH_DEPTH")
+	full_check = os.getenv("FULL_VERIFICATION_POST", "false").lower() == "true"
+	region = os.getenv("REGION")
+	queue = os.getenv("QUEUE")
+	if not api_key or not version or not players_fetch_depth or not region or not queue:
+		logger.error("Missing required environment variables.")
+		return {}, False
+	return {
+		"api_key": api_key,
+		"version": version,
+		"players_fetch_depth": players_fetch_depth,
+		"full_check": full_check,
+		"region": region,
+		"queue": queue,
+	}, True
 
 if __name__ == "__main__":
 	run_pipeline()

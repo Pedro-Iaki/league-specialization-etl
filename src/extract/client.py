@@ -19,7 +19,7 @@ class RiotAPIClient:
 	)
 	def get_patch(self):
 		latest_patch = "https://ddragon.leagueoflegends.com/api/versions.json"
-		patch = requests.get(latest_patch).json()[0]
+		patch = self.session.get(latest_patch).json()[0]
 		if patch is None:
 			logger.error("Failed to fetch the latest patch version.")
 		return patch

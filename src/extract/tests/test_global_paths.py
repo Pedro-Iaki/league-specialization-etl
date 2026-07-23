@@ -1,0 +1,1 @@
+#go through the default paths of all codes and make sure they correspond to a valid target

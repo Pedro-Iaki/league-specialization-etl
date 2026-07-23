@@ -3,16 +3,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 import pipeline_db as db
 import pydantic_models as models
-from client import RiotAPIClient as API
+from api_client_protocol import APIClient
 from loguru import logger
+
+import output_helper
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-PLAYERS_INPUT_PATH = BASE_DIR / "data" / "raw" / "players"
 OUTPUT_PATH = BASE_DIR / "data" / "raw" / "masteries"
 OptStr = str | None
 
-def run(run_id: int, api_client: API, limit: int, runs_remaining: int|None = None) -> None:
+def run(run_id: int, api_client: APIClient, limit: int, runs_remaining: int|None = None) -> None:
 	players = db.get_players_missing_masteries(True, limit)
 	if players is None or len(players) == 0:
 		logger.error("No players missing masteries found.")
@@ -42,7 +43,6 @@ def run(run_id: int, api_client: API, limit: int, runs_remaining: int|None = Non
 			logger.error(f"No task ID found for player {puuid}. Skipping.")
 			continue
 		task_id = int(task_id)
-
 		mastery_payload = fetch_player_masteries(
 			puuid=puuid,
 			patch=patch,
@@ -53,9 +53,8 @@ def run(run_id: int, api_client: API, limit: int, runs_remaining: int|None = Non
 		if mastery_payload is None:
 			logger.error(f"No mastery data found for player {puuid}.")
 			continue
-
-		output_path = get_partitioned_path(player_info)
-		this_path = save_masteries(mastery_payload, output_path=output_path, date=player_info.get("latest_logged_at"), division=player_info.get("division"), puuid=puuid)
+		
+		this_path = save_masteries(mastery_payload, info=player_info, patch=patch)
 		if this_path:
 			db.update_mastery_task(task_id, "success", patch, file_path=str(this_path))
 		else:
@@ -83,9 +82,10 @@ def get_player_info(puuid: str) -> dict:
 	region = info.get("region")
 	queue = info.get("queue")
 	tier = info.get("tier")
+	division = info.get("division")
 	date = info.get("latest_logged_at")
-	if not region or not queue or not tier or not date:
-		logger.error(f"Missing required information for player {puuid}: region={region}, queue={queue}, tier={tier}, date={date}")
+	if not region or not queue or not tier or not division or not date:
+		logger.error(f"Missing required information for player {puuid}: region={region}, queue={queue}, tier={tier}, division={division}, date={date}")
 
 	return info
 
@@ -94,7 +94,7 @@ def fetch_player_masteries(
 	patch: str,
 	task_id: int,
 	region: OptStr = None,
-	api_client: API|None = None,
+	api_client: APIClient|None = None,
 ) -> list[dict]|None:
 	"""Fetch champion mastery entries for a player."""
 
@@ -120,38 +120,32 @@ def fetch_player_masteries(
 		db.update_mastery_task(task_id, "failed", patch, error_message=f"Validation error: {e}")
 		return None
 
-def get_partitioned_path(info: dict) -> Path:
-	"""Get a partitioned path based on region, queue, and tier."""
-	
-	date = info.get("latest_logged_at")
-	date = date.strftime("%y%m%d") if date else None
-
-	region_folder_name = f"region={info.get('region')}"
-	region_folder = OUTPUT_PATH / region_folder_name
-	region_folder.mkdir(parents=True, exist_ok=True)
-	queue_folder_name = f"queue={info.get('queue')}"
-	queue_folder = region_folder / queue_folder_name
-	queue_folder.mkdir(parents=True, exist_ok=True)
-	tier_folder_name = f"tier={info.get('tier')}"
-	tier_folder = queue_folder / tier_folder_name
-	tier_folder.mkdir(parents=True, exist_ok=True)	
-	date_folder_name = "dt=" + (date if date else "ERROR!DATE_NOT_PROVIDED") #this shouldnt happen, if it does, we cannot afford to have the date be different.
-	date_folder = tier_folder / date_folder_name
-	date_folder.mkdir(parents=True, exist_ok=True)
-	return date_folder
-
-def save_masteries(mastery_rows: list[dict], output_path: Path = OUTPUT_PATH, date: OptStr = None, division: OptStr = None, puuid: OptStr = None) -> Path|None:
+def save_masteries(mastery_rows: list[dict], info: dict, patch: str, output_path: Path = OUTPUT_PATH) -> Path|None:
 	"""Persist all fetched masteries as raw JSON."""
 	
-	if not date or not division or not puuid:
-		logger.error(f"Missing required information for saving masteries: date={date}, division={division}, puuid={puuid}")
+	region = info.get("region")
+	queue = info.get("queue")
+	date = info.get("latest_logged_at")
+	tier = info.get("tier")
+	division = info.get("division")
+	puuid = info.get("puuid")
+	if not region or not queue or not date or not division or not puuid or not tier:
+		logger.error(f"Missing required information for saving masteries: region={region}, queue={queue}, date={date}, division={division}, puuid={puuid}, tier={tier}")
 		return None
-	str_date = datetime.fromisoformat(str(date))
-	this_path = output_path / f"masteries_{division}_{str_date.strftime('%H%M%S')}_{puuid}.json"
+
+	time = datetime.fromisoformat(str(date))
+	date = date.strftime("%y%m%d")
+	partitions = [("region", region), ("queue", queue), ("tier", tier), ("patch", patch), ("date", date)]
+	partitioned_path = output_helper.get_partitioned_path(output_path, partitions)
+	this_path = partitioned_path / f"masteries_{division}_{time.strftime('%H%M%S')}_{puuid}.json"
 	payload = {
-		"source": "riot-api",
+		"puuid": puuid,
+		"region": region,
+		"queue": queue,
+		"tier": tier,
+		"division": division,
 		"fetched_at": datetime.now(timezone.utc).isoformat(),
 		"masteries": mastery_rows,
 	}
-	this_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+	output_helper.write_json(payload, this_path)
 	return this_path

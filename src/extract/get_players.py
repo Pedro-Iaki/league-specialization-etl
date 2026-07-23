@@ -9,20 +9,28 @@ from datetime import datetime, timezone
 from pathlib import Path
 import pipeline_db as db
 import pydantic_models as models
-from client import RiotAPIClient as API
+from api_client_protocol import APIClient
 from loguru import logger
+import output_helper
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 OUTPUT_PATH = BASE_DIR / "data" / "raw" / "players"
 OptStr = str | None
 
-def run(run_id: int, api_client: API, region: str, queue: str, tier: OptStr = None, division: OptStr = None):
+def run(run_id: int, api_client: APIClient, region: str, queue: str, tier: OptStr = None, division: OptStr = None):
 	"""Fetches a player snapshot from riot api and saves it to a file\n
 		Prioritizes fetching players from the least collected divisions that patch, prioritizing those who haven't looped, then those with the least players recorded.\n
 		It partitions the files by region, queue, tier, patch, and date, and names the files with the division and time of fetch.\n
 		Each file is a json that contains some metadata, and a list of their player entries, which are validated against the RiotPlayerEntry model.\n
 		All operational information is stored in the local sqlite database.
 	"""
+	if not region or not queue:
+		logger.error("Player extractor not supplied with vital parameters, make sure to assign it.")
+		return
+	if run_id < 0:
+		logger.error("Invalid run id supplied to player extractor, cancelling operation.")
+		return
+	
 	time = datetime.now(timezone.utc).strftime("%H%M%S")	# Although it seems overkill, we should still store the time first so we avoid any race conditions with the date changing between the date and time fetches
 	date = datetime.now(timezone.utc).strftime("%y%m%d")
 	patch = str(api_client.get_patch())
@@ -78,7 +86,7 @@ def pick_least_populated_division(region: str, queue: str, patch: str, tier: Opt
 	division = candidate[0][1]
 	return tier, division
 
-def fetch_players(task_id: int, api_client: API, region: str, queue: str, tier: str, division: str, patch: str) -> list[dict] | None:
+def fetch_players(task_id: int, api_client: APIClient, region: str, queue: str, tier: str, division: str, patch: str) -> list[dict] | None:
 	if api_client is None:
 		logger.error("No API client provided. Please set the RIOT_API_KEY environment variable and provide a valid API client.")
 		return None
@@ -117,8 +125,11 @@ def save_players(
 	patch: str,
 	date: str,
 	time: str,
+	mock_save: bool = False
 ) -> Path:
-	output_path = get_partitioned_path(output_path, region, queue, tier, patch, date) / build_players_filename(division, time)
+	partitions = [("region", region), ("queue", queue), ("tier", tier), ("patch", patch), ("date", date)]
+	output_path = output_helper.get_partitioned_path(output_path, partitions, mock_save=mock_save)
+	output_path = output_path / build_players_filename(division, time)
 
 	payload = {
 		"region": region,
@@ -130,27 +141,9 @@ def save_players(
 		"fetched_at": datetime.now(timezone.utc).isoformat(),
 		"players": players,
 	}
-
-	output_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+	
+	output_helper.write_json(payload, output_path)
 	return output_path
-
-def get_partitioned_path(base_path: Path, region: str, queue: str, tier: str, patch: str, date: str) -> Path:
-	region_folder_name = f"region={region}"
-	region_folder = base_path / region_folder_name
-	region_folder.mkdir(parents=True, exist_ok=True)
-	queue_folder_name = f"queue={queue}"
-	queue_folder = region_folder / queue_folder_name
-	queue_folder.mkdir(parents=True, exist_ok=True)
-	tier_folder_name = f"tier={tier}"
-	tier_folder = queue_folder / tier_folder_name
-	tier_folder.mkdir(parents=True, exist_ok=True)	
-	patch_folder_name = "patch=" + patch
-	patch_folder = tier_folder / patch_folder_name
-	patch_folder.mkdir(parents=True, exist_ok=True)
-	date_folder_name = "date=" + date
-	date_folder = patch_folder / date_folder_name
-	date_folder.mkdir(parents=True, exist_ok=True)
-	return date_folder
 
 def build_players_filename(division: str, time: OptStr=None) -> str:
 	timestamp = time if time else datetime.now(timezone.utc).strftime("%H%M%S")

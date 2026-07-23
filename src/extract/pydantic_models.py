@@ -2,8 +2,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 class RiotPlayerEntry(BaseModel):
-    
-    model_config = ConfigDict(extra="ignore")  # Ignore unexpected new fields from Riot
+    model_config = ConfigDict(extra="ignore")  #ignore unexpected new fields
 
     queueType: str
     tier: str
@@ -37,8 +36,13 @@ class ChampionMasteryEntry(BaseModel):
     lastPlayTime: int
     championPointsSinceLastLevel: int
     championPointsUntilNextLevel: int
-    markRequiredForNextLevel: int = None
-    tokensEarned: int = None
-    championSeasonMilestone: int = None
     milestoneGrades: List = Field(default_factory=list)
     nextSeasonMilestone: Optional[NextSeasonMilestone] = None
+    
+class ExtractionConfigManifest(BaseModel):
+	api_key: str
+	version: str
+	players_fetch_depth: int
+	full_check: bool
+	region: str
+	queue: str

@@ -6,10 +6,10 @@ from loguru import logger
 DB_PATH = "data/database/pipeline_meta.db"
 OptStr = str | None
 
-def is_active() -> bool:
+def is_active(db_path: str = DB_PATH) -> bool:
 	"""Check if the database is active and accessible."""
 	try:
-		conn = sqlite3.connect(DB_PATH)
+		conn = sqlite3.connect(db_path)
 		conn.execute("SELECT 1")
 		conn.close()
 		return True
@@ -17,8 +17,8 @@ def is_active() -> bool:
 		logger.error(f"Database connection error: {e}")
 		return False
 
-def get_connection() -> sqlite3.Connection:
-	conn = sqlite3.connect(DB_PATH)
+def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
+	conn = sqlite3.connect(db_path)
 	conn.execute("PRAGMA journal_mode=WAL;")
 	conn.execute("PRAGMA foreign_keys=ON;")
 	conn.row_factory = sqlite3.Row
@@ -350,6 +350,7 @@ def get_player_info(player_id: str) -> dict|None:
 	conn.close()
 	if result:
 		data = dict(result)
+		data["puuid"] = player_id
 		if data["latest_logged_at"]:
 			data["latest_logged_at"] = datetime.fromisoformat(data["latest_logged_at"])
 		return data
@@ -538,3 +539,6 @@ def update_page_info(region: str, queue: str, tier: str, division: str, patch: s
 	)
 	conn.commit()
 	conn.close()
+
+if __name__ == "__main__":
+	cleanup_stale_runs()
