@@ -11,8 +11,8 @@ from loguru import logger
 def get_connection(db_path="data/database/pipeline_meta.db"):
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA foreign_keys=ON;")  # SQLite disables FK enforcement by default!
-    conn.row_factory = sqlite3.Row  # lets you access columns by name
+    conn.execute("PRAGMA foreign_keys=ON;")
+    conn.row_factory = sqlite3.Row
     return conn
 
 def clear_directory_contents(dir_path: str):

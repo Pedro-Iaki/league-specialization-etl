@@ -5,7 +5,6 @@ Outputs orchestration metadata, as well as the records of each player and master
 After running for the designated amount of loops, the pipeline will verify the integrity of the files and database, and log any issues found.
 """
 from datetime import datetime
-
 from get_players import run as extract_players
 from get_masteries import run as extract_masteries
 import pipeline_db as db
@@ -19,32 +18,32 @@ import pydantic_models as models
 
 BASE_DIR = Path(__file__).resolve().parents[2] 
 CONFIG_PATH = BASE_DIR / "config" / "EXTRACTION_CONFIG.env"
-DEFAULT_TARGET_TIERS = ["DIAMOND", "EMERALD", "PLATINUM", "GOLD", "SILVER", "BRONZE", "IRON"]
-DEFAULT_TARGET_DIVISIONS = ["I", "II", "III", "IV"]
 
-def run_pipeline():
-	config_manifest, success = get_configs(CONFIG_PATH)
+def run_pipeline(config_path: Path = CONFIG_PATH) -> bool:
+	config_manifest, success = get_configs(config_path)
 	
 	if not success:
 		logger.error("Failed to load configuration. Exiting.")
-		exit(1)
+		return False
 	try:
 		validated_manifest = models.ExtractionConfigManifest.model_validate(config_manifest).model_dump()
 	except Exception as e:
 		logger.error(f"Invalid configuration: {e}")
-		exit(1)
+		return False
 	
 	db.cleanup_stale_runs()
 	if not db.is_active():
 		logger.error("Cannot connect to database. Ensure init_db has been run and the database is accessible in the correct folder.")
-		exit(1)
+		return False
   
-	api_client = client.RiotAPIClient(api_key=config_manifest["api_key"])
-	extraction_loop(validated_manifest, api_client=api_client) 
+	api_client = client.RiotAPIClient(api_key=validated_manifest["api_key"])
+	return extraction_loop(validated_manifest, api_client=api_client)
 
-def extraction_loop(config_manifest: dict, api_client, target_tier: list[str] = DEFAULT_TARGET_TIERS, target_division: list[str] = DEFAULT_TARGET_DIVISIONS) -> None:
+def extraction_loop(config_manifest: dict, api_client) -> bool:
 	"""Run the local pipeline."""
 	pages_per_division = int(config_manifest["players_fetch_depth"])
+	target_tier = config_manifest["tiers"]
+	target_division = config_manifest["divisions"]
 	runs_remaining = pages_per_division * len(target_tier) * len(target_division)
 	date = datetime.now().isoformat()
 	try:
@@ -58,9 +57,11 @@ def extraction_loop(config_manifest: dict, api_client, target_tier: list[str] = 
 	except Exception as e:
 		logger.exception(f"An error occurred during the pipeline run: {e}")
 		db.finish_run(run_id, "failed")
-		db.cleanup_failed_run(run_id)
-
+		db.cleanup_failed_run(run_id)	
+		return False
+	
 	verify.run_integrity_check(config_manifest["full_check"])
+	return True
  
 def get_configs(config_path: Path) -> tuple[dict, bool]:
 	load_dotenv(config_path)
@@ -70,6 +71,8 @@ def get_configs(config_path: Path) -> tuple[dict, bool]:
 	full_check = os.getenv("FULL_VERIFICATION_POST", "false").lower() == "true"
 	region = os.getenv("REGION")
 	queue = os.getenv("QUEUE")
+	tiers = os.getenv("TIERS", "DIAMOND,EMERALD,PLATINUM,GOLD,SILVER,BRONZE,IRON").split(",")
+	divisions = os.getenv("DIVISIONS", "I,II,III,IV").split(",")
 	if not api_key or not version or not players_fetch_depth or not region or not queue:
 		logger.error("Missing required environment variables.")
 		return {}, False
@@ -80,6 +83,8 @@ def get_configs(config_path: Path) -> tuple[dict, bool]:
 		"full_check": full_check,
 		"region": region,
 		"queue": queue,
+		"tiers": tiers,
+		"divisions": divisions,
 	}, True
 
 if __name__ == "__main__":
