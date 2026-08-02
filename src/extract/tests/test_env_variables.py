@@ -1,93 +1,10 @@
 from pathlib import Path
 import sys
-
 import pytest
 
-# set python path to include src/extract directory so we can import run_pipeline
-# assumes this file's parent always contains the run_pipeline script
-EXTRACT_DIR = Path(__file__).resolve().parents[1]
-if str(EXTRACT_DIR) not in sys.path:
-    sys.path.insert(0, str(EXTRACT_DIR))
-
+import test_utilities as util
+util.set_path_for_extract_modules()
 import run_pipeline as pl
-
-
-class EnvFactory:
-    """Build temporary .env files for run_pipeline input tests."""
-
-    BASE_VALID = {
-        "RIOT_API_KEY": "test-api-key",
-        "VERSION": "vtest",
-        "PLAYERS_FETCH_DEPTH": "1",
-        "FULL_VERIFICATION_POST": "false",
-        "REGION": "na1",
-        "QUEUE": "RANKED_SOLO_5x5",
-        "TIERS": "GOLD",
-        "DIVISIONS": "I",
-    }
-
-    @classmethod
-    def create(
-        cls,
-        tmp_path: Path,
-        name: str,
-        overrides: dict[str, str] | None = None,
-        remove: set[str] | None = None,
-        duplicates: list[tuple[str, str]] | None = None,
-    ) -> Path:
-        data = dict(cls.BASE_VALID)
-        if remove:
-            for key in remove:
-                data.pop(key, None)
-        if overrides:
-            data.update(overrides)
-
-        lines = [f"{key}={value}" for key, value in data.items()]
-        if duplicates:
-            for key, value in duplicates:
-                lines.append(f"{key}={value}")
-
-        env_path = tmp_path / f"{name}.env"
-        env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        return env_path
-
-
-def _clear_pipeline_env(monkeypatch: pytest.MonkeyPatch):
-    keys = [
-        "RIOT_API_KEY",
-        "VERSION",
-        "PLAYERS_FETCH_DEPTH",
-        "FULL_VERIFICATION_POST",
-        "REGION",
-        "QUEUE",
-        "TIERS",
-        "DIVISIONS",
-    ]
-    for key in keys:
-        monkeypatch.delenv(key, raising=False)
-
-
-@pytest.fixture
-def pipeline_stub(monkeypatch: pytest.MonkeyPatch):
-    """Stub side-effectful runtime parts so tests focus on env/config handling."""
-
-    class DummyClient:
-        def __init__(self, api_key: str):
-            self.api_key = api_key
-
-    captured: dict[str, object] = {}
-
-    def fake_extraction_loop(config_manifest: dict, api_client) -> bool:
-        captured["config_manifest"] = config_manifest
-        captured["api_key"] = api_client.api_key
-        return True
-
-    monkeypatch.setattr(pl.db, "cleanup_stale_runs", lambda: None)
-    monkeypatch.setattr(pl.db, "is_active", lambda: True)
-    monkeypatch.setattr(pl.client, "RiotAPIClient", DummyClient)
-    monkeypatch.setattr(pl, "extraction_loop", fake_extraction_loop)
-    return captured
-
 
 @pytest.mark.parametrize(
     "case_name,overrides,remove,duplicates,expected",
@@ -118,8 +35,8 @@ def test_run_pipeline_env_matrix(
     duplicates: list[tuple[str, str]] | None,
     expected: bool,
 ):
-    _clear_pipeline_env(monkeypatch)
-    env_path = EnvFactory.create(
+    util._clear_pipeline_env(monkeypatch)
+    env_path = util.EnvFactory.create(
         tmp_path=tmp_path,
         name=case_name,
         overrides=overrides,
@@ -136,8 +53,8 @@ def test_valid_case_passes_manifest_to_extraction_loop(
     monkeypatch: pytest.MonkeyPatch,
     pipeline_stub: dict[str, object],
 ):
-    _clear_pipeline_env(monkeypatch)
-    env_path = EnvFactory.create(
+    util._clear_pipeline_env(monkeypatch)
+    env_path = util.EnvFactory.create(
         tmp_path=tmp_path,
         name="valid_capture",
         overrides={"PLAYERS_FETCH_DEPTH": "3", "TIERS": "GOLD,SILVER", "DIVISIONS": "I,II"},
