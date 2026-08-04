@@ -202,12 +202,14 @@ def get_mastery_id_from_list(task_ids: list[int], puuid: str) -> int:
 	return int_id
 
 
-def cleanup_stale_runs():
+def cleanup_stale_runs(conn: sqlite3.Connection|None = None):
 	"""
 	Clean up potential stalled runs. Fully clearing related tasks and records.
 	\nChecks if a run's heartbeat has been longer than an hour.
 	"""
-	conn = get_connection()
+	conn_supplied = conn
+	if not conn_supplied:
+		conn = get_connection()
 	
 	# Get list of run IDs where the run stalled for over an hour
 	cur = conn.execute(
@@ -230,8 +232,9 @@ def cleanup_stale_runs():
 	for run in stalled_run_ids:
 		cleanup_failed_run(run, conn)
 
-	conn.commit()
-	conn.close()
+	if not conn_supplied:
+		conn.commit()
+		conn.close()
 
 
 def cleanup_failed_run(run_id: int, conn: sqlite3.Connection|None = None):

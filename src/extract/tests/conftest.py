@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 import test_utilities as util
 from pathlib import Path
@@ -29,6 +31,19 @@ def pipeline_stub(monkeypatch: pytest.MonkeyPatch):
 def mock_db(tmp_path):
 	"""Create a temporary database file for testing."""
 	db_path = tmp_path / "test_pipeline.db"
-	conn = pl.db.sqlite3.connect(db_path)
+	conn = sqlite3.connect(db_path)
+	conn.execute("PRAGMA journal_mode=WAL;")
+	conn.execute("PRAGMA foreign_keys=ON;")
+	conn.row_factory = sqlite3.Row
+ 
+	with open("src/extract/schemas.sql", "r") as f:
+		SCHEMA = f.read()
+	conn.executescript(SCHEMA)
+	conn.commit()
 	yield conn
 	conn.close()
+ 
+@pytest.fixture
+def db_factory(mock_db):
+	"""Provide a DBFactory instance for creating test data."""
+	return util.DBFactory(mock_db)
