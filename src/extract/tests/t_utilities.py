@@ -59,6 +59,7 @@ class EnvFactory:
 
 
 def _clear_pipeline_env(monkeypatch: pytest.MonkeyPatch):
+	print("a")
 	keys = [
 		"RIOT_API_KEY",
 		"VERSION",

@@ -2,7 +2,7 @@ from pathlib import Path
 import sys
 import pytest
 
-import test_utilities as util
+import t_utilities as util
 util.set_path_for_extract_modules()
 import run_pipeline as pl
 
@@ -34,6 +34,7 @@ def test_run_pipeline_env_matrix(
     remove: set[str],
     duplicates: list[tuple[str, str]] | None,
     expected: bool,
+    caplog
 ):
     util._clear_pipeline_env(monkeypatch)
     env_path = util.EnvFactory.create(

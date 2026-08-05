@@ -1,15 +1,16 @@
 import pytest
 import json
 from datetime import datetime, timedelta, timezone
-import test_utilities as util
+import t_utilities as util
 import pipeline_db as db
 util.set_path_for_extract_modules()
 
 
 def create_basic_database(db_factory, mock_db) -> dict:
-	return db_factory.create_mock_run(
+	factory = db_factory(mock_db)
+	return factory.create_mock_run(
 		run_override={"pipeline_name": "basic_scenario"},
-		players_per_task=db_factory.faker.random_int(1, 205),
+		players_per_task=factory.faker.random_int(1, 205),
 	)
 
 def test_basic_database_scenario(db_factory, mock_db):
@@ -21,19 +22,19 @@ def test_basic_database_scenario(db_factory, mock_db):
 
 def create_failed_run_database(db_factory, mock_db) -> int:
 	create_basic_database(db_factory, mock_db)
-	
-	failed_run_id = db_factory.create_individual_run({"status": "failed", "error_message": "test error"})
+	factory = db_factory(mock_db)
+	failed_run_id = factory.create_individual_run({"status": "failed", "error_message": "test error"})
 	
 	status_states = ["success", "failed", "in_progress", "pending"]
 	for pt_status in status_states: #loop to simulate a player task for each status
-		ptask_id = db_factory.create_individual_player_task({"run_id": failed_run_id, "status": pt_status})
+		ptask_id = factory.create_individual_player_task({"run_id": failed_run_id, "status": pt_status})
   
 		for id_length in range(1, 4): #loop to simulate players with different number of task ids
 			for mt_status in status_states: #loop to simulate a mastery task for each player task, with the same status
-				player_id = db_factory.get_uuid()
+				player_id = factory.get_uuid()
     
-				if mt_status == "pending":
-					mastery_task_id = db_factory.create_individual_mastery_task({"run_id": failed_run_id, "status": mt_status, "player_id": player_id})
+				if mt_status != "pending":
+					mastery_task_id = factory.create_individual_mastery_task({"run_id": failed_run_id, "status": mt_status, "player_id": player_id})
 				else:
 					mastery_task_id = None
      
@@ -41,7 +42,7 @@ def create_failed_run_database(db_factory, mock_db) -> int:
 				for fake in range(id_length-1):
 					player_task_ids.insert(0, -(fake + 1)) #negative so no conflict with real autoincrement ids
      
-				db_factory.create_individual_players_recorded({"player_task_ids": json.dumps(player_task_ids), "player_id": player_id, "mastery_status": mt_status, "mastery_task_id": mastery_task_id})
+				factory.create_individual_players_recorded({"player_task_ids": json.dumps(player_task_ids), "player_id": player_id, "mastery_status": mt_status, "mastery_task_id": mastery_task_id})
 	
 	return failed_run_id
 
@@ -71,10 +72,11 @@ def test_failed_run_scenario(db_factory, mock_db):
    
 def test_cleanup_stale_runs(db_factory, mock_db, monkeypatch):
 	create_basic_database(db_factory, mock_db)
-	monkeypatch.setattr(db, "cleanup_failed_run", lambda *args, **kwargs: None) # set cleanup_failed_run to nothing
+	factory = db_factory(mock_db)
+	monkeypatch.setattr(db, "cleanup_failed_run", lambda *args, **kwargs: None)  # set cleanup_failed_run to nothing
  
-	stale_run_id = db_factory.create_individual_run({"status": "running", "last_heartbeat": (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()})
-	active_run_id = db_factory.create_individual_run({"status": "running", "last_heartbeat": datetime.now(timezone.utc).isoformat()}, commit=True)
+	stale_run_id = factory.create_individual_run({"status": "running", "last_heartbeat": (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()})
+	active_run_id = factory.create_individual_run({"status": "running", "last_heartbeat": datetime.now(timezone.utc).isoformat()}, commit=True)
   
 	db.cleanup_stale_runs(conn=mock_db)
   
