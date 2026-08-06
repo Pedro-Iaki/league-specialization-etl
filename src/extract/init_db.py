@@ -1,14 +1,19 @@
 """
 Initializes the local database and clears the raw data directories for players and masteries.
-This script should be run before starting a new data extraction pipeline to ensure a clean slate."""
-
+This script should be run before starting a new data extraction pipeline to ensure a clean slate.
+"""
 
 import sqlite3
 import os
 import shutil
 from loguru import logger
 
-def get_connection(db_path="data/database/pipeline_meta.db"):
+DB_PATH = "data/database/pipeline_meta.db"
+SCHEMA_PATH = "src/extract/schemas.sql"
+PLAYERS_DIR = "data/raw/players"
+MASTERIES_DIR = "data/raw/masteries"
+
+def get_connection(db_path=DB_PATH):
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA foreign_keys=ON;")
@@ -28,16 +33,22 @@ def clear_directory_contents(dir_path: str):
         except Exception as e:
             logger.error(f"Failed to delete {entry.path}. Reason: {e}")
 
-with open("src/extract/schemas.sql", "r") as f:
-    SCHEMA = f.read()
+def reset_database_and_directories():
+    """Executes the cleanup and schema initialization."""
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
+        
+    clear_directory_contents(PLAYERS_DIR)
+    clear_directory_contents(MASTERIES_DIR)
 
-if os.path.exists("data/database/pipeline_meta.db"):
-    os.remove("data/database/pipeline_meta.db")
-    
-clear_directory_contents("data/raw/players")
-clear_directory_contents("data/raw/masteries")
+    with open(SCHEMA_PATH, "r") as f:
+        schema = f.read()
 
-conn = get_connection()
-conn.executescript(SCHEMA)
-conn.commit()
-conn.close()
+    conn = get_connection()
+    conn.executescript(schema)
+    conn.commit()
+    conn.close()
+    logger.info("Database and raw directories reset successfully.")
+
+if __name__ == "__main__":
+    reset_database_and_directories()

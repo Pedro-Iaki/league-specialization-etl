@@ -54,7 +54,7 @@ def run(run_id: int, api_client: APIClient, limit: int, runs_remaining: int|None
 			logger.error(f"No mastery data found for player {puuid}.")
 			continue
 		
-		this_path = save_masteries(mastery_payload, info=player_info, patch=patch)
+		this_path = save_masteries(mastery_payload, output_path=OUTPUT_PATH, info=player_info, patch=patch)
 		if this_path:
 			db.update_mastery_task(task_id, "success", patch, file_path=str(this_path))
 		else:
