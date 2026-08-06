@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 import tempfile
 
-def get_partitioned_path(base_path: Path, partitions: list[tuple[str,str]], mock_save: bool = False) -> Path:
-	final_path = Path(tempfile.mkdtemp()) if mock_save else base_path
+def get_partitioned_path(base_path: Path, partitions: list[tuple[str,str]]) -> Path:
+	final_path = base_path
 	for key, value in partitions:
 		partition_name = f"{key}={value}"
 		final_path = final_path / partition_name

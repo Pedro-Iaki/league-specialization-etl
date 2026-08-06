@@ -1,4 +1,3 @@
-import pytest
 import json
 from datetime import datetime, timedelta, timezone
 import t_utilities as util
@@ -6,23 +5,16 @@ import pipeline_db as db
 util.set_path_for_extract_modules()
 
 
-def create_basic_database(db_factory, mock_db) -> dict:
-	factory = db_factory(mock_db)
+def create_basic_database(_db_factory, _mock_conn) -> dict:
+	factory = _db_factory(_mock_conn)
 	return factory.create_mock_run(
 		run_override={"pipeline_name": "basic_scenario"},
 		players_per_task=factory.faker.random_int(1, 205),
 	)
 
-def test_basic_database_scenario(db_factory, mock_conn):
-	result = create_basic_database(db_factory, mock_conn)
-	assert result["run_id"] is not None
-	assert len(result["player_task_ids"]) > 0
-	assert len(result["mastery_task_ids"]) > 0
-	assert len(result["player_ids"]) > 0
-
-def create_failed_run_database(db_factory, mock_db) -> int:
-	create_basic_database(db_factory, mock_db)
-	factory = db_factory(mock_db)
+def create_failed_run_database(_db_factory, _mock_conn) -> int:
+	create_basic_database(_db_factory, _mock_conn)
+	factory = _db_factory(_mock_conn)
 	failed_run_id = factory.create_individual_run({"status": "failed", "error_message": "test error"})
 	
 	status_states = ["success", "failed", "in_progress", "pending"]
@@ -45,6 +37,14 @@ def create_failed_run_database(db_factory, mock_db) -> int:
 				factory.create_individual_players_recorded({"player_task_ids": json.dumps(player_task_ids), "player_id": player_id, "mastery_status": mt_status, "mastery_task_id": mastery_task_id})
 	
 	return failed_run_id
+
+def test_basic_database_scenario(db_factory, mock_conn):
+	result = create_basic_database(db_factory, mock_conn)
+	assert result["run_id"] is not None
+	assert len(result["player_task_ids"]) > 0
+	assert len(result["mastery_task_ids"]) > 0
+	assert len(result["player_ids"]) > 0
+
 
 def test_failed_run_scenario(db_factory, mock_conn):
 	failed_run_id = create_failed_run_database(db_factory, mock_conn)

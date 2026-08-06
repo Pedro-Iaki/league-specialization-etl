@@ -1,5 +1,4 @@
 from pathlib import Path
-import sys
 import pytest
 
 import t_utilities as util
@@ -34,7 +33,6 @@ def test_run_pipeline_env_matrix(
     remove: set[str],
     duplicates: list[tuple[str, str]] | None,
     expected: bool,
-    caplog
 ):
     util._clear_pipeline_env(monkeypatch)
     env_path = util.EnvFactory.create(

@@ -124,11 +124,10 @@ def save_players(
 	division: str,
 	patch: str,
 	date: str,
-	time: str,
-	mock_save: bool = False
+	time: str
 ) -> Path:
 	partitions = [("region", region), ("queue", queue), ("tier", tier), ("patch", patch), ("date", date)]
-	output_path = output_helper.get_partitioned_path(output_path, partitions, mock_save=mock_save)
+	output_path = output_helper.get_partitioned_path(output_path, partitions)
 	output_path = output_path / build_players_filename(division, time)
 
 	payload = {

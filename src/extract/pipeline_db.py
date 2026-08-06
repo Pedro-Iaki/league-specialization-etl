@@ -1,4 +1,5 @@
-"""Helper script to handle all local database operations for the pipeline"""
+"""Helper script to handle all local database operations for the pipeline.
+Most operations take an optional conn parameter, mostly for testing with mocked values, but keep in mind that whoever passes it must also handle the connection fully"""
 import sqlite3
 from datetime import datetime, timezone
 from loguru import logger
@@ -34,17 +35,21 @@ def now() -> str:
 	return datetime.now(timezone.utc).isoformat()
 
 
-def start_run(pipeline_name: str) -> int:
-	conn = get_connection()
+def start_run(pipeline_name: str, conn: sqlite3.Connection | None = None) -> int:
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		cur = conn.execute(
 			"INSERT INTO runs (pipeline_name, started_at, status) VALUES (?, ?, 'running')",
 			(pipeline_name, now())
 		)
-		conn.commit()
+		if own_conn:
+			conn.commit()
 		run_id = cur.lastrowid
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 	int_id = int(run_id or -1)
 	if int_id < 0:
 		logger.error(f"Failed to start a new run for pipeline {pipeline_name}.")
@@ -52,53 +57,63 @@ def start_run(pipeline_name: str) -> int:
 
 
 def heartbeat_run(run_id: int, conn: sqlite3.Connection | None = None):
-	own_conn = False
-	if conn is None:
+	own_conn = conn is None
+	if own_conn:
 		conn = get_connection()
-		own_conn = True
 	try:
 		conn.execute(
 			"UPDATE runs SET last_heartbeat=? WHERE run_id=?",
 			(now(), run_id)
 		)
-		conn.commit()
+		if own_conn:
+			conn.commit()
 	finally:
 		if own_conn:
 			conn.close()
 
 
-def finish_run(run_id: int, status: str, error_message: OptStr = None):
-	conn = get_connection()
+def finish_run(run_id: int, status: str, error_message: OptStr = None, conn: sqlite3.Connection | None = None):
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		conn.execute(
 			"UPDATE runs SET finished_at=?, status=?, error_message=? WHERE run_id=?",
 			(now(), status, error_message, run_id)
 		)
-		conn.commit()
+		if own_conn:
+			conn.commit()
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 
 
-def add_player_task(run_id: int) -> int:
-	conn = get_connection()
+def add_player_task(run_id: int, conn: sqlite3.Connection | None = None) -> int:
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		heartbeat_run(run_id, conn)
 		cur = conn.execute(
 			"INSERT INTO player_tasks (run_id, status) VALUES (?, 'pending')",
 			(run_id,)
 		)
-		conn.commit()
+		if own_conn:
+			conn.commit()
 		task_id = cur.lastrowid
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 	int_id = int(task_id or -1)
 	if int_id < 0:
 		logger.error(f"Failed to add a new player task for run {run_id}.")
 	return int_id
 
 
-def update_player_task(task_id: int, status: str, file_path: OptStr = None, error_message: OptStr = None):
-	conn = get_connection()
+def update_player_task(task_id: int, status: str, file_path: OptStr = None, error_message: OptStr = None, conn: sqlite3.Connection | None = None):
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		if status == "in_progress":
 			conn.execute(
@@ -117,13 +132,17 @@ def update_player_task(task_id: int, status: str, file_path: OptStr = None, erro
 				""",
 				(status, now(), file_path, error_message, task_id)
 			)
-		conn.commit()
+		if own_conn:
+			conn.commit()
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 
 
-def add_player_records(player_id: str, file_path: str, player_task_id: int, region: str, queue: str, tier: str, division: str, patch: str):
-	conn = get_connection()
+def add_player_records(player_id: str, file_path: str, player_task_id: int, region: str, queue: str, tier: str, division: str, patch: str, conn: sqlite3.Connection | None = None):
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		conn.execute(
 			"""
@@ -142,31 +161,39 @@ def add_player_records(player_id: str, file_path: str, player_task_id: int, regi
 			""",
 			(player_id, player_task_id, file_path, now(), patch, region, queue, tier, division, player_task_id, file_path, now(), patch, region, queue, tier, division)
 		)
-		conn.commit()
+		if own_conn:
+			conn.commit()
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 
 
-def add_mastery_task(run_id: int, player_id: str) -> int:
-	conn = get_connection()
+def add_mastery_task(run_id: int, player_id: str, conn: sqlite3.Connection | None = None) -> int:
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		heartbeat_run(run_id, conn)
 		cur = conn.execute(
 			"INSERT INTO mastery_tasks (run_id, player_id, status) VALUES (?, ?, 'pending')",
 			(run_id, player_id)
 		)
-		conn.commit()
+		if own_conn:
+			conn.commit()
 		task_id = cur.lastrowid
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 	int_id = int(task_id or -1)
 	if int_id < 0:
 		logger.error(f"Failed to add a new mastery task for player {player_id}.")
 	return int_id
 
 
-def update_mastery_task(task_id: int, status: str, patch: str, file_path: OptStr = None, error_message: OptStr = None):
-	conn = get_connection()
+def update_mastery_task(task_id: int, status: str, patch: str, file_path: OptStr = None, error_message: OptStr = None, conn: sqlite3.Connection | None = None):
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		if status == "in_progress":
 			row = conn.execute(
@@ -197,9 +224,11 @@ def update_mastery_task(task_id: int, status: str, patch: str, file_path: OptStr
 			return
 
 		update_player_records(status, file_path, row["player_id"], patch, conn, mastery_task_id=task_id)
-		conn.commit()
+		if own_conn:
+			conn.commit()
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 
 
 def update_player_records(status: str, file_path: OptStr, player_id: str, patch: str, conn: sqlite3.Connection, mastery_task_id: int | None = None):
@@ -217,12 +246,14 @@ def update_player_records(status: str, file_path: OptStr, player_id: str, patch:
 	)
 
 
-def get_mastery_id_from_list(task_ids: list[int], puuid: str) -> int:
+def get_mastery_id_from_list(task_ids: list[int], puuid: str, conn: sqlite3.Connection | None = None) -> int:
 	"""
 	Given a list of task_ids and a puuid, return the task_id that matches the puuid.
 	\nIf no match is found, return None.
 	"""
-	conn = get_connection()
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		cur = conn.execute(
 			"SELECT task_id FROM mastery_tasks WHERE task_id IN ({seq}) AND player_id=?".format(
@@ -232,7 +263,8 @@ def get_mastery_id_from_list(task_ids: list[int], puuid: str) -> int:
 		)
 		result = cur.fetchone()
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 	int_id = int(result["task_id"] or -1) if result else -1
 	if int_id < 0:
 		logger.error(f"No task ID found for player {puuid} in the provided task list.")
@@ -248,9 +280,6 @@ def cleanup_stale_runs(conn: sqlite3.Connection | None = None):
 	if not conn_supplied:
 		conn = get_connection()
 	try:
-		# Atomic UPDATE...RETURNING: finds AND marks stale runs in one statement,
-		# so there's no window between "which runs are stale" and "mark them failed"
-		# where another writer could change a run's status underneath us.
 		cur = conn.execute(
 			"""
 			UPDATE runs
@@ -332,14 +361,16 @@ def cleanup_failed_run(run_id: int, conn: sqlite3.Connection | None = None):
 			conn.close()
 
 
-def get_players_missing_masteries(include_stale_success: bool = False, limit: int | None = None) -> list[str]:
+def get_players_missing_masteries(include_stale_success: bool = False, limit: int | None = None, conn: sqlite3.Connection | None = None) -> list[str]:
 	"""
 	Get list of player IDs (puuids) with mastery_status 'failed' or 'pending'.
 	\nIf include_stale_success is True, also include players with 'success' status that:
 	\n- Have mastery logged at least 1 week old
 	\n- AND the last logged player was added in the last 24 hours
 	"""
-	conn = get_connection()
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		if not include_stale_success:
 			cur = conn.execute(
@@ -359,18 +390,21 @@ def get_players_missing_masteries(include_stale_success: bool = False, limit: in
 
 		players = [row["player_id"] for row in cur.fetchall()]
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 	if limit is not None:
 		players = players[:limit]
 	return players
 
 
-def get_mastery_status_for_player(player_id: str) -> str:
+def get_mastery_status_for_player(player_id: str, conn: sqlite3.Connection | None = None) -> str:
 	"""
 	Get the mastery status for a given player ID (puuid).
 	\nReturns 'pending', 'in_progress', 'success', or 'failed'.
 	"""
-	conn = get_connection()
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		cur = conn.execute(
 			"SELECT mastery_status FROM players_recorded WHERE player_id = ?",
@@ -378,16 +412,19 @@ def get_mastery_status_for_player(player_id: str) -> str:
 		)
 		result = cur.fetchone()
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 	return str(result["mastery_status"] if result else None)
 
 
-def get_player_info(player_id: str) -> dict | None:
+def get_player_info(player_id: str, conn: sqlite3.Connection | None = None) -> dict | None:
 	"""
 	Get the player info for a given player ID (puuid).
 	\nReturns a dictionary with keys: region, queue, tier, division, latest log time.
 	"""
-	conn = get_connection()
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		cur = conn.execute(
 			"SELECT region, queue, tier, division, json_extract(paths_logged_at, '$[' || (json_array_length(paths_logged_at) - 1) || ']') as latest_logged_at FROM players_recorded WHERE player_id = ?",
@@ -395,7 +432,8 @@ def get_player_info(player_id: str) -> dict | None:
 		)
 		result = cur.fetchone()
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 	if result:
 		data = dict(result)
 		data["puuid"] = player_id
@@ -405,12 +443,14 @@ def get_player_info(player_id: str) -> dict | None:
 	return None
 
 
-def get_players_in_timespan(days_ago: int, region: OptStr = None, queue: OptStr = None, tier: OptStr = None, division: OptStr = None) -> list[dict]:
+def get_players_in_timespan(days_ago: int, region: OptStr = None, queue: OptStr = None, tier: OptStr = None, division: OptStr = None, conn: sqlite3.Connection | None = None) -> list[dict]:
 	"""
 	Get all players for a given timespan (in days), with optional region, queue, tier, and division parameters.
 	\nReturns a list of player strings.
 	"""
-	conn = get_connection()
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		query = """
 			SELECT player_id
@@ -431,17 +471,20 @@ def get_players_in_timespan(days_ago: int, region: OptStr = None, queue: OptStr 
 		cur = conn.execute(query, params)
 		players = [row["player_id"] for row in cur.fetchall()]
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 	return players
 
 
-def get_players_in_patch(patch: str, region: OptStr = None, queue: OptStr = None, tier: OptStr = None, division: OptStr = None) -> list[dict]:
+def get_players_in_patch(patch: str, region: OptStr = None, queue: OptStr = None, tier: OptStr = None, division: OptStr = None, conn: sqlite3.Connection | None = None) -> list[dict]:
 	"""
 	Get all players for a given patch, with optional region, queue, tier, and division parameters.
 	\nReturns a list of player dictionaries.
 	\nOnly considers players with masteries logged for that patch. Meaning running an operation on a patch that has no masteries logged will return an empty list.
 	"""
-	conn = get_connection()
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		query = """
 			SELECT player_id
@@ -462,17 +505,20 @@ def get_players_in_patch(patch: str, region: OptStr = None, queue: OptStr = None
 		cur = conn.execute(query, params)
 		players = [row["player_id"] for row in cur.fetchall()]
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 	return players
 
 
-def get_page_info(region: str, queue: str, patch: str, tiers: list[str] | tuple[str, ...], divisions: list[str] | tuple[str, ...]) -> dict[tuple[str, str], tuple[int, int]]:
+def get_page_info(region: str, queue: str, patch: str, tiers: list[str] | tuple[str, ...], divisions: list[str] | tuple[str, ...], conn: sqlite3.Connection | None = None) -> dict[tuple[str, str], tuple[int, int]]:
 	"""
 	Returns a dictionary of (tier, division) -> (loop_count, players_in_division) for the given region, queue, patch, tiers, and divisions.
 	\nMissing tiers or divisions will return an empty dictionary.
 	\nMissing rows are treated as zeroed defaults so the selector can still pick a candidate.
 	"""
-	conn = get_connection()
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
 		stats: dict[tuple[str, str], tuple[int, int]] = {}
 
@@ -486,9 +532,6 @@ def get_page_info(region: str, queue: str, patch: str, tiers: list[str] | tuple[
 		tier_placeholders = ",".join(["?"] * len(tiers))
 		division_placeholders = ",".join(["?"] * len(divisions))
 
-		# Batched into two queries total (was 1 + up to 28, one per matched row).
-		# loop_count comes from tier_division_pages; player counts come from a
-		# single grouped aggregate instead of a per-row COUNT(*) query.
 		loop_rows = conn.execute(
 			f"""
 			SELECT tier, division, loop_count
@@ -517,20 +560,19 @@ def get_page_info(region: str, queue: str, patch: str, tiers: list[str] | tuple[
 
 		return stats
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 
 
-def get_page_and_loop(region: str, queue: str, tier: str, division: str, patch: str) -> tuple[int, int]:
+def get_page_and_loop(region: str, queue: str, tier: str, division: str, patch: str, conn: sqlite3.Connection | None = None) -> tuple[int, int]:
 	"""
 	Get the current page and loop for a given region, queue, tier, division, and patch.
 	\nIf no record exists, create one with page 1 and return it.
 	"""
-	conn = get_connection()
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
-		# Atomic upsert: INSERT if missing, no-op UPDATE if it already exists,
-		# RETURNING fires either way so we never need a follow-up SELECT.
-		# NOTE: assumes a UNIQUE constraint on (region, queue, tier, division, patch) —
-		# verify this matches your actual schema's constraint name/columns.
 		row = conn.execute(
 			"""
 			INSERT INTO tier_division_pages (
@@ -543,13 +585,15 @@ def get_page_and_loop(region: str, queue: str, tier: str, division: str, patch: 
 			""",
 			(region, queue, tier, division, patch, now()),
 		).fetchone()
-		conn.commit()
+		if own_conn:
+			conn.commit()
 		return (int(row["current_page"]), int(row["loop_count"]))
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()
 
 
-def update_page_info(region: str, queue: str, tier: str, division: str, patch: str, player_count: int) -> int:
+def update_page_info(region: str, queue: str, tier: str, division: str, patch: str, player_count: int, conn: sqlite3.Connection | None = None) -> int:
 	"""
 	Update the page tracking for a given region, queue, tier, division, and patch.
 
@@ -558,9 +602,10 @@ def update_page_info(region: str, queue: str, tier: str, division: str, patch: s
 
 	Returns the updated current_page, or 0 if no record exists.
 	"""
-	conn = get_connection()
+	own_conn = conn is None
+	if own_conn:
+		conn = get_connection()
 	try:
-		# Atomic UPDATE using SQLite CASE expressions
 		cursor = conn.execute(
 			"""
 			UPDATE tier_division_pages
@@ -582,10 +627,12 @@ def update_page_info(region: str, queue: str, tier: str, division: str, patch: s
 		)
 
 		row = cursor.fetchone()
-		conn.commit()
+		if own_conn:
+			conn.commit()
 		if row is None:
 			logger.warning(f"No page info found for {region} {queue} {tier} {division} {patch}.")
 			return 0
 		return int(row["current_page"])
 	finally:
-		conn.close()
+		if own_conn:
+			conn.close()

@@ -1,4 +1,3 @@
-from asyncio.log import logger
 from collections import defaultdict
 import json
 from pathlib import Path
@@ -27,7 +26,7 @@ def run_integrity_check(full: bool = False):
 	logger.info(f"\nIntegrity check completed, check ./data/logs for in-depth results. Summary: \nTotal players in database: {database_log.get('total_player_records', 0)}\nFaulty or incomplete records: {database_log.get('faulty_records_count', 0)}\nDuplicated player rate: {database_log.get('duplicated_players', 0)}\nDiscarded duplicated snapshots: {database_log.get('discarded_player_tasks', 0)}\nPlayer task error rate: {database_log.get('player_task_error_rate', 0)}\nMastery task error rate: {database_log.get('mastery_task_error_rate', 0)}")
 	return results
 
-def verify_files_integrity() -> dict[any]: # type: ignore #
+def verify_files_integrity() -> dict:
 	missing_masteries_puuids = {}
 	missing_player_puuids = {}
 	duplicated_player_puuids = []
@@ -81,9 +80,9 @@ def verify_files_integrity() -> dict[any]: # type: ignore #
 			missing_player_puuids[puuid] = str(mastery_file)
 
 		#if a puuid is present twice in masteries, add to duplicated_puuids
-		uniques = sum(1 for item in all_puuids_masteries if item[1] == puuid)
+		uniques = sum(1 for player, file in all_puuids_masteries.items() if player == puuid)
 		if uniques > 1 and puuid not in duplicated_masteries_puuids:
-			duplicated_masteries_puuids[puuid] = [str(mastery_file) for mastery_file, p in all_puuids_masteries.items() if p == puuid]
+			duplicated_masteries_puuids[puuid] = [str(file) for player, file in all_puuids_masteries.items() if player == puuid]
 
 	for puuid, paths in tqdm(all_puuids_players.items(), desc="Verifying player records", unit="record"):
 		#if a puuid is present in players but not present in masteries, add to missing_masteries_puuids
@@ -107,14 +106,14 @@ def verify_files_integrity() -> dict[any]: # type: ignore #
 		"total_mastery_files": len(all_puuids_masteries),
 		"total_errors_or_missing": total_errors,
 		"error_rate": error_rate,
-		"missing_masteries": len(missing_masteries_puuids),
-		"missing_players": len(missing_player_puuids),
-		"duplicated_player_rate": duplicated_player_rate,
 		"average_duplicity_per_player_file": f"{average_duplicity_per_player_file:.3f}",
+		"duplicated_player_rate": duplicated_player_rate,
 		"duplicated_players": duplicated_player_puuids,
 		"duplicated_mastery_rate": duplicated_mastery_rate,
 		"duplicated_masteries": duplicated_masteries_puuids,
+		"missing_masteries_count": len(missing_masteries_puuids),
 		"missing_masteries": [{"puuid": puuid, "source_file": source_file} for puuid, source_file in missing_masteries_puuids.items()],
+		"missing_players_count": len(missing_player_puuids),
 		"missing_players": [{"puuid": puuid, "source_file": source_file} for puuid, source_file in missing_player_puuids.items()],
 		"faulty_files": [{"source_file": str(broken_file)} for broken_file in broken_files],
 	}

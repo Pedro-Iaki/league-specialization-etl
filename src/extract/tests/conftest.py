@@ -47,10 +47,10 @@ def mock_conn(tmp_path):
 	conn.close()
  
 @pytest.fixture
-def db_factory(request):
+def db_factory():
 	"""Provide a DBFactory instance for creating test data."""
-	def _create_factory(mock_db):
-		return util.DBFactory(mock_db)
+	def _create_factory(_mock_conn):
+		return util.DBFactory(_mock_conn)
 	return _create_factory
 
 @pytest.fixture
