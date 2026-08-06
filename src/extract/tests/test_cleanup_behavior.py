@@ -13,8 +13,8 @@ def create_basic_database(db_factory, mock_db) -> dict:
 		players_per_task=factory.faker.random_int(1, 205),
 	)
 
-def test_basic_database_scenario(db_factory, mock_db):
-	result = create_basic_database(db_factory, mock_db)
+def test_basic_database_scenario(db_factory, mock_conn):
+	result = create_basic_database(db_factory, mock_conn)
 	assert result["run_id"] is not None
 	assert len(result["player_task_ids"]) > 0
 	assert len(result["mastery_task_ids"]) > 0
@@ -46,42 +46,42 @@ def create_failed_run_database(db_factory, mock_db) -> int:
 	
 	return failed_run_id
 
-def test_failed_run_scenario(db_factory, mock_db):
-	failed_run_id = create_failed_run_database(db_factory, mock_db)
+def test_failed_run_scenario(db_factory, mock_conn):
+	failed_run_id = create_failed_run_database(db_factory, mock_conn)
 	
-	db.cleanup_failed_run(failed_run_id, conn=mock_db)
+	db.cleanup_failed_run(failed_run_id, conn=mock_conn)
 	
 	# assert
 	# all tasks for the failed run, that arent a success, should be set to failed
 	# all records for those tasks should be set to failed or deleted (only delete if player_task_ids has only one task, and that task is failed)
-	run_player_tasks = mock_db.execute("SELECT task_id, status FROM player_tasks WHERE run_id = ?", (failed_run_id,)).fetchall()
-	run_mastery_tasks = mock_db.execute("SELECT task_id, status FROM mastery_tasks WHERE run_id = ?", (failed_run_id,)).fetchall()
+	run_player_tasks = mock_conn.execute("SELECT task_id, status FROM player_tasks WHERE run_id = ?", (failed_run_id,)).fetchall()
+	run_mastery_tasks = mock_conn.execute("SELECT task_id, status FROM mastery_tasks WHERE run_id = ?", (failed_run_id,)).fetchall()
  
 	# assert that all player tasks for the failed run, that are not success, are set to failed
 	for task_id, status in run_player_tasks:
 		if status != "success":
 			assert status == "failed"
 			# assert that no record exists that only has this broken id as the player_task_ids
-			assert len(mock_db.execute("SELECT 1 FROM players_recorded WHERE player_task_ids = ?", (f"[{task_id}]",)).fetchall()) == 0
+			assert len(mock_conn.execute("SELECT 1 FROM players_recorded WHERE player_task_ids = ?", (f"[{task_id}]",)).fetchall()) == 0
   
 	for task_id, status in run_mastery_tasks:
 		if status != "success":
 			assert status == "failed"
 			# assert that the record corresponding to this mastery task id, has its mastery_status set to failed
-			assert len(mock_db.execute("SELECT 1 FROM players_recorded WHERE mastery_task_id = ? AND mastery_status != 'failed'", (task_id,)).fetchall()) == 0
+			assert len(mock_conn.execute("SELECT 1 FROM players_recorded WHERE mastery_task_id = ? AND mastery_status != 'failed'", (task_id,)).fetchall()) == 0
    
-def test_cleanup_stale_runs(db_factory, mock_db, monkeypatch):
-	create_basic_database(db_factory, mock_db)
-	factory = db_factory(mock_db)
+def test_cleanup_stale_runs(db_factory, mock_conn, monkeypatch):
+	create_basic_database(db_factory, mock_conn)
+	factory = db_factory(mock_conn)
 	monkeypatch.setattr(db, "cleanup_failed_run", lambda *args, **kwargs: None)  # set cleanup_failed_run to nothing
  
 	stale_run_id = factory.create_individual_run({"status": "running", "last_heartbeat": (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()})
 	active_run_id = factory.create_individual_run({"status": "running", "last_heartbeat": datetime.now(timezone.utc).isoformat()}, commit=True)
   
-	db.cleanup_stale_runs(conn=mock_db)
+	db.cleanup_stale_runs(conn=mock_conn)
   
-	stale_run_status = mock_db.execute("SELECT status FROM runs WHERE run_id = ?", (stale_run_id,)).fetchone()[0]
+	stale_run_status = mock_conn.execute("SELECT status FROM runs WHERE run_id = ?", (stale_run_id,)).fetchone()[0]
 	assert stale_run_status == "failed"
   
-	active_run_status = mock_db.execute("SELECT status FROM runs WHERE run_id = ?", (active_run_id,)).fetchone()[0]
+	active_run_status = mock_conn.execute("SELECT status FROM runs WHERE run_id = ?", (active_run_id,)).fetchone()[0]
 	assert active_run_status == "running"
