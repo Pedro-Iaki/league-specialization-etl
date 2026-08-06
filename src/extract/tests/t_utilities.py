@@ -343,3 +343,79 @@ class DBFactory:
 			"mastery_task_ids": mastery_task_ids,
 			"player_ids": player_ids,
 		}
+
+
+def create_player_payload(puuid: str, **overrides) -> dict:
+	data = {
+		"queueType": "RANKED_SOLO_5x5",
+		"tier": "GOLD",
+		"rank": "I",
+		"puuid": puuid,
+		"leaguePoints": 50,
+		"wins": 10,
+		"losses": 5,
+		"veteran": False,
+		"inactive": False,
+		"freshBlood": False,
+		"hotStreak": False,
+	}
+	data.update(overrides)
+	return data
+
+
+def create_mastery_payload(puuid: str, champion_id: int = 1, **overrides) -> dict:
+	data = {
+		"puuid": puuid,
+		"championId": champion_id,
+		"championLevel": 5,
+		"championPoints": 1000,
+		"lastPlayTime": 1234567890,
+		"championPointsSinceLastLevel": 100,
+		"championPointsUntilNextLevel": 200,
+		"milestoneGrades": [],
+	}
+	data.update(overrides)
+	return data
+
+class FakeResponse:
+	"""Stand-in for requests.Response, no real HTTP involved."""
+
+	def __init__(self, payload, status_code: int = 200):
+		self._payload = payload
+		self.status_code = status_code
+		self.ok = status_code == 200
+		self.text = "" if self.ok else "simulated error"
+
+	def json(self):
+		return self._payload
+
+class FakeAPIClient:
+	"""Minimal stand-in for the APIClient protocol (get_patch/get), with no real network calls."""
+
+	def __init__(self, players_payload=None, masteries_payload=None, patch: str = "15.1", status_code: int = 200):
+		self.players_payload = players_payload if players_payload is not None else []
+		self.masteries_payload = masteries_payload if masteries_payload is not None else []
+		self.patch = patch
+		self.status_code = status_code
+		self.calls: list[tuple[str, dict]] = []
+
+	def get_patch(self) -> str:
+		return self.patch
+
+	def get(self, url: str, **kwargs):
+		self.calls.append((url, kwargs))
+		if "champion-mastery" in url:
+			return FakeResponse(self.masteries_payload, self.status_code)
+		return FakeResponse(self.players_payload, self.status_code)
+
+def assert_valid_player_file(path: Path, *, region: str, queue: str, tier: str, division: str, patch: str, expected_puuids) -> dict:
+	assert path.is_file()
+	payload = json.loads(path.read_text(encoding="utf-8"))
+	assert payload["region"] == region
+	assert payload["queue"] == queue
+	assert payload["tier"] == tier
+	assert payload["division"] == division
+	assert payload["patch"] == patch
+	actual_puuids = {player["puuid"] for player in payload["players"]}
+	assert actual_puuids == set(expected_puuids)
+	return payload
