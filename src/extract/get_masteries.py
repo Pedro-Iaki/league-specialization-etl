@@ -14,7 +14,7 @@ OUTPUT_PATH = BASE_DIR / "data" / "raw" / "masteries"
 OptStr = str | None
 
 def run(run_id: int, api_client: APIClient, limit: int, runs_remaining: int|None = None) -> None:
-	players = db.get_players_missing_masteries(True, limit)
+	players = db.claim_players_missing_masteries(include_stale_success=True, limit=limit)
 	if players is None or len(players) == 0:
 		logger.error("No players missing masteries found.")
 		return
@@ -31,11 +31,6 @@ def run(run_id: int, api_client: APIClient, limit: int, runs_remaining: int|None
 
 	processed = 0
 	for puuid in players:
-		if not puuid or db.get_mastery_status_for_player(puuid) == "in_progress":
-			# We skip player in progress in case another thread is working on it already
-			logger.info(f"Skipping player {puuid} as they are already in progress or invalid.")
-			continue
-		
 		logger.info(f"Fetching mastery data for new player...")
 		player_info = get_player_info(puuid)
 		task_id = db.get_mastery_id_from_list(task_ids, puuid)

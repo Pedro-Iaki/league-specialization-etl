@@ -178,16 +178,16 @@ def test_player_query_operators(mock_conn, db_factory):
 		}
 	)
 
-	missing_default = db.get_players_missing_masteries(conn=mock_conn)
+	missing_default = db.claim_players_missing_masteries(conn=mock_conn, claim=False)
 	assert pending_id in missing_default
 	assert failed_id in missing_default
 	assert stale_success_id not in missing_default
 
-	stale_candidates = db.get_players_missing_masteries(include_stale_success=True, conn=mock_conn)
+	stale_candidates = db.claim_players_missing_masteries(include_stale_success=True, conn=mock_conn, claim=False)
 	assert stale_success_id in stale_candidates
 	assert in_progress_id not in stale_candidates
 
-	limited = db.get_players_missing_masteries(limit=1, conn=mock_conn)
+	limited = db.claim_players_missing_masteries(limit=1, conn=mock_conn, claim=False)
 	assert len(limited) == 1
 
 	assert db.get_mastery_status_for_player(pending_id, conn=mock_conn) == "pending"

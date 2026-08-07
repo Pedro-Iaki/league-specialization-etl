@@ -361,7 +361,7 @@ def cleanup_failed_run(run_id: int, conn: sqlite3.Connection | None = None):
 			conn.close()
 
 
-def get_players_missing_masteries(include_stale_success: bool = False, limit: int | None = None, conn: sqlite3.Connection | None = None) -> list[str]:
+def claim_players_missing_masteries(include_stale_success: bool = False, limit: int | None = None, conn: sqlite3.Connection | None = None, claim: bool = True) -> list[str]:
 	"""
 	Get list of player IDs (puuids) with mastery_status 'failed' or 'pending'.
 	\nIf include_stale_success is True, also include players with 'success' status that:
@@ -369,26 +369,46 @@ def get_players_missing_masteries(include_stale_success: bool = False, limit: in
 	\n- AND the last logged player was added in the last 24 hours
 	"""
 	own_conn = conn is None
+	status = 'in_progress' if claim else 'pending'
 	if own_conn:
 		conn = get_connection()
 	try:
 		if not include_stale_success:
 			cur = conn.execute(
-				"SELECT player_id FROM players_recorded WHERE mastery_status IN ('failed', 'pending')"
-			)
+			"""
+			UPDATE players_recorded 
+			SET mastery_status=? 
+			WHERE player_id IN (
+				SELECT player_id 
+				FROM players_recorded 
+				WHERE mastery_status 
+				IN ('failed', 'pending') 
+				LIMIT ?) 
+			RETURNING player_id
+			""",
+			(status, limit if limit is not None else 1000000)
+		)
 		else:
 			cur = conn.execute(
 				"""
-				SELECT player_id FROM players_recorded
-				WHERE datetime(json_extract(paths_logged_at, '$[' || (json_array_length(paths_logged_at) - 1) || ']'))
-					> datetime('now', '-24 hours')
-				AND json_array_length(paths_logged_at) > 0
-				AND (datetime(mastery_logged_at) < datetime('now', '-7 days') OR mastery_logged_at IS NULL)
-				AND mastery_status != 'in_progress'
-				"""
+				UPDATE players_recorded
+				SET mastery_status=?
+				WHERE player_id IN (
+					SELECT player_id
+					FROM players_recorded
+					WHERE datetime(json_extract(paths_logged_at, '$[' || (json_array_length(paths_logged_at) - 1) || ']')) > datetime('now', '-24 hours')
+					AND json_array_length(paths_logged_at) > 0
+					AND (datetime(mastery_logged_at) < datetime('now', '-7 days') OR mastery_logged_at IS NULL)
+					AND mastery_status != 'in_progress'
+					LIMIT ?
+				)
+				RETURNING player_id
+				""",
+				(status, limit if limit is not None else 1000000)
 			)
-
 		players = [row["player_id"] for row in cur.fetchall()]
+		if own_conn:
+			conn.commit()
 	finally:
 		if own_conn:
 			conn.close()
