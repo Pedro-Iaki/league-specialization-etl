@@ -1,4 +1,5 @@
 import logging
+import random
 import sqlite3
 
 from loguru import logger
@@ -10,8 +11,6 @@ import run_pipeline as pl
 
 @pytest.fixture
 def pipeline_stub(monkeypatch: pytest.MonkeyPatch):
-	"""Stub side-effectful runtime parts so tests focus on env/config handling."""
-
 	class DummyClient:
 		def __init__(self, api_key: str):
 			self.api_key = api_key
@@ -55,8 +54,7 @@ def db_factory():
 
 @pytest.fixture
 def mock_db(tmp_path, monkeypatch: pytest.MonkeyPatch):
-	"""Patch pipeline_db.get_connection so any module using it (get_players, get_masteries,
-	verify_integrity, pipeline_db itself) reads/writes an isolated test database file."""
+	"""Patch pipeline_db.get_connection so any module using it reads/writes an isolated test database file."""
 	db_path = tmp_path / "test_pipeline.db"
 
 	conn = sqlite3.connect(db_path)
@@ -78,7 +76,6 @@ def mock_db(tmp_path, monkeypatch: pytest.MonkeyPatch):
 	return pl.db
 
 
-#make loguru work with pytest, so we can capture loguru logs in pytest by redirecting them to the standard logging
 @pytest.fixture(autouse=True)
 def _loguru_to_caplog():
 	logger.remove()  # strip loguru's default stderr sink
@@ -89,3 +86,15 @@ def _loguru_to_caplog():
 class PropagateHandler(logging.Handler):
 	def emit(self, record):
 		logging.getLogger(record.name).handle(record)
+
+#seeds for the random and faker modules, and a way to log it
+SUITE_SEED = random.randint(0, 2**32 - 1)
+logger.info(f"Seed: {SUITE_SEED}")
+
+@pytest.fixture(scope="session", autouse=True)
+def faker_seed():
+    return SUITE_SEED
+
+@pytest.fixture(scope="session", autouse=True)
+def global_runtime_seed():
+    random.seed(SUITE_SEED)

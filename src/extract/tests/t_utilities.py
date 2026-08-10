@@ -3,7 +3,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 
-import faker
 import pytest
 from faker import Faker
 
@@ -378,7 +377,7 @@ def create_mastery_payload(puuid: str, champion_id: int = 1, **overrides) -> dic
 	return data
 
 class FakeResponse:
-	"""Stand-in for requests.Response, no real HTTP involved."""
+	"""Stand-in for requests.Response"""
 
 	def __init__(self, payload, status_code: int = 200):
 		self._payload = payload
@@ -390,7 +389,7 @@ class FakeResponse:
 		return self._payload
 
 class FakeAPIClient:
-	"""Minimal stand-in for the APIClient protocol (get_patch/get), with no real network calls."""
+	"""Minimal stand-in for the APIClient protocol"""
 
 	def __init__(self, players_payload=None, masteries_payload=None, patch: str = "15.1", status_code: int = 200):
 		self.players_payload = players_payload if players_payload is not None else []
