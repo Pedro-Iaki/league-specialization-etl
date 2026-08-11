@@ -99,6 +99,13 @@ def verify_files_integrity() -> dict:
 	duplicated_mastery_rate = f"{(len(duplicated_masteries_puuids) / len(all_puuids_masteries) if all_puuids_masteries else 0) * 100:.2f}%"
 	duplicated_player_rate = f"{(len(duplicated_player_puuids) / len(all_puuids_players) if all_puuids_players else 0) * 100:.2f}%"
 	average_duplicity_per_player_file = sum(len(v) for v in all_puuids_players.values()) / len(all_puuids_players) if len(all_puuids_players) else 0 #sum all puuid paths and divide by number of files
+	
+	conn = db.get_connection()
+	db_players = [row["player_id"] for row in conn.execute("SELECT player_id FROM players_recorded")]
+	conn.close()
+	unregistered_players = [puuid for puuid in all_puuids_players if puuid not in db_players]
+	wrongfully_registered_players = [puuid for puuid in db_players if puuid not in all_puuids_players]
+ 
 		
 	log_data = {
 		"total_evaluated": total_evaluated,
@@ -111,10 +118,14 @@ def verify_files_integrity() -> dict:
 		"duplicated_players": duplicated_player_puuids,
 		"duplicated_mastery_rate": duplicated_mastery_rate,
 		"duplicated_masteries": duplicated_masteries_puuids,
-		"missing_masteries_count": len(missing_masteries_puuids),
-		"missing_masteries": [{"puuid": puuid, "source_file": source_file} for puuid, source_file in missing_masteries_puuids.items()],
-		"missing_players_count": len(missing_player_puuids),
-		"missing_players": [{"puuid": puuid, "source_file": source_file} for puuid, source_file in missing_player_puuids.items()],
+		"players_missing_masteries_count": len(missing_masteries_puuids),
+		"players_missing_masteries": [{"puuid": puuid, "source_file": source_file} for puuid, source_file in missing_masteries_puuids.items()],
+		"masteries_missing_players_count": len(missing_player_puuids),
+		"masteries_missing_players": [{"puuid": puuid, "source_file": source_file} for puuid, source_file in missing_player_puuids.items()],
+		"unregistered_players_count": len(unregistered_players),
+		"unregistered_players": unregistered_players,
+		"wrongfully_registered_players_count": len(wrongfully_registered_players),
+		"wrongfully_registered_players": wrongfully_registered_players,
 		"faulty_files": [{"source_file": str(broken_file)} for broken_file in broken_files],
 	}
 		
