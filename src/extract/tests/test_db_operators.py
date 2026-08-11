@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timedelta, timezone
-import pipeline_db as db
+import extraction_db_helper as db
 import t_utilities as util
 
 util.set_path_for_extract_modules()

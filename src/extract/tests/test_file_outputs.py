@@ -4,7 +4,7 @@ from pathlib import Path
 
 import get_masteries
 import get_players
-import pipeline_db as db
+import extraction_db_helper as db
 import t_utilities as util
 
 util.set_path_for_extract_modules()

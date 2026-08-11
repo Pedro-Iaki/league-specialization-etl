@@ -8,8 +8,8 @@ import os
 import shutil
 from loguru import logger
 
-DB_PATH = "data/database/pipeline_meta.db"
-SCHEMA_PATH = "src/extract/schemas.sql"
+DB_PATH = "data/database/extraction.db"
+SCHEMA_PATH = "src/extract/extraction_schemas.sql"
 PLAYERS_DIR = "data/raw/players"
 MASTERIES_DIR = "data/raw/masteries"
 

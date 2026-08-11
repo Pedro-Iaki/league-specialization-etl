@@ -1,9 +1,9 @@
 from pathlib import Path
 
-import init_db
+import init_extraction_db as init_extraction_db
 import get_players
 import get_masteries
-import pipeline_db
+import extraction_db_helper as extraction_db_helper
 import run_pipeline
 import verify_integrity
 import t_utilities as util
@@ -37,8 +37,8 @@ def test_run_pipeline_config_path():
 
 
 def test_pipeline_db_path_is_relative_to_repo_root():
-	assert pipeline_db.DB_PATH == "data/database/pipeline_meta.db"
-	assert (REPO_ROOT / pipeline_db.DB_PATH).parent == REPO_ROOT / "data" / "database"
+	assert extraction_db_helper.DB_PATH == "data/database/extraction.db"
+	assert (REPO_ROOT / extraction_db_helper.DB_PATH).parent == REPO_ROOT / "data" / "database"
 
 
 def test_expected_directories_exist_on_disk():
@@ -51,12 +51,12 @@ def test_expected_directories_exist_on_disk():
 
 def test_config_and_schema_files_exist_on_disk():
 	assert run_pipeline.CONFIG_PATH.is_file()
-	schema_path = REPO_ROOT / "src" / "extract" / "schemas.sql"
+	schema_path = REPO_ROOT / "src" / "extract" / "extraction_schemas.sql"
 	assert schema_path.is_file()
 
 
 def test_init_db_paths_match_expected_targets():
-	assert init_db.DB_PATH == "data/database/pipeline_meta.db"
-	assert init_db.PLAYERS_DIR == "data/raw/players"
-	assert init_db.MASTERIES_DIR == "data/raw/masteries"
-	assert init_db.SCHEMA_PATH == "src/extract/schemas.sql"
+	assert init_extraction_db.DB_PATH == "data/database/extraction.db"
+	assert init_extraction_db.PLAYERS_DIR == "data/raw/players"
+	assert init_extraction_db.MASTERIES_DIR == "data/raw/masteries"
+	assert init_extraction_db.SCHEMA_PATH == "src/extract/extraction_schemas.sql"

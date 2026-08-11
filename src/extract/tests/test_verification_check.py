@@ -95,10 +95,10 @@ def test_verify_files_integrity_detects_missing_and_duplicated_puuids(tmp_path, 
 	assert result["total_player_files"] == 2  # unique puuids: p1, p2
 	assert result["total_mastery_files"] == 2  # unique puuids: p1, p3
 
-	missing_masteries_puuids = {entry["puuid"] for entry in result["missing_masteries"]}
+	missing_masteries_puuids = {entry["puuid"] for entry in result["players_missing_masteries"]}
 	assert missing_masteries_puuids == {"p2"}
 
-	missing_players_puuids = {entry["puuid"] for entry in result["missing_players"]}
+	missing_players_puuids = {entry["puuid"] for entry in result["masteries_missing_players"]}
 	assert missing_players_puuids == {"p3"}
 
 	assert "p1" in result["duplicated_players"]

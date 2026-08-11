@@ -7,9 +7,9 @@ After running for the designated amount of loops, the pipeline will verify the i
 from datetime import datetime
 from get_players import run as extract_players
 from get_masteries import run as extract_masteries
-import pipeline_db as db
+import extraction_db_helper as db
 import os
-import client
+import api_client as client
 from loguru import logger
 from dotenv import load_dotenv
 from pathlib import Path

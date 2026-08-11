@@ -1,7 +1,7 @@
 from collections import defaultdict
 import json
 from pathlib import Path
-import pipeline_db as db
+import extraction_db_helper as db
 from tqdm import tqdm
 from loguru import logger
 

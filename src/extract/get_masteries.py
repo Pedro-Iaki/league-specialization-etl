@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-import pipeline_db as db
+import extraction_db_helper as db
 import pydantic_models as models
 from api_client_protocol import APIClient
 from loguru import logger

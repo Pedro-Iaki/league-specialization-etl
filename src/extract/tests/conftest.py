@@ -37,7 +37,7 @@ def mock_conn(tmp_path):
 	conn.execute("PRAGMA foreign_keys=ON;")
 	conn.row_factory = sqlite3.Row
 
-	schema_path = Path(__file__).resolve().parents[1] / "schemas.sql"
+	schema_path = Path(__file__).resolve().parents[1] / "extraction_schemas.sql"
 	SCHEMA = schema_path.read_text(encoding="utf-8")
 	conn.executescript(SCHEMA)
 	conn.commit()
@@ -60,7 +60,7 @@ def mock_db(tmp_path, monkeypatch: pytest.MonkeyPatch):
 	conn = sqlite3.connect(db_path)
 	conn.execute("PRAGMA journal_mode=WAL;")
 	conn.execute("PRAGMA foreign_keys=ON;")
-	schema_path = Path(__file__).resolve().parents[1] / "schemas.sql"
+	schema_path = Path(__file__).resolve().parents[1] / "extraction_schemas.sql"
 	conn.executescript(schema_path.read_text(encoding="utf-8"))
 	conn.commit()
 	conn.close()

@@ -4,7 +4,7 @@ import sqlite3
 from datetime import datetime, timezone
 from loguru import logger
 
-DB_PATH = "data/database/pipeline_meta.db"
+DB_PATH = "data/database/extraction.db"
 OptStr = str | None
 
 
