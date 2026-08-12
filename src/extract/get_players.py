@@ -86,15 +86,25 @@ def pick_least_populated_division(region: str, queue: str, patch: str, tier: Opt
 	division = candidate[0][1]
 	return tier, division
 
-def fetch_players(task_id: int, api_client: APIClient, region: str, queue: str, tier: str, division: str, patch: str) -> list[dict] | None:
+def fetch_players(task_id: int, api_client: APIClient, region: str, queue: str, tier: str, division: str, patch: str, recursion_limit: int = 5) -> list[dict] | None:
 	if api_client is None:
 		logger.error("No API client provided. Please set the RIOT_API_KEY environment variable and provide a valid API client.")
+		return None
+	if recursion_limit <= 0:
+		logger.error(f"Recursion limit reached while fetching players for {region} {queue} {tier} {division}.")
 		return None
 
 	page, loop = db.get_page_and_loop(region, queue, tier, division, patch)
 	url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}"
 	db.update_player_task(task_id, "in_progress")
-	response = api_client.get(url, params={"page": page})
+ 
+	try:
+		response = api_client.get(url, params={"page": page})
+	except Exception as e:
+		logger.error(f"Error fetching players for {region} {queue} {tier} {division}: {e}")
+		db.update_player_task(task_id, "failed", error_message="retry limit reached.")
+		return None
+
 	if not response.ok:
 		logger.error(f"Error fetching players for {region} {queue} {tier} {division}: {response.status_code} - {response.text}")
 		db.update_player_task(task_id, "failed", error_message=f"Error: {response.status_code} - {response.text}")
@@ -107,7 +117,7 @@ def fetch_players(task_id: int, api_client: APIClient, region: str, queue: str, 
 		db.update_page_info(region, queue, tier, division, patch, len(validated_players))
 		if len(validated_players) == 0:
 			logger.warning(f"No players found for {region} {queue} {tier} {division}. Re-Fetching next page.")
-			return fetch_players(task_id=task_id, api_client=api_client, region=region, queue=queue, tier=tier, division=division, patch=patch)
+			return fetch_players(task_id=task_id, api_client=api_client, region=region, queue=queue, tier=tier, division=division, patch=patch, recursion_limit=recursion_limit-1)
 		else:
 			return validated_players
 	except Exception as e:

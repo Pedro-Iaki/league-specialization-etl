@@ -87,7 +87,7 @@ def verify_files_integrity() -> dict:
 	for puuid, paths in tqdm(all_puuids_players.items(), desc="Verifying player records", unit="record"):
 		#if a puuid is present in players but not present in masteries, add to missing_masteries_puuids
 		if puuid not in all_puuids_masteries:
-			missing_masteries_puuids[puuid] = puuid
+			missing_masteries_puuids[puuid] = ", ".join(str(p) for p in paths)
 		
 		#if a puuid has more than one file, add to duplicated_puuids
 		if len(paths) > 1:

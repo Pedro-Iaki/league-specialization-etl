@@ -100,7 +100,12 @@ def fetch_player_masteries(
 		db.update_mastery_task(task_id, "in_progress", patch)
 
 	url = f"https://{region}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}"
-	response = api_client.get(url)
+	try:
+		response = api_client.get(url)
+	except Exception as e:
+		logger.error(f"Error fetching mastery data for player {puuid}: {e}")
+		db.update_mastery_task(task_id, "failed", patch, error_message="retry limit reached.")
+		return None
 	
 	if not response.ok:
 		db.update_mastery_task(task_id, "failed", patch, error_message=f"Error: {response.status_code} - {response.text}")
