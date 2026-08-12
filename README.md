@@ -247,15 +247,15 @@ pytest
 ## Project Structure
 
 ```text
-├── config/
+├── config/ # The thing you care about if you want to use it
 │   └── EXTRACTION_CONFIG.env
 │
-├── sandbox/
+├── sandbox/ # IGNORE, these are sketches of data transformations
 │   ├── Initial_Cleaning.py
 │   └── Transformation_Experiments.py
 │
 ├── src/
-│   ├── extract/
+│   ├── extract/ # all scripts related to extracting the data initially
 │   │   ├── tests/
 │   │   ├── api_client.py
 │   │   ├── api_client_protocol.py
@@ -268,7 +268,7 @@ pytest
 │   │   ├── run_pipeline.py
 │   │   └── verify_integrity.py
 │   │
-│   ├── transform/
+│   ├── transform/ # WIP, but handles the data wrangling and subsequent organization
 │   │   ├── tests/
 │   │   ├── consolidate_silver.py
 │   │   ├── init_transform_db.py
@@ -277,13 +277,13 @@ pytest
 │   │   └── transform_schemas.sql
 │   │
 │   ├── load/
-│   └── pydantic_models.py
+│   └── pydantic_models.py # Models used by pydantic to validate our data
 │
-├── data/
+├── data/ # Where your data, Bronze -> Gold, will end up at
 ├── README.md
 ├── pyproject.toml
 ├── requirements.txt
-└── TODO
+└── TODO # IGNORE as well
 ```
 
 ## Roadmap
