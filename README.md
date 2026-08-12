@@ -136,20 +136,20 @@ A simplified layout:
 
 ```text
 data/
-├── raw/
+├── raw/ # Unprocessed, extracted from the src/extract scripts
 │   ├── players/
 │   └── masteries/
 │
-├── silver/
+├── silver/ # Cleaned parquets, but not yet setup for analysis
 │   ├── players/
 │   ├── masteries/
 │   └── assurance/
 │
-├── quarantine/
+├── quarantine/ # Files or records that couldn't be salvaged
 │   ├── players_invalid.parquet
 │   └── masteries_invalid.parquet
 │
-└── database/
+└── database/ # Local orchestration databases for each step
     ├── extraction.db
     └── transform.db
 ```
@@ -166,7 +166,16 @@ data/
 ```bash
 git clone https://github.com/<your-username>/league-specialization-etl.git
 cd league-specialization-etl
+
+# Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Install the project itself in editable mode
+pip install -e .
 ```
 
 ### Configuration
