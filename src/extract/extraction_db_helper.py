@@ -373,23 +373,23 @@ def claim_players_missing_masteries(include_stale_success: bool = False, limit: 
 	if own_conn:
 		conn = get_connection()
 	try:
-		if not include_stale_success:
-			cur = conn.execute(
-			"""
-			UPDATE players_recorded 
-			SET mastery_status=? 
-			WHERE player_id IN (
-				SELECT player_id 
-				FROM players_recorded 
-				WHERE mastery_status 
-				IN ('failed', 'pending') 
-				LIMIT ?) 
-			RETURNING player_id
-			""",
-			(status, limit if limit is not None else 1000000)
+		cur = conn.execute(
+		"""
+		UPDATE players_recorded 
+		SET mastery_status=? 
+		WHERE player_id IN (
+			SELECT player_id 
+			FROM players_recorded 
+			WHERE mastery_status 
+			IN ('failed', 'pending') 
+			LIMIT ?) 
+		RETURNING player_id
+		""",
+		(status, limit if limit is not None else 1000000)
 		)
-		else:
-			cur = conn.execute(
+		players_found = cur.fetchall()
+		if include_stale_success:
+			cur_stale = conn.execute(
 				"""
 				UPDATE players_recorded
 				SET mastery_status=?
@@ -398,15 +398,16 @@ def claim_players_missing_masteries(include_stale_success: bool = False, limit: 
 					FROM players_recorded
 					WHERE datetime(json_extract(paths_logged_at, '$[' || (json_array_length(paths_logged_at) - 1) || ']')) > datetime('now', '-24 hours')
 					AND json_array_length(paths_logged_at) > 0
-					AND (datetime(mastery_logged_at) < datetime('now', '-7 days') OR mastery_logged_at IS NULL)
-					AND mastery_status != 'in_progress'
+					AND datetime(mastery_logged_at) < datetime('now', '-7 days')
+					AND mastery_status = 'success'
 					LIMIT ?
 				)
 				RETURNING player_id
 				""",
 				(status, limit if limit is not None else 1000000)
 			)
-		players = [row["player_id"] for row in cur.fetchall()]
+			players_found += cur_stale.fetchall()
+		players = [row["player_id"] for row in players_found]
 		if own_conn:
 			conn.commit()
 	finally:

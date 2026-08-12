@@ -14,7 +14,7 @@ from loguru import logger
 from dotenv import load_dotenv
 from pathlib import Path
 import verify_integrity as verify
-import pydantic_models as models
+import src.pydantic_models as models
 
 BASE_DIR = Path(__file__).resolve().parents[2] 
 CONFIG_PATH = BASE_DIR / "config" / "EXTRACTION_CONFIG.env"
