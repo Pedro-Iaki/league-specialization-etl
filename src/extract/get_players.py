@@ -74,7 +74,7 @@ def run(
             patch=patch, region=region, queue=queue, tier=tier, division=division
         )
     )
-    snapshot_players = set(player["puuid"] for player in players if player.get("puuid"))
+    snapshot_players = {player["puuid"] for player in players if player.get("puuid")}
     unique_new_players = sum(
         1 for item in snapshot_players if item not in recorded_players
     )
@@ -166,13 +166,13 @@ def fetch_players(
         )
         return None
 
-    page, loop = db.get_page_and_loop(region, queue, tier, division, patch)
+    page, _loop = db.get_page_and_loop(region, queue, tier, division, patch)
     url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}"
     db.update_player_task(task_id, "in_progress")
 
     try:
         response = api_client.get(url, params={"page": page})
-    except Exception as e:
+    except TimeoutError as e:
         logger.error(
             f"Error fetching players for {region} {queue} {tier} {division}: {e}"
         )
@@ -215,7 +215,7 @@ def fetch_players(
             )
         else:
             return validated_players
-    except Exception as e:
+    except RuntimeError as e:
         logger.error(
             f"Error validating player data for {region} {queue} {tier} {division}: {e}"
         )
@@ -236,29 +236,33 @@ def save_players(
 ) -> Path:
     partitions = [
         ("region", region),
-        ("queue", queue),
+        ("queueType", queue),
         ("tier", tier),
+        ("rank", division),
         ("patch", patch),
         ("date", date),
     ]
     output_path = output_helper.get_partitioned_path(output_path, partitions)
-    output_path = output_path / build_players_filename(division, time)
+    output_path = output_path / build_players_filename(time)
 
-    payload = {
-        "region": region,
-        "queue": queue,
-        "tier": tier,
-        "division": division,
-        "patch": patch,
-        "loose_date": date,
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
-        "players": players,
-    }
-
-    output_helper.write_json(payload, output_path)
+    slim_players = drop_partitioned_player_columns(players)
+    output_helper.write_parquet(slim_players, output_path)
     return output_path
 
 
-def build_players_filename(division: str, time: OptStr = None) -> str:
+def build_players_filename(time: OptStr = None) -> str:
     timestamp = time if time else datetime.now(timezone.utc).strftime("%H%M%S")
-    return f"players_{division}_{timestamp}.json"
+    return f"players_{timestamp}.parquet"
+
+
+def drop_partitioned_player_columns(players: list[dict]) -> list[dict]:
+    slim_players = []
+    partitions = ["queueType", "tier", "rank"]
+    for player in players:
+        slim_player = player.copy()
+        for key in partitions:
+            if key in slim_player:
+                del slim_player[key]
+        slim_players.append(slim_player)
+
+    return slim_players

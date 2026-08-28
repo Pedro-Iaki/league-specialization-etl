@@ -1,6 +1,7 @@
 """Helper script to handle all local database operations for the pipeline.
 Most operations take an optional conn parameter, mostly for testing with mocked values, but keep in mind that whoever passes it must also handle the connection fully"""
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 
@@ -789,6 +790,128 @@ def update_page_info(
             )
             return 0
         return int(row["current_page"])
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def add_compaction_task(
+    dataset: str,
+    output_path: str,
+    conn: sqlite3.Connection | None = None,
+) -> int:
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            """
+			INSERT INTO compaction_tasks (dataset, output_path, status, started_at)
+			VALUES (?, ?, 'pending', ?)
+			""",
+            (dataset, output_path, now()),
+        )
+        if own_conn:
+            conn.commit()
+        task_id = cur.lastrowid
+    finally:
+        if own_conn:
+            conn.close()
+    int_id = int(task_id or -1)
+    if int_id < 0:
+        logger.error(
+            f"Failed to add a new compaction task for {dataset} output {output_path}."
+        )
+    return int_id
+
+
+def update_compaction_task(
+    task_id: int,
+    status: str,
+    paths_compressed: list[str] | None = None,
+    source_file_count: int = 0,
+    rows_written: int = 0,
+    error_message: OptStr = None,
+    conn: sqlite3.Connection | None = None,
+):
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        conn.execute(
+            """
+			UPDATE compaction_tasks
+			SET status=?,
+				finished_at=?,
+				paths_compressed=?,
+				source_file_count=?,
+				rows_written=?,
+				error_message=?
+			WHERE task_id=?
+			""",
+            (
+                status,
+                now(),
+                json.dumps(paths_compressed),
+                source_file_count,
+                rows_written,
+                error_message,
+                task_id,
+            ),
+        )
+        if own_conn:
+            conn.commit()
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def update_compaction_records(
+    task_id: int,
+    dataset: str,
+    old_paths: list[str],
+    new_path: str,
+    conn: sqlite3.Connection | None = None,
+):
+    """Point the player records that used the old raw files at the new compacted
+    file. The update is scoped to the last logged player path for players, and to
+    the mastery_path for masteries, matching the dataset-specific lineage.
+    """
+    if not old_paths:
+        return -1
+
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        placeholders = ",".join(["?"] * len(old_paths))
+
+        if dataset == "players":
+            cur = conn.execute(
+                f"""
+				UPDATE players_recorded
+				SET latest_player_compacted_task_id = ?,
+				    latest_player_compacted_path = ?
+				WHERE json_extract(paths, '$[' || (json_array_length(paths) - 1) || ']') IN ({placeholders})
+				""",
+                (task_id, new_path, *old_paths),
+            )
+        elif dataset == "masteries":
+            cur = conn.execute(
+                f"""
+				UPDATE players_recorded
+				SET mastery_compacted_task_id = ?,
+				    mastery_compacted_path = ?
+				WHERE mastery_path IN ({placeholders})
+				""",
+                (task_id, new_path, *old_paths),
+            )
+        else:
+            raise ValueError(f"Unknown compaction dataset: {dataset}")
+
+        if own_conn:
+            conn.commit()
+        return int(cur.rowcount or -1)
     finally:
         if own_conn:
             conn.close()

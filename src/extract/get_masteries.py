@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from loguru import logger
@@ -118,7 +118,7 @@ def fetch_player_masteries(
     url = f"https://{region}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}"
     try:
         response = api_client.get(url)
-    except Exception as e:
+    except TimeoutError as e:
         logger.error(f"Error fetching mastery data for player {puuid}: {e}")
         db.update_mastery_task(
             task_id, "failed", patch, error_message="retry limit reached."
@@ -141,7 +141,7 @@ def fetch_player_masteries(
             for m in raw_payload
         ]
         return validated_masteries
-    except Exception as e:
+    except RuntimeError as e:
         logger.error(f"Error validating mastery data for player {puuid}: {e}")
         db.update_mastery_task(
             task_id, "failed", patch, error_message=f"Validation error: {e}"
@@ -170,24 +170,16 @@ def save_masteries(
     date = date.strftime("%y%m%d")
     partitions = [
         ("region", region),
-        ("queue", queue),
+        ("queueType", queue),
         ("tier", tier),
+        ("rank", division),
         ("patch", patch),
         ("date", date),
     ]
     partitioned_path = output_helper.get_partitioned_path(output_path, partitions)
     this_path = (
-        partitioned_path
-        / f"masteries_{division}_{time.strftime('%H%M%S')}_{puuid}.json"
+        partitioned_path / f"masteries_{time.strftime('%H%M%S')}_{puuid}.parquet"
     )
-    payload = {
-        "puuid": puuid,
-        "region": region,
-        "queue": queue,
-        "tier": tier,
-        "division": division,
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
-        "masteries": mastery_rows,
-    }
-    output_helper.write_json(payload, this_path)
+
+    output_helper.write_parquet(mastery_rows, this_path)
     return this_path

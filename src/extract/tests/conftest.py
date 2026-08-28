@@ -1,14 +1,15 @@
 import logging
 import random
 import sqlite3
-
-from loguru import logger
-import pytest
-import t_utilities as util
 from pathlib import Path
 
+import pytest
+from loguru import logger
+
+import extract.tests.t_utilities as util
+
 util.set_path_for_extract_modules()
-import run_pipeline as pl
+import extract.run_pipeline as pl
 
 
 @pytest.fixture

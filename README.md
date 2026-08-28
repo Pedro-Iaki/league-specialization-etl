@@ -259,7 +259,7 @@ pytest
 │   │   ├── tests/
 │   │   ├── api_client.py
 │   │   ├── api_client_protocol.py
-│   │   ├── extraction_db_helper.py
+│   │   ├── extract.extraction_db_helper.py
 │   │   ├── extraction_schemas.sql
 │   │   ├── get_masteries.py
 │   │   ├── get_players.py

@@ -6,14 +6,16 @@ After running for the designated amount of loops, the pipeline will verify the i
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
 from loguru import logger
 
 import extract.api_client as client
+import extract.compact_parquets as compact
 import extract.extraction_db_helper as db
+import extract.init_extraction_db as init_db
 import extract.verify_integrity as verify
 import pydantic_models as models
 from extract.get_masteries import run as extract_masteries
@@ -33,9 +35,12 @@ def run_pipeline(config_path: Path = CONFIG_PATH) -> bool:
         validated_manifest = models.ExtractionConfigManifest.model_validate(
             config_manifest
         ).model_dump()
-    except Exception as e:
+    except RuntimeError as e:
         logger.error(f"Invalid configuration: {e}")
         return False
+
+    if not init_db.db_exists():
+        init_db.reset_database_and_directories()
 
     db.cleanup_stale_runs()
     if not db.is_active():
@@ -53,8 +58,9 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
     pages_per_division = int(config_manifest["players_fetch_depth"])
     target_tier = config_manifest["tiers"]
     target_division = config_manifest["divisions"]
+    mastery_limit = int(config_manifest["mastery_task_limit"])
     runs_remaining = pages_per_division * len(target_tier) * len(target_division)
-    date = datetime.now().isoformat()
+    date = datetime.now(timezone.utc).isoformat()
     try:
         while runs_remaining > 0:
             run_id = db.start_run(
@@ -68,16 +74,20 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
                 queue=config_manifest["queue"],
             )
             extract_masteries(
-                run_id, api_client=api_client, limit=400, runs_remaining=runs_remaining
+                run_id,
+                api_client=api_client,
+                limit=mastery_limit,
+                runs_remaining=runs_remaining,
             )  # set a higher than the limit riot gives us (205 at the time of writing) but thats so we can find some extra masteries if we missed some players in the last run, while not freezing the application searching through potentially thousands of players for masteries
             db.finish_run(run_id, "success")
             runs_remaining -= 1
-    except Exception as e:
+    except RuntimeError as e:
         logger.exception(f"An error occurred during the pipeline run: {e}")
         db.finish_run(run_id, "failed")
         db.cleanup_failed_run(run_id)
         return False
 
+    compact.run()
     verify.run_integrity_check(config_manifest["full_check"])
     return True
 
@@ -87,6 +97,7 @@ def get_configs(config_path: Path) -> tuple[dict, bool]:
     api_key = os.getenv("RIOT_API_KEY")
     version = os.getenv("VERSION")
     players_fetch_depth = os.getenv("PLAYERS_FETCH_DEPTH")
+    mastery_task_limit = os.getenv("MASTERY_TASK_LIMIT")
     full_check = os.getenv("FULL_VERIFICATION_POST", "false").lower() == "true"
     region = os.getenv("REGION")
     queue = os.getenv("QUEUE")
@@ -94,13 +105,21 @@ def get_configs(config_path: Path) -> tuple[dict, bool]:
         "TIERS", "DIAMOND,EMERALD,PLATINUM,GOLD,SILVER,BRONZE,IRON"
     ).split(",")
     divisions = os.getenv("DIVISIONS", "I,II,III,IV").split(",")
-    if not api_key or not version or not players_fetch_depth or not region or not queue:
+    if (
+        not api_key
+        or not version
+        or not players_fetch_depth
+        or not mastery_task_limit
+        or not region
+        or not queue
+    ):
         logger.error("Missing required environment variables.")
         return {}, False
     return {
         "api_key": api_key,
         "version": version,
         "players_fetch_depth": players_fetch_depth,
+        "mastery_task_limit": mastery_task_limit,
         "full_check": full_check,
         "region": region,
         "queue": queue,

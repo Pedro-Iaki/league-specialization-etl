@@ -84,8 +84,7 @@ class RiotAPIClient:
                             )
 
                     logger.info(
-                        "Efficiency at %.2f%%",
-                        max(bucket.calculate_efficiency() for bucket in self.buckets),
+                        f"Efficiency at {max(bucket.calculate_efficiency() for bucket in self.buckets):.2f}%"
                     )
 
                     return

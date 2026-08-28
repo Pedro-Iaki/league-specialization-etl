@@ -1,11 +1,14 @@
-from collections import defaultdict
 import json
-from pathlib import Path
-import extraction_db_helper as db
-from tqdm import tqdm
-from loguru import logger
 import sqlite3
+from collections import defaultdict
+from pathlib import Path
 
+import pyarrow.parquet as pq
+from loguru import logger
+from tqdm import tqdm
+
+import extract.compact_parquets as compact
+import extract.extraction_db_helper as db
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 PLAYERS_INPUT_PATH = BASE_DIR / "data" / "raw" / "players"
@@ -19,14 +22,14 @@ def run_integrity_check(full: bool = False):
     results = {}
     logger.info(f"Starting integrity check. Full mode: {full}")
     if full:
-        logger.info("Running files integrity check, this may take a while...")
         files_log = verify_files_integrity()
+        compaction_log = verify_compaction_integrity()
+        results["compaction"] = compaction_log
         results["files"] = files_log
-    logger.info("Running database integrity check...")
     database_log = verify_db_integrity()
     results["database"] = database_log
     logger.info(
-        f"\nIntegrity check completed, check ./data/logs for in-depth results. Summary: \nTotal players in database: {database_log.get('total_player_records', 0)}\nFaulty or incomplete records: {database_log.get('faulty_records_count', 0)}\nDuplicated player rate: {database_log.get('duplicated_players', 0)}\nDiscarded duplicated snapshots: {database_log.get('discarded_player_tasks', 0)}\nPlayer task error rate: {database_log.get('player_task_error_rate', 0)}\nMastery task error rate: {database_log.get('mastery_task_error_rate', 0)}"
+        f"\nIntegrity check completed, check ./data/logs for in-depth results. Summary: \nTotal players in database: {database_log.get('total_player_records', 0)}\nFaulty or incomplete records: {database_log.get('faulty_records_count', 0)}\nDuplicated player rate: {database_log.get('duplicated_players', 0)}\nDiscarded duplicated snapshots: {database_log.get('discarded_player_tasks', 0)}\nPlayer task error rate: {database_log.get('player_task_error_rate', 0)}\nMastery task error rate: {database_log.get('mastery_task_error_rate', 0)}\nUncompacted files: {compaction_log.get('unaccounted_raw_files_count', 0)}"
     )
     return results
 
@@ -43,42 +46,39 @@ def verify_files_integrity() -> dict:
     db.cleanup_stale_runs()
 
     # get all players
-    player_files = set(PLAYERS_INPUT_PATH.rglob("*.json"))
+    player_files = set(PLAYERS_INPUT_PATH.rglob("*.parquet"))
     for player_file in tqdm(player_files, desc="Verifying player files", unit="file"):
         try:
-            payload = json.loads(player_file.read_text(encoding="utf-8"))
-            players = payload.get("players", [])
-            if not players or not isinstance(players, list):
+            table = pq.read_table(player_file)
+            if table.num_rows == 0 or "puuid" not in table.column_names:
                 broken_files.append(player_file)
                 continue
-            for player in players:
-                puuid = player.get("puuid")
+            for puuid in table.column("puuid").to_pylist():
                 if not puuid:
                     continue
                 all_puuids_players[puuid].append(player_file)
 
-        except Exception as e:
+        except RuntimeError as e:
+            logger.error(f"Failed to read player file {player_file}: {e}")
             continue
 
     # get all masteries
-    mastery_files = set(MASTERIES_PATH.rglob("*.json"))
+    mastery_files = set(MASTERIES_PATH.rglob("*.parquet"))
     for mastery_file in tqdm(
         mastery_files, desc="Verifying mastery files", unit="file"
     ):
         try:
-            payload = json.loads(mastery_file.read_text(encoding="utf-8"))
-            masteries = payload.get("masteries", [])
-            if not masteries or not isinstance(masteries, list):
+            table = pq.read_table(mastery_file)
+            if table.num_rows == 0 or "puuid" not in table.column_names:
                 broken_files.append(mastery_file)
                 continue
-            first_mastery = masteries[0]
-            if first_mastery:
-                puuid = first_mastery.get("puuid")
+            for puuid in table.column("puuid").to_pylist():
                 if not puuid:
                     continue
                 all_puuids_masteries[puuid] = mastery_file
 
-        except Exception as e:
+        except RuntimeError as e:
+            logger.error(f"Failed to read mastery file {mastery_file}: {e}")
             continue
 
     for puuid, mastery_file in tqdm(
@@ -175,7 +175,7 @@ def verify_files_integrity() -> dict:
     return log_data
 
 
-def verify_db_integrity(conn: sqlite3.Connection = None) -> dict[any]:  # type: ignore #
+def verify_db_integrity(conn: sqlite3.Connection | None = None) -> dict[any]:  # type: ignore #
     own_conn = conn is not None
     if not own_conn:
         conn = db.get_connection()
@@ -218,7 +218,7 @@ def verify_db_integrity(conn: sqlite3.Connection = None) -> dict[any]:  # type: 
     paths_counts = []
 
     for record in tqdm(
-        player_records.values(), desc="Verifying player records", unit="record"
+        player_records.values(), desc="Verifying database records", unit="record"
     ):
         issues = []
 
@@ -237,7 +237,7 @@ def verify_db_integrity(conn: sqlite3.Connection = None) -> dict[any]:  # type: 
                     issues.append("empty_paths")
                 else:
                     paths_counts.append(len(paths_list))
-            except:
+            except RuntimeError:
                 issues.append("invalid_paths")
 
         player_task_ids = record.get("player_task_ids")
@@ -259,7 +259,7 @@ def verify_db_integrity(conn: sqlite3.Connection = None) -> dict[any]:  # type: 
                             and player_tasks[task_id]["status"] != "success"
                         ):
                             issues.append(f"player_task_{task_id}_not_success")
-            except:
+            except RuntimeError:
                 issues.append("invalid_player_task_ids")
 
         mastery_task_id = record.get("mastery_task_id")
@@ -268,12 +268,11 @@ def verify_db_integrity(conn: sqlite3.Connection = None) -> dict[any]:  # type: 
         else:
             if mastery_status == "success" and not mastery_task_id:
                 issues.append("success_but_no_mastery_task_id")
-            elif mastery_task_id:
-                if (
-                    mastery_task_id in mastery_tasks
-                    and mastery_tasks[mastery_task_id]["status"] != "success"
-                ):
-                    issues.append(f"mastery_task_{mastery_task_id}_not_success")
+            elif mastery_task_id and (
+                mastery_task_id in mastery_tasks
+                and mastery_tasks[mastery_task_id]["status"] != "success"
+            ):
+                issues.append(f"mastery_task_{mastery_task_id}_not_success")
 
         if (
             not record.get("region")
@@ -305,6 +304,115 @@ def verify_db_integrity(conn: sqlite3.Connection = None) -> dict[any]:  # type: 
     log_file.parent.mkdir(parents=True, exist_ok=True)
     log_file.write_text(json.dumps(log_data, indent=2), encoding="utf-8")
 
+    return log_data
+
+
+def _read_puuid_set(path: Path) -> set[str]:
+    table = pq.read_table(path, columns=["puuid"])
+    return {p for p in table.column("puuid").to_pylist() if p}
+
+
+def verify_compaction_integrity() -> dict:
+    """Cross-check compaction_tasks records against actual file contents.
+    Two separate failure modes are checked:
+    - task-level: did every path_compressed for a successful task actually end up in the compacted output?
+    - disk-level: are there raw files present that aren't accounted for by any successful task?
+    """
+    conn = db.get_connection()
+    tasks = conn.execute(
+        """
+        SELECT task_id, dataset, output_path, paths_compressed, status
+        FROM compaction_tasks
+        WHERE status = 'success'
+        """
+    ).fetchall()
+    conn.close()
+
+    task_level_issues = []
+    accounted_raw_paths: set[str] = set()
+
+    for task in tqdm(tasks, desc="Verifying compaction tasks", unit="task"):
+        dataset = task["dataset"]
+        output_path = Path(task["output_path"])
+        paths_compressed = json.loads(task["paths_compressed"] or "[]")
+        accounted_raw_paths.update(paths_compressed)
+
+        if not output_path.exists():
+            task_level_issues.append(
+                {
+                    "task_id": task["task_id"],
+                    "issue": "compacted_output_missing",
+                    "output_path": str(output_path),
+                }
+            )
+            continue
+
+        try:
+            compacted_puuids = _read_puuid_set(output_path)
+        except RuntimeError as e:
+            task_level_issues.append(
+                {
+                    "task_id": task["task_id"],
+                    "issue": "compacted_file_unreadable",
+                    "output_path": str(output_path),
+                    "error": str(e),
+                }
+            )
+            continue
+
+        source_puuids: set[str] = set()
+        for raw_path_str in paths_compressed:
+            raw_path = Path(raw_path_str)
+            if not raw_path.exists():
+                # expected once raw cleanup ships; not an error by itself
+                continue
+            try:
+                source_puuids |= _read_puuid_set(raw_path)
+            except RuntimeError as e:
+                task_level_issues.append(
+                    {
+                        "task_id": task["task_id"],
+                        "issue": "source_file_unreadable",
+                        "source_path": raw_path_str,
+                        "error": str(e),
+                    }
+                )
+
+        lost = source_puuids - compacted_puuids
+        if lost:
+            task_level_issues.append(
+                {
+                    "task_id": task["task_id"],
+                    "issue": "puuids_lost_in_compaction",
+                    "output_path": str(output_path),
+                    "lost_puuids": sorted(lost),
+                    "lost_count": len(lost),
+                }
+            )
+
+    # disk-level: raw files on disk that no successful task ever claimed
+    unaccounted_files = {"players": [], "masteries": []}
+    for dataset, raw_root in (
+        ("players", PLAYERS_INPUT_PATH),
+        ("masteries", MASTERIES_PATH),
+    ):
+        for raw_file in raw_root.rglob("*.parquet"):
+            if str(raw_file) not in accounted_raw_paths:
+                unaccounted_files[dataset].append(str(raw_file))
+
+    log_data = {
+        "tasks_checked": len(tasks),
+        "task_level_issues": task_level_issues,
+        "task_level_issues_count": len(task_level_issues),
+        "unaccounted_raw_files": unaccounted_files,
+        "unaccounted_raw_files_count": {
+            k: len(v) for k, v in unaccounted_files.items()
+        },
+    }
+
+    log_file = LOGS_PATH / "compaction_integrity_check.json"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    log_file.write_text(json.dumps(log_data, indent=2), encoding="utf-8")
     return log_data
 
 

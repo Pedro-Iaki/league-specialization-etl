@@ -222,4 +222,11 @@ __marimo__/
 
 # Data Folders
 data/
-sandbox/cleaned_data/
+sandbox/Cleaned_Data/
+sandbox/Plots/
+
+# Config
+config/*
+
+# TODO
+TODO

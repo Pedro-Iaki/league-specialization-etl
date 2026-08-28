@@ -1,6 +1,8 @@
 import json
 
-import t_utilities as util
+import pyarrow as pa
+import pyarrow.parquet as pq
+import extract.tests.t_utilities as util
 import verify_integrity
 
 util.set_path_for_extract_modules()
@@ -15,7 +17,7 @@ def test_verify_db_integrity_flags_expected_faulty_records(
     run_id = factory.create_individual_run()
 
     success_task_id = factory.create_individual_player_task(
-        {"run_id": run_id, "status": "success", "file_path": "/tmp/a.json"}
+        {"run_id": run_id, "status": "success", "file_path": "/tmp/a.parquet"}
     )
     failed_task_id = factory.create_individual_player_task(
         {
@@ -46,7 +48,7 @@ def test_verify_db_integrity_flags_expected_faulty_records(
             "tier": "GOLD",
             "division": "I",
             "player_task_ids": json.dumps([success_task_id]),
-            "paths": json.dumps(["/tmp/clean.json"]),
+            "paths": json.dumps(["/tmp/clean.parquet"]),
             "mastery_status": "success",
             "mastery_task_id": success_mastery_id,
         }
@@ -60,7 +62,7 @@ def test_verify_db_integrity_flags_expected_faulty_records(
             "tier": "GOLD",
             "division": "I",
             "player_task_ids": json.dumps([success_task_id]),
-            "paths": json.dumps(["/tmp/pending.json"]),
+            "paths": json.dumps(["/tmp/pending.parquet"]),
             "mastery_status": "pending",
         }
     )
@@ -87,7 +89,7 @@ def test_verify_db_integrity_flags_expected_faulty_records(
             "tier": "GOLD",
             "division": "I",
             "player_task_ids": json.dumps([failed_task_id]),
-            "paths": json.dumps(["/tmp/failedtask.json"]),
+            "paths": json.dumps(["/tmp/failedtask.parquet"]),
             "mastery_status": "success",
             "mastery_task_id": success_mastery_id,
         }
@@ -101,7 +103,7 @@ def test_verify_db_integrity_flags_expected_faulty_records(
             "tier": "GOLD",
             "division": "I",
             "player_task_ids": json.dumps([success_task_id]),
-            "paths": json.dumps(["/tmp/missingrank.json"]),
+            "paths": json.dumps(["/tmp/missingrank.parquet"]),
             "mastery_status": "success",
             "mastery_task_id": success_mastery_id,
         }
@@ -128,7 +130,9 @@ def test_verify_db_integrity_flags_expected_faulty_records(
 
     log_file = tmp_path / "db_integrity_check.json"
     assert log_file.is_file()
-    assert json.loads(log_file.read_text(encoding="utf-8")) == result
+
+    log_data = json.loads(log_file.read_text(encoding="utf-8"))
+    assert log_data == result
     conn.close()
 
 
@@ -147,23 +151,29 @@ def test_verify_files_integrity_detects_missing_and_duplicated_puuids(
     monkeypatch.setattr(verify_integrity, "LOGS_PATH", logs_dir)
 
     # p1 appears in two player files (duplicated); p2 only in players (missing mastery)
-    (players_dir / "file1.json").write_text(
-        json.dumps({"players": [{"puuid": "p1"}, {"puuid": "p2"}]}), encoding="utf-8"
+
+    pq.write_table(
+        pa.Table.from_pylist([{"puuid": "p1"}, {"puuid": "p2"}]),
+        players_dir / "file1.parquet",
     )
-    (players_dir / "file2.json").write_text(
-        json.dumps({"players": [{"puuid": "p1"}]}), encoding="utf-8"
+    pq.write_table(
+        pa.Table.from_pylist([{"puuid": "p1"}]),
+        players_dir / "file2.parquet",
     )
     # a broken/empty player
-    (players_dir / "broken.json").write_text(
-        json.dumps({"players": []}), encoding="utf-8"
+    pq.write_table(
+        pa.Table.from_pylist([]),
+        players_dir / "broken.parquet",
     )
 
     # p1 has a matching mastery file; p3 has a mastery file but no player file (missing player)
-    (masteries_dir / "m1.json").write_text(
-        json.dumps({"masteries": [{"puuid": "p1"}]}), encoding="utf-8"
+    pq.write_table(
+        pa.Table.from_pylist([{"puuid": "p1"}]),
+        masteries_dir / "m1.parquet",
     )
-    (masteries_dir / "orphan.json").write_text(
-        json.dumps({"masteries": [{"puuid": "p3"}]}), encoding="utf-8"
+    pq.write_table(
+        pa.Table.from_pylist([{"puuid": "p3"}]),
+        masteries_dir / "orphan.parquet",
     )
 
     result = verify_integrity.verify_files_integrity()
