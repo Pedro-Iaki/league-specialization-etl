@@ -7,7 +7,6 @@ import pyarrow.parquet as pq
 from loguru import logger
 from tqdm import tqdm
 
-import extract.compact_parquets as compact
 import extract.extraction_db_helper as db
 
 BASE_DIR = Path(__file__).resolve().parents[2]
