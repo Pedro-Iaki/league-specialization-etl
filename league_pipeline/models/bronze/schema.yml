@@ -1,0 +1,5 @@
+models:
+  - name: bronze_players
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [puuid, state_hash]
