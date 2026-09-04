@@ -7,3 +7,8 @@ sources:
         config:
           freshness:
             warn_after: {count: 6, period: hour}
+      - name: masteries
+        loaded_at_field: _ingested_at
+        config:
+          freshness:
+            warn_after: {count: 6, period: hour}
