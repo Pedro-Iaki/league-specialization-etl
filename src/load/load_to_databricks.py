@@ -27,20 +27,10 @@ for dataset in ("players", "masteries"):
             "fs",
             "cp",
             str(out_path),
-            f"dbfs:/Volumes/league_pipeline/raw/parquets/{out_path_name}",
+            f"dbfs:/Volumes/league_pipeline/landing_zone/{dataset}/{out_path_name}",
             "--overwrite",
         ],
         check=True,
     )
 
     print(f"Uploaded {dataset}: {table.num_rows} rows")
-
-print(
-    "\nfiles in dbfs:/Volumes/league_pipeline/raw/parquets/:\n"
-    + subprocess.run(
-        ["databricks", "fs", "ls", "dbfs:/Volumes/league_pipeline/raw/parquets/"],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout
-)
