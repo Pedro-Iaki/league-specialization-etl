@@ -14,10 +14,5 @@ select
             coalesce(tier, ''), coalesce(rank, ''),
             coalesce(patch, ''), coalesce(date, '')
         ), 256
-    ) as state_hash,
-    _ingested_at
+    ) as state_hash
 from {{ source('raw', 'players') }}
-
-{% if is_incremental() %}
-where _ingested_at > (select coalesce(max(_ingested_at), '1900-01-01') from {{ this }})
-{% endif %}
