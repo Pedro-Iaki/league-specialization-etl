@@ -4,5 +4,6 @@ sources:
     tables:
       - name: players
         loaded_at_field: _ingested_at
-        freshness:
-          warn_after: {count: 6, period: hour}
+        config:
+          freshness:
+            warn_after: {count: 6, period: hour}
