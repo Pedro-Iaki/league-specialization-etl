@@ -7,22 +7,26 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['BR1', 'EUN1', 'EUW1', 'LA1', 'LA2', 'NA1', 'OCE', 'OC1', 'RU1', 'RU', 'PH2', 'SG2', 'TH2', 'TR1', 'ME1', 'JP1', 'KR', 'SEA', 'TW2', 'VN2', 'PBE']
+              arguments:
+                values: ['na1', 'euw1', 'eun1', 'br1', 'la1', 'la2', 'kr', 'jp1', 'ru', 'tr1', 'oc1', 'ph2', 'sg2', 'th2', 'tw2', 'vn2', 'me1', 'sea', 'pbe']
       - name: queueType
         tests:
           - not_null
           - accepted_values:
-              values: ['RANKED_SOLO_5x5', 'RANKED_FLEX_SR', 'RANKED_FLEX_TT']
+              arguments:
+                values: ['RANKED_SOLO_5x5', 'RANKED_FLEX_SR', 'RANKED_FLEX_TT']
       - name: tier
         tests:
           - not_null
           - accepted_values:
-              values: ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND']
+              arguments:
+                values: ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND']
       - name: rank
         tests:
           - not_null
           - accepted_values:
-              values: ['I', 'II', 'III', 'IV']
+              arguments:
+                values: ['I', 'II', 'III', 'IV']
       - name: state_hash
         tests: [not_null]
       - name: _ingested_at
@@ -42,7 +46,8 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['BR1', 'EUN1', 'EUW1', 'LA1', 'LA2', 'NA1', 'OCE', 'OC1', 'RU1', 'RU', 'PH2', 'SG2', 'TH2', 'TR1', 'ME1', 'JP1', 'KR', 'SEA', 'TW2', 'VN2', 'PBE']
+              arguments:
+                values: ['na1', 'euw1', 'eun1', 'br1', 'la1', 'la2', 'kr', 'jp1', 'ru', 'tr1', 'oc1', 'ph2', 'sg2', 'th2', 'tw2', 'vn2', 'me1', 'sea', 'pbe']
       - name: state_hash
         tests: [not_null]
       - name: _ingested_at
