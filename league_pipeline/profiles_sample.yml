@@ -1,0 +1,11 @@
+league_pipeline:
+  target: dev
+  outputs:
+    dev:
+      type: databricks
+      catalog: league_pipeline
+      host: dbc-b99bb4cc-93e8.cloud.databricks.com
+      http_path: /sql/1.0/warehouses/c815c35672de1d79
+      schema: bronze
+      threads: 1
+      token: "{{ env_var('DBT_DATABRICKS_TOKEN') }}"
