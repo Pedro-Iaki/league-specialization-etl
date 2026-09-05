@@ -8,7 +8,7 @@
 
 with source_data as (
     select
-        * except(_source_file, _ingested_at),
+        * except(_ingested_at),
         sha2(
             concat_ws('|',
                 coalesce(region, ''), coalesce(championId, ''),
