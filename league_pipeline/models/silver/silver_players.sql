@@ -1,6 +1,7 @@
 {{ config(
     materialized='table',
     file_format='delta',
+    alias='players',
     on_schema_change='append_new_columns'
 ) }}
 

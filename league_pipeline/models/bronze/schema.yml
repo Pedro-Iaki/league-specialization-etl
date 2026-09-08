@@ -1,5 +1,5 @@
 models:
-  - name: players
+  - name: bronze_players
     columns:
       - name: puuid
         tests: [not_null]
@@ -36,7 +36,7 @@ models:
           arguments:
             combination_of_columns: [puuid, state_hash]
 
-  - name: masteries
+  - name: bronze_masteries
     columns:
       - name: puuid
         tests: [not_null]
