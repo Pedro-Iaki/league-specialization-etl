@@ -105,6 +105,7 @@ def get_champions_dataframe():
         .reset_index()
         .rename(columns={"index": "key"})
         .assign(key=lambda df: df["key"].astype(str))
+        .assign(patch=latest_patch)
     )
 
     # get positions
