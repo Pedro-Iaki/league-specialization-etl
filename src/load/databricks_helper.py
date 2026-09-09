@@ -66,11 +66,18 @@ PANDAS_TO_SPARK_TYPES = {
 
 
 def infer_sql_schema(df: pd.DataFrame) -> str:
-    """Generates SQL column definitions inferred from a pandas DataFrame."""
     column_defs = []
     for col_name, dtype in df.dtypes.items():
-        # Fallback to STRING
-        sql_type = PANDAS_TO_SPARK_TYPES.get(str(dtype).lower(), "STRING")
+        if str(dtype).lower() == "object" and _is_list_like_column(df[col_name]):
+            sql_type = "ARRAY<STRING>"
+        else:
+            sql_type = PANDAS_TO_SPARK_TYPES.get(str(dtype).lower(), "STRING")
         column_defs.append(f"`{col_name}` {sql_type}")
-
     return ",\n            ".join(column_defs)
+
+
+def _is_list_like_column(series: pd.Series) -> bool:
+    non_null = series.dropna()
+    if non_null.empty:
+        return False
+    return bool(non_null.apply(lambda v: isinstance(v, (list, tuple))).all())

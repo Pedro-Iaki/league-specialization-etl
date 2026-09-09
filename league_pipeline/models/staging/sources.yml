@@ -13,16 +13,3 @@ sources:
             warn_after: {count: 1000, period: hour}
           loaded_at_field: _ingested_at
       - name: champions
-  - name: bronze
-    schema: bronze
-    tables:
-      - name: players
-        config:
-          freshness:
-            warn_after: {count: 336, period: hour}
-          loaded_at_field: _ingested_at
-      - name: masteries
-        config:
-          freshness:
-            warn_after: {count: 336, period: hour}
-          loaded_at_field: _ingested_at

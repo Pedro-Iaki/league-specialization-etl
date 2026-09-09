@@ -39,8 +39,8 @@ def get_champion_positions() -> pd.DataFrame:
         [
             {
                 "champion": c_id,
-                "client_positions": ", ".join(positions["client_positions"]),
-                "external_positions": ", ".join(positions["external_positions"]),
+                "client_positions": positions["client_positions"],
+                "external_positions": positions["external_positions"],
             }
             for c_id, positions in position_lookup.items()
         ]
@@ -122,3 +122,4 @@ def get_champions_dataframe():
 
 if __name__ == "__main__":
     print(get_champions_dataframe())
+    print(get_champions_dataframe().info())

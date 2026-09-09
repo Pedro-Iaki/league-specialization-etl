@@ -7,12 +7,12 @@
 
 with latest_player_snapshot as (
     select *, to_date(date, 'yyMMdd') as fetch_date
-    from {{ source('bronze', 'players') }}
+    from {{ ref('bronze_players') }}
     qualify row_number() over (
         partition by puuid
         order by fetch_date desc, _ingested_at desc
     ) = 1
-),
+)
 
 select
     puuid,
