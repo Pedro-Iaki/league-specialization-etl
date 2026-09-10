@@ -45,5 +45,5 @@ models:
                 column_type: timestamp
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
-                min_value: "2008-01-01 00:00:00"
-                max_value: "2100-01-01 00:00:00"
+                min_value: "cast('2008-01-01 00:00:00' as timestamp)"
+                max_value: "cast('2100-01-01 00:00:00' as timestamp)"
