@@ -1,0 +1,8 @@
+models:
+  - name: fct_players_champion_delta
+    columns:
+      - name: champion_delta_id
+        tests: [not_null, unique]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments: {combination_of_columns: [puuid, champion_key, snapshot_date]}
