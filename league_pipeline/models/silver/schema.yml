@@ -1,49 +1,26 @@
 models:
-  - name: silver_players
+  - name: dim_players_history
+    columns:
+      - name: player_history_id
+        tests: [not_null, unique]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments: {combination_of_columns: [puuid, valid_from]}
+
+  - name: dim_players_current
     columns:
       - name: puuid
         tests: [not_null, unique]
-      - name: tier
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND']
-      - name: division
-        tests:
-          - not_null
-          - dbt_utils.accepted_range:
-              arguments: {min_value: 1, max_value: 4}
-      - name: total_games
-        tests:
-          - dbt_utils.accepted_range:
-              arguments: {min_value: 0}
-      - name: win_rate
-        tests:
-          - not_null
-          - dbt_utils.accepted_range:
-              arguments: {min_value: 0, max_value: 1}
-  - name: silver_masteries
+
+  - name: fct_masteries_history
     columns:
-      - name: mastery_id
+      - name: mastery_history_id
         tests: [not_null, unique]
-      - name: puuid
-        tests: [not_null]
-      - name: champion_key
-        tests: [not_null]
-      - name: champion_points
-        tests:
-          - not_null
-          - dbt_utils.accepted_range:
-              arguments:
-                min_value: 0
-      - name: last_play_time
-        tests:
-          - not_null
-          - dbt_expectations.expect_column_values_to_be_of_type:
-              arguments:
-                column_type: timestamp
-          - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: "cast('2008-01-01 00:00:00' as timestamp)"
-                max_value: "cast('2100-01-01 00:00:00' as timestamp)"
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments: {combination_of_columns: [puuid, champion_key, valid_from]}
+
+  - name: fct_masteries_current
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments: {combination_of_columns: [puuid, champion_key]}
