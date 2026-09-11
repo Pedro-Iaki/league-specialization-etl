@@ -4,16 +4,24 @@ league_pipeline:
     bronze:
       type: databricks
       catalog: league_pipeline
-      host: dbc-b99bb4cc-93e8.cloud.databricks.com
-      http_path: /sql/1.0/warehouses/c815c35672de1d79
+      host:
+      http_path:
       schema: bronze
-      threads: 1
-      token: "{{ env_var('DBT_DATABRICKS_TOKEN') }}"
+      threads: 4
+      token: 
     silver:
       type: databricks
       catalog: league_pipeline
-      host: dbc-b99bb4cc-93e8.cloud.databricks.com
-      http_path: /sql/1.0/warehouses/c815c35672de1d79
+      host:
+      http_path:
       schema: silver
-      threads: 1
-      token: "{{ env_var('DBT_DATABRICKS_TOKEN') }}"
+      threads: 4
+      token: 
+    gold:
+      type: databricks
+      catalog: league_pipeline
+      host:
+      http_path:
+      schema: gold
+      threads: 4
+      token: 

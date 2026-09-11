@@ -6,3 +6,8 @@ models:
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments: {combination_of_columns: [puuid, champion_key, snapshot_date]}
+
+  - name: dim_players_pool_profile_lifetime
+    columns:
+      - name: puuid
+        tests: [not_null, unique]

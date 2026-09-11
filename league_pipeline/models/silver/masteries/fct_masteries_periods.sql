@@ -2,7 +2,7 @@
 
 select
     *,
-    lead(valid_from) over (
-        partition by puuid, champion_key order by valid_from
+    lead(snapshot_date) over (
+        partition by puuid, champion_key order by snapshot_date
     ) as valid_to
 from {{ ref('fct_masteries_history') }}

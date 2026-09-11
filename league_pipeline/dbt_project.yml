@@ -22,3 +22,8 @@ models:
       +schema: silver
     gold:
       +schema: gold
+
+vars:
+  late_arrival_lookback_days: 5
+  dedup_days_range: 7
+  mastery_freshness_days: 2

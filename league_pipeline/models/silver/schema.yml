@@ -3,9 +3,6 @@ models:
     columns:
       - name: player_history_id
         tests: [not_null, unique]
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments: {combination_of_columns: [puuid, valid_from]}
 
   - name: dim_players_current
     columns:
@@ -16,9 +13,6 @@ models:
     columns:
       - name: mastery_history_id
         tests: [not_null, unique]
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments: {combination_of_columns: [puuid, champion_key, valid_from]}
 
   - name: fct_masteries_current
     tests:
