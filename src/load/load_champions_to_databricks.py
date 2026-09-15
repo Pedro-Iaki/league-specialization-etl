@@ -3,7 +3,7 @@ import argparse
 from loguru import logger
 
 from extract.get_champions import get_champions_dataframe
-from load.databricks_helper import get_connection, use_catalog_and_schema, infer_sql_schema
+from load.databricks_helper import get_connection, infer_sql_schema, use_catalog_and_schema
 
 CATALOG = "league_pipeline"
 SCHEMA = "raw"

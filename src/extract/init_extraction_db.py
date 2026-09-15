@@ -13,6 +13,7 @@ DB_PATH = "data/database/extraction.db"
 SCHEMA_PATH = "src/extract/extraction_schemas.sql"
 PLAYERS_DIR = "data/raw/players"
 MASTERIES_DIR = "data/raw/masteries"
+COMPACTED_DIR = "data/compacted"
 
 
 def get_connection(db_path=DB_PATH):
@@ -24,11 +25,7 @@ def get_connection(db_path=DB_PATH):
 
 
 def db_exists():
-    return (
-        os.path.exists(DB_PATH)
-        and os.path.exists(PLAYERS_DIR)
-        and os.path.exists(MASTERIES_DIR)
-    )
+    return os.path.exists(DB_PATH) and os.path.exists(PLAYERS_DIR) and os.path.exists(MASTERIES_DIR)
 
 
 def clear_directory_contents(dir_path: str):
@@ -46,13 +43,19 @@ def clear_directory_contents(dir_path: str):
             logger.error(f"Failed to delete {entry.path}. Reason: {e}")
 
 
-def reset_database_and_directories():
+def clear_raw_and_compacted_data():
+    """Delete all extracted raw data and compacted outputs without touching the database."""
+    clear_directory_contents(PLAYERS_DIR)
+    clear_directory_contents(MASTERIES_DIR)
+    clear_directory_contents(COMPACTED_DIR)
+
+
+def reset_database():
     """Executes the cleanup and schema initialization."""
     if os.path.exists(DB_PATH):
         os.remove(DB_PATH)
 
-    clear_directory_contents(PLAYERS_DIR)
-    clear_directory_contents(MASTERIES_DIR)
+    clear_raw_and_compacted_data()
 
     with open(SCHEMA_PATH, "r") as f:
         schema = f.read()

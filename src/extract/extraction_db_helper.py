@@ -99,9 +99,7 @@ def add_player_task(run_id: int, conn: sqlite3.Connection | None = None) -> int:
         conn = get_connection()
     try:
         heartbeat_run(run_id, conn)
-        cur = conn.execute(
-            "INSERT INTO player_tasks (run_id, status) VALUES (?, 'pending')", (run_id,)
-        )
+        cur = conn.execute("INSERT INTO player_tasks (run_id, status) VALUES (?, 'pending')", (run_id,))
         if own_conn:
             conn.commit()
         task_id = cur.lastrowid
@@ -206,9 +204,7 @@ def add_player_records(
             conn.close()
 
 
-def add_mastery_task(
-    run_id: int, player_id: str, conn: sqlite3.Connection | None = None
-) -> int:
+def add_mastery_task(run_id: int, player_id: str, conn: sqlite3.Connection | None = None) -> int:
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -270,9 +266,7 @@ def update_mastery_task(
             logger.error(f"No mastery task found with task_id {task_id}.")
             return
 
-        update_player_records(
-            status, file_path, row["player_id"], patch, conn, mastery_task_id=task_id
-        )
+        update_player_records(status, file_path, row["player_id"], patch, conn, mastery_task_id=task_id)
         if own_conn:
             conn.commit()
     finally:
@@ -302,9 +296,7 @@ def update_player_records(
     )
 
 
-def get_mastery_id_from_list(
-    task_ids: list[int], puuid: str, conn: sqlite3.Connection | None = None
-) -> int:
+def get_mastery_id_from_list(task_ids: list[int], puuid: str, conn: sqlite3.Connection | None = None) -> int:
     """
     Given a list of task_ids and a puuid, return the task_id that matches the puuid.
     \nIf no match is found, return None.
@@ -487,9 +479,7 @@ def claim_players_missing_masteries(
     return players
 
 
-def get_mastery_status_for_player(
-    player_id: str, conn: sqlite3.Connection | None = None
-) -> str:
+def get_mastery_status_for_player(player_id: str, conn: sqlite3.Connection | None = None) -> str:
     """
     Get the mastery status for a given player ID (puuid).
     \nReturns 'pending', 'in_progress', 'success', or 'failed'.
@@ -509,9 +499,7 @@ def get_mastery_status_for_player(
     return str(result["mastery_status"] if result else None)
 
 
-def get_player_info(
-    player_id: str, conn: sqlite3.Connection | None = None
-) -> dict | None:
+def get_player_info(player_id: str, conn: sqlite3.Connection | None = None) -> dict | None:
     """
     Get the player info for a given player ID (puuid).
     \nReturns a dictionary with keys: region, queue, tier, division, latest log time.
@@ -666,9 +654,7 @@ def get_page_info(
 			""",
             (region, queue, patch, *tiers, *divisions),
         ).fetchall()
-        loop_counts = {
-            (row["tier"], row["division"]): int(row["loop_count"]) for row in loop_rows
-        }
+        loop_counts = {(row["tier"], row["division"]): int(row["loop_count"]) for row in loop_rows}
 
         count_rows = conn.execute(
             f"""
@@ -680,10 +666,7 @@ def get_page_info(
 			""",
             (region, queue, patch, *tiers, *divisions),
         ).fetchall()
-        player_counts = {
-            (row["tier"], row["division"]): int(row["division_player_count"])
-            for row in count_rows
-        }
+        player_counts = {(row["tier"], row["division"]): int(row["division_player_count"]) for row in count_rows}
 
         for key in stats:
             stats[key] = (loop_counts.get(key, 0), player_counts.get(key, 0))
@@ -785,9 +768,7 @@ def update_page_info(
         if own_conn:
             conn.commit()
         if row is None:
-            logger.warning(
-                f"No page info found for {region} {queue} {tier} {division} {patch}."
-            )
+            logger.warning(f"No page info found for {region} {queue} {tier} {division} {patch}.")
             return 0
         return int(row["current_page"])
     finally:
@@ -819,9 +800,7 @@ def add_compaction_task(
             conn.close()
     int_id = int(task_id or -1)
     if int_id < 0:
-        logger.error(
-            f"Failed to add a new compaction task for {dataset} output {output_path}."
-        )
+        logger.error(f"Failed to add a new compaction task for {dataset} output {output_path}.")
     return int_id
 
 
@@ -869,42 +848,44 @@ def update_compaction_task(
 def update_compaction_records(
     task_id: int,
     dataset: str,
-    old_paths: list[str],
+    player_ids: list[str],
     new_path: str,
     conn: sqlite3.Connection | None = None,
 ):
-    """Point the player records that used the old raw files at the new compacted
-    file. The update is scoped to the last logged player path for players, and to
-    the mastery_path for masteries, matching the dataset-specific lineage.
+    """Point the given players' records at the new compacted file and mark them
+    pending_load. Scoped by player_id since callers already resolved exactly which
+    players were merged into this compaction run.
     """
-    if not old_paths:
+    if not player_ids:
         return -1
 
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
     try:
-        placeholders = ",".join(["?"] * len(old_paths))
+        placeholders = ",".join(["?"] * len(player_ids))
 
         if dataset == "players":
             cur = conn.execute(
                 f"""
 				UPDATE players_recorded
 				SET latest_player_compacted_task_id = ?,
-				    latest_player_compacted_path = ?
-				WHERE json_extract(paths, '$[' || (json_array_length(paths) - 1) || ']') IN ({placeholders})
+				    latest_player_compacted_path = ?,
+				    player_load_status = 'pending_load'
+				WHERE player_id IN ({placeholders})
 				""",
-                (task_id, new_path, *old_paths),
+                (task_id, new_path, *player_ids),
             )
         elif dataset == "masteries":
             cur = conn.execute(
                 f"""
 				UPDATE players_recorded
 				SET mastery_compacted_task_id = ?,
-				    mastery_compacted_path = ?
-				WHERE mastery_path IN ({placeholders})
+				    mastery_compacted_path = ?,
+				    mastery_load_status = 'pending_load'
+				WHERE player_id IN ({placeholders})
 				""",
-                (task_id, new_path, *old_paths),
+                (task_id, new_path, *player_ids),
             )
         else:
             raise ValueError(f"Unknown compaction dataset: {dataset}")
@@ -912,6 +893,77 @@ def update_compaction_records(
         if own_conn:
             conn.commit()
         return int(cur.rowcount or -1)
+    finally:
+        if own_conn:
+            conn.close()
+
+def update_load_status(
+    dataset: str,
+    player_ids: list[str],
+    status: str,
+    conn: sqlite3.Connection | None = None,
+) -> int:
+    """Set player_load_status/mastery_load_status for the given players after a load attempt."""
+    if not player_ids:
+        return -1
+
+    if dataset == "players":
+        column = "player_load_status"
+    elif dataset == "masteries":
+        column = "mastery_load_status"
+    else:
+        raise ValueError(f"Unknown load dataset: {dataset}")
+
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        placeholders = ",".join(["?"] * len(player_ids))
+        cur = conn.execute(
+            f"UPDATE players_recorded SET {column} = ? WHERE player_id IN ({placeholders})",
+            (status, *player_ids),
+        )
+        if own_conn:
+            conn.commit()
+        return int(cur.rowcount or -1)
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def get_uncompacted_players(conn: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
+    """Players with no compaction recorded yet, paired with their latest raw path."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        return conn.execute(
+            """
+			SELECT player_id, json_extract(paths, '$[' || (json_array_length(paths) - 1) || ']') AS latest_path
+			FROM players_recorded
+			WHERE player_load_status = 'pending_compaction'
+			AND paths IS NOT NULL AND json_array_length(paths) > 0
+			"""
+        ).fetchall()
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def get_uncompacted_masteries(conn: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
+    """Players whose mastery snapshot is ready but not yet compacted."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        return conn.execute(
+            """
+			SELECT player_id, mastery_path AS latest_path
+			FROM players_recorded
+			WHERE mastery_load_status = 'pending_compaction'
+			AND mastery_status = 'success' AND mastery_path IS NOT NULL
+			"""
+        ).fetchall()
     finally:
         if own_conn:
             conn.close()

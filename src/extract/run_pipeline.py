@@ -32,15 +32,13 @@ def run_pipeline(config_path: Path = CONFIG_PATH) -> bool:
         logger.error("Failed to load configuration. Exiting.")
         return False
     try:
-        validated_manifest = models.ExtractionConfigManifest.model_validate(
-            config_manifest
-        ).model_dump()
+        validated_manifest = models.ExtractionConfigManifest.model_validate(config_manifest).model_dump()
     except RuntimeError as e:
         logger.error(f"Invalid configuration: {e}")
         return False
 
     if not init_db.db_exists():
-        init_db.reset_database_and_directories()
+        init_db.reset_database()
 
     db.cleanup_stale_runs()
     if not db.is_active():
@@ -63,9 +61,7 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
     date = datetime.now(timezone.utc).isoformat()
     try:
         while runs_remaining > 0:
-            run_id = db.start_run(
-                f"local_{config_manifest['version']}_{runs_remaining}_{date}"
-            )
+            run_id = db.start_run(f"local_{config_manifest['version']}_{runs_remaining}_{date}")
             logger.info(f"Starting new pipeline run with ID: {run_id}.")
             extract_players(
                 run_id,
@@ -101,18 +97,9 @@ def get_configs(config_path: Path) -> tuple[dict, bool]:
     full_check = os.getenv("FULL_VERIFICATION_POST", "false").lower() == "true"
     region = os.getenv("REGION")
     queue = os.getenv("QUEUE")
-    tiers = os.getenv(
-        "TIERS", "DIAMOND,EMERALD,PLATINUM,GOLD,SILVER,BRONZE,IRON"
-    ).split(",")
+    tiers = os.getenv("TIERS", "DIAMOND,EMERALD,PLATINUM,GOLD,SILVER,BRONZE,IRON").split(",")
     divisions = os.getenv("DIVISIONS", "I,II,III,IV").split(",")
-    if (
-        not api_key
-        or not version
-        or not players_fetch_depth
-        or not mastery_task_limit
-        or not region
-        or not queue
-    ):
+    if not api_key or not version or not players_fetch_depth or not mastery_task_limit or not region or not queue:
         logger.error("Missing required environment variables.")
         return {}, False
     return {

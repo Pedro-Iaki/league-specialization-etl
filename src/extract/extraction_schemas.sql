@@ -53,7 +53,9 @@ CREATE TABLE players_recorded (
     latest_player_compacted_task_id INTEGER REFERENCES compaction_tasks(task_id), -- reference to the compaction task for this player's files, if any
     latest_player_compacted_path TEXT,
     mastery_compacted_task_id INTEGER REFERENCES compaction_tasks(task_id), -- reference to the compaction task for this player's mastery file, if any
-    mastery_compacted_path TEXT
+    mastery_compacted_path TEXT,
+    player_load_status TEXT NOT NULL DEFAULT 'pending_compaction', -- pending_compaction, pending_load, load_success, load_failed
+    mastery_load_status TEXT NOT NULL DEFAULT 'pending_compaction' -- pending_compaction, pending_load, load_success, load_failed
 );
 
 -- Every tier division combination, along with their corresponding pages and player counts.
