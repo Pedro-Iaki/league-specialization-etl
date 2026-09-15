@@ -19,7 +19,7 @@ with source as (
         championPoints as champion_points,
         timestamp_millis(lastPlayTime) as last_play_time,
         _ingested_at,
-        floor(datediff(DAY, '2009-01-01', snapshot_date) / {{ dedup_days_range }}) as _weekly_bucket
+        floor(datediff(MINUTE, '2009-01-01', snapshot_date) / {{ dedup_days_range }}) as _weekly_bucket
     from {{ ref('bronze_masteries') }} m
     where exists (
         select 1

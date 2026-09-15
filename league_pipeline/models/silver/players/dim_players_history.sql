@@ -32,7 +32,7 @@ with source as (
         {{ dbt_utils.safe_divide('wins', 'wins + losses') }} as win_rate,
         freshBlood as in_motion,
         _ingested_at,
-        floor(datediff(DAY, '2009-01-01', snapshot_date) / {{ dedup_days_range }}) as _weekly_bucket
+        floor(datediff(MINUTE, '2009-01-01', snapshot_date) / {{ dedup_days_range }}) as _weekly_bucket
     from {{ ref('bronze_players') }} p
     where exists (
         select 1
