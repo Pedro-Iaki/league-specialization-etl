@@ -164,8 +164,8 @@ def add_player_records(
     try:
         conn.execute(
             """
-			INSERT INTO players_recorded (player_id, player_task_ids, paths, paths_logged_at, patches_logged, mastery_status, region, queue, tier, division)
-			VALUES (?, json_array(?), json_array(?), json_array(?), json_array(?), 'pending', ?, ?, ?, ?)
+			INSERT INTO players_recorded (player_id, player_task_ids, paths, paths_logged_at, patches_logged, mastery_status, region, queue, tier, division, player_load_status)
+			VALUES (?, json_array(?), json_array(?), json_array(?), json_array(?), 'pending', ?, ?, ?, ?, 'pending_compaction')
 
 			ON CONFLICT(player_id) DO UPDATE SET
 				player_task_ids = json_insert(player_task_ids, '$[#]', ?),
