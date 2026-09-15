@@ -230,3 +230,6 @@ config/*
 
 # TODO
 TODO
+.neon
+.env.local
+node_modules/

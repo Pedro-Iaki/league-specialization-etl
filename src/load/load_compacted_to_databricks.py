@@ -7,6 +7,7 @@ from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponenti
 
 import extract.extraction_db_helper as db
 from extract import reset_extraction_state
+from load import player_registry
 from load.databricks_helper import upload_parquet
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -51,6 +52,12 @@ def load_dataset(dataset: str) -> dict:
 
     db.update_load_status(dataset, player_ids, status)
     logger.info(f"{dataset}: {table.num_rows} row(s), {len(player_ids)} player(s) marked {status}.")
+
+    if status == "load_success":
+        try:
+            player_registry.upsert_players(player_ids, dataset)
+        except ConnectionError as e:
+            logger.error(f"Failed to update Neon player registry for {dataset}: {e}")
 
     return {"dataset": dataset, "status": status, "rows": table.num_rows, "players": len(player_ids)}
 
