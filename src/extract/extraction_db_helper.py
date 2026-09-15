@@ -175,7 +175,8 @@ def add_player_records(
 				region = ?,
 				queue = ?,
 				tier = ?,
-				division = ?
+				division = ?,
+				player_load_status = 'pending_compaction'
 			""",
             (
                 player_id,
@@ -289,10 +290,11 @@ def update_player_records(
 			mastery_path = ?,
 			mastery_task_id = ?,
 			mastery_logged_at = ?,
-			mastery_patch = ?
+			mastery_patch = ?,
+			mastery_load_status = CASE WHEN ? = 'success' THEN 'pending_compaction' ELSE mastery_load_status END
 		WHERE player_id = ?
 		""",
-        (status, file_path, mastery_task_id, now(), patch, player_id),
+        (status, file_path, mastery_task_id, now(), patch, status, player_id),
     )
 
 

@@ -59,3 +59,6 @@ class ExtractionConfigManifest(BaseModel):
     queue: str
     tiers: list[Tier] = Field(default_factory=list)
     divisions: list[Division] = Field(default_factory=list)
+    freshness_threshold_minutes: int = Field(default=10080, ge=1)
+    stale_claim_timeout_minutes: int = Field(default=30, ge=1)
+    stale_refresh_limit: int = Field(default=50, ge=0)

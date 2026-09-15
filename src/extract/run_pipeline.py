@@ -16,6 +16,7 @@ import extract.api_client as client
 import extract.compact_parquets as compact
 import extract.extraction_db_helper as db
 import extract.init_extraction_db as init_db
+import extract.refresh_stale_players as refresh_stale
 import extract.verify_integrity as verify
 import pydantic_models as models
 from extract.get_masteries import run as extract_masteries
@@ -83,9 +84,37 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
         db.cleanup_failed_run(run_id)
         return False
 
+    run_stale_refresh(config_manifest, api_client)
     compact.run()
     verify.run_integrity_check(config_manifest["full_check"])
     return True
+
+
+def run_stale_refresh(config_manifest: dict, api_client) -> dict:
+    """Refresh players flagged stale in the Neon player_state_registry.
+
+    Kept as its own caller (separate from extraction_loop's main while-loop) so this step can
+    later be split out into an independently-triggered job without touching extraction_loop.
+    """
+    run_id = db.start_run(f"refresh_{config_manifest['version']}")
+    logger.info(f"Starting stale-player refresh run with ID: {run_id}.")
+    try:
+        summary = refresh_stale.run(
+            run_id,
+            api_client=api_client,
+            region=config_manifest["region"],
+            queue=config_manifest["queue"],
+            limit=int(config_manifest["stale_refresh_limit"]),
+            freshness_minutes=int(config_manifest["freshness_threshold_minutes"]),
+            claim_timeout_minutes=int(config_manifest["stale_claim_timeout_minutes"]),
+        )
+        db.finish_run(run_id, "success")
+        return summary
+    except RuntimeError as e:
+        logger.exception(f"Stale-player refresh run failed: {e}")
+        db.finish_run(run_id, "failed")
+        db.cleanup_failed_run(run_id)
+        return {"claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0}
 
 
 def get_configs(config_path: Path) -> tuple[dict, bool]:
@@ -99,6 +128,9 @@ def get_configs(config_path: Path) -> tuple[dict, bool]:
     queue = os.getenv("QUEUE")
     tiers = os.getenv("TIERS", "DIAMOND,EMERALD,PLATINUM,GOLD,SILVER,BRONZE,IRON").split(",")
     divisions = os.getenv("DIVISIONS", "I,II,III,IV").split(",")
+    freshness_threshold_minutes = os.getenv("FRESHNESS_THRESHOLD_MINUTES", "10080")
+    stale_claim_timeout_minutes = os.getenv("STALE_CLAIM_TIMEOUT_MINUTES", "30")
+    stale_refresh_limit = os.getenv("STALE_REFRESH_LIMIT", "50")
     if not api_key or not version or not players_fetch_depth or not mastery_task_limit or not region or not queue:
         logger.error("Missing required environment variables.")
         return {}, False
@@ -112,6 +144,9 @@ def get_configs(config_path: Path) -> tuple[dict, bool]:
         "queue": queue,
         "tiers": tiers,
         "divisions": divisions,
+        "freshness_threshold_minutes": freshness_threshold_minutes,
+        "stale_claim_timeout_minutes": stale_claim_timeout_minutes,
+        "stale_refresh_limit": stale_refresh_limit,
     }, True
 
 
