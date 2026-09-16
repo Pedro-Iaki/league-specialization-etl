@@ -8,7 +8,7 @@
 
 {% set mastery_freshness_days = var('mastery_freshness_days') %}
 {% set late_arrival_lookback_days = var('late_arrival_lookback_days') %}
-{% set dedup_days_range = var('dedup_days_range') %}
+{% set dedup_minutes_range = var('dedup_minutes_range') %}
 
 with source as (
 
@@ -32,7 +32,7 @@ with source as (
         {{ dbt_utils.safe_divide('wins', 'wins + losses') }} as win_rate,
         freshBlood as in_motion,
         _ingested_at,
-        floor(datediff(MINUTE, '2009-01-01', snapshot_date) / {{ dedup_days_range }}) as _weekly_bucket
+        floor(datediff(MINUTE, '2009-01-01', snapshot_date) / {{ dedup_minutes_range }}) as _weekly_bucket
     from {{ ref('bronze_players') }} p
     where exists (
         select 1

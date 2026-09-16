@@ -13,6 +13,7 @@ CREATE TABLE runs (
 CREATE TABLE player_tasks (
     task_id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id INTEGER NOT NULL REFERENCES runs(run_id),
+    is_refresh BOOLEAN NOT NULL DEFAULT 0,
     file_path TEXT,
     status TEXT NOT NULL DEFAULT 'pending',  -- pending, in_progress, success, failed
     attempts INTEGER NOT NULL DEFAULT 0,
@@ -25,6 +26,7 @@ CREATE TABLE player_tasks (
 CREATE TABLE mastery_tasks (
 	task_id INTEGER PRIMARY KEY AUTOINCREMENT,
 	run_id INTEGER NOT NULL REFERENCES runs(run_id),
+    is_refresh BOOLEAN NOT NULL DEFAULT 0,
 	file_path TEXT UNIQUE,
 	player_id TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'pending',  -- pending, in_progress, success, failed

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pyarrow as pa
+import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 from loguru import logger
 
@@ -21,6 +22,28 @@ DEDUP_KEYS = {
     "masteries": ["puuid", "championId"],
 }
 
+PARTITION_SCHEMA = pa.schema(
+    [
+        ("region", pa.string()),
+        ("queueType", pa.string()),
+        ("tier", pa.string()),
+        ("rank", pa.string()),
+        ("patch", pa.string()),
+        ("date", pa.string()),
+    ]
+)
+PARTITIONING = ds.HivePartitioning(PARTITION_SCHEMA)
+
+
+def _read_partitioned_source(file_path: Path, base_dir: Path) -> pa.Table:
+    fragment_dataset = ds.dataset(
+        file_path,
+        format="parquet",
+        partitioning=PARTITIONING,
+        partition_base_dir=str(base_dir),
+    )
+    return fragment_dataset.to_table()
+
 
 def compact_files(compacted_path: Path, source_files: list[Path], dataset: str) -> dict | None:
     existing_files = [f for f in source_files if f.exists()]
@@ -31,11 +54,13 @@ def compact_files(compacted_path: Path, source_files: list[Path], dataset: str) 
     if not existing_files:
         return None
 
+    base_dir = RAW_DIR / dataset
+
     tables = []
     if compacted_path.exists():
         tables.append(pq.read_table(compacted_path))
     for file in existing_files:
-        tables.append(pq.read_table(file))
+        tables.append(_read_partitioned_source(file, base_dir))
 
     merged = pa.concat_tables(tables, promote_options="permissive")
     os.makedirs(compacted_path.parent, exist_ok=True)
@@ -137,9 +162,6 @@ def _dedup_merged_table(merged: pa.Table, dataset: str) -> pa.Table:
 
     if dataset == "masteries" and "lastPlayTime" in df.columns:
         df = df.sort_values("lastPlayTime")  # sort by lastPlayTime to ensure recency
-    else:
-        # The way we add players to the the table ensures later files are more recent, nothing needs to be done here
-        pass
 
     before = len(df)
     df = df.drop_duplicates(subset=keys, keep="last")

@@ -25,5 +25,5 @@ models:
 
 vars:
   late_arrival_lookback_days: 5
-  dedup_days_range: 60
+  dedup_minutes_range: "{{ env_var('FRESHNESS_THRESHOLD_MINUTES', '60') | int }}"
   mastery_freshness_days: 2

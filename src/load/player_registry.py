@@ -23,32 +23,17 @@ def get_connection() -> psycopg.Connection:
 def _normalize_row(row: tuple[Any, ...] | None) -> dict[str, Any] | None:
     if row is None:
         return None
-    keys = ["puuid", "dataset", "first_loaded_at", "last_updated_at", "is_fresh"]
+    keys = ["puuid", "first_loaded_at", "last_updated_at", "is_fresh"]
     return dict(zip(keys, row))
 
 
-def ensure_schema(conn: psycopg.Connection | None = None) -> None:
-    """Create the registry table if missing, and migrate older live tables in place.
-
-    Older Neon tables predate the `dataset`/claim columns and had a single-column
-    `puuid` primary key, so `CREATE TABLE IF NOT EXISTS` alone is a no-op against them.
-    These statements are idempotent and safe to run on every call.
-    """
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        conn.execute(_SCHEMA_PATH.read_text())  # type: ignore
-        if own_conn:
-            conn.commit()
-    finally:
-        if own_conn:
-            conn.close()
+def ensure_schema(conn: psycopg.Connection) -> None:
+    conn.execute(_SCHEMA_PATH.read_text())  # type: ignore
 
 
-def upsert_players(puuids: list[str], dataset: str, conn: psycopg.Connection | None = None) -> int:
+def upsert_players(players: list[dict], conn: psycopg.Connection | None = None) -> int:
     """Insert new players or refresh last_updated_at for players already registered."""
-    if not puuids:
+    if not players:
         return 0
 
     own_conn = conn is None
@@ -56,14 +41,17 @@ def upsert_players(puuids: list[str], dataset: str, conn: psycopg.Connection | N
         conn = get_connection()
     try:
         ensure_schema(conn)
+        puuids = [player["puuid"] for player in players]
+        regions = [player["region"] for player in players]
+        queues = [player["queueType"] for player in players]
         cur = conn.execute(
             """
-            INSERT INTO player_state_registry (puuid, dataset)
-            SELECT unnest(%s::text[]), %s
-            ON CONFLICT (puuid, dataset) DO UPDATE SET
+            INSERT INTO player_state_registry (puuid, region, queue)
+            SELECT unnest(%s::text[]), unnest(%s::text[]), unnest(%s::text[])
+            ON CONFLICT (puuid, region, queue) DO UPDATE SET
                 last_updated_at = now()
             """,
-            (puuids, dataset),
+            (puuids, regions, queues),
         )
         if own_conn:
             conn.commit()
@@ -75,28 +63,23 @@ def upsert_players(puuids: list[str], dataset: str, conn: psycopg.Connection | N
 
 def get_stale_players(
     threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
-    dataset: str | None = None,
     conn: psycopg.Connection | None = None,
 ) -> list[dict[str, Any]]:
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
     try:
-        query = """
+        rows = conn.execute(
+            """
             SELECT
                 puuid,
-                dataset,
                 first_loaded_at,
                 last_updated_at
             FROM player_state_registry
-            WHERE (now() - last_updated_at) >= (%s * interval '1 minute')
-        """
-        params: list[Any] = [threshold_minutes, threshold_minutes]
-        if dataset is not None:
-            query += " AND dataset = %s"
-            params.append(dataset)
-        query += " ORDER BY last_updated_at ASC"
-        rows = conn.execute(query, params).fetchall()
+            WHERE last_updated_at < (now() - (%s * interval '1 minute'))
+        """,
+            (threshold_minutes,),
+        ).fetchall()
         return [normalized for row in rows if (normalized := _normalize_row(row)) is not None]
     finally:
         if own_conn:
@@ -105,7 +88,8 @@ def get_stale_players(
 
 def get_player_state(
     puuid: str,
-    dataset: str,
+    region: str,
+    queue: str,
     threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
     conn: psycopg.Connection | None = None,
 ) -> dict[str, Any] | None:
@@ -118,14 +102,15 @@ def get_player_state(
             """
             SELECT
                 puuid,
-                dataset,
                 first_loaded_at,
                 last_updated_at,
-                (now() - last_updated_at) < (%s * interval '1 minute') AS is_fresh
+                last_updated_at >= (now() - (%s * interval '1 minute')) AS is_fresh
             FROM player_state_registry
-            WHERE puuid = %s AND dataset = %s
+            WHERE puuid = %s
+              AND region = %s
+              AND queue = %s
             """,
-            (threshold_minutes, puuid, dataset),
+            (threshold_minutes, puuid, region, queue),
         ).fetchone()
         return _normalize_row(row)
     finally:
@@ -138,7 +123,7 @@ def claim_stale_players(
     run_id: str,
     threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
     conn: psycopg.Connection | None = None,
-) -> list[str]:
+) -> list[dict[str, str]]:
     """Atomically claim up to `limit` stale players' 'players' rows for a refresh job.
 
     Only the 'players' row is claimed; a mastery refresh for the same puuid piggybacks
@@ -157,23 +142,24 @@ def claim_stale_players(
             """
             UPDATE player_state_registry
             SET claim_status = 'claimed', claimed_by = %s, claimed_at = now()
-            WHERE (puuid, dataset) IN (
-                SELECT puuid, dataset
+            WHERE puuid IN (
+                SELECT puuid
                 FROM player_state_registry
-                WHERE dataset = 'players'
-                  AND claim_status = 'idle'
-                  AND (now() - last_updated_at) >= (%s * interval '1 minute')
+                WHERE claim_status = 'idle'
+                  AND last_updated_at < (now() - (%s * interval '1 minute'))
                 ORDER BY last_updated_at ASC
                 LIMIT %s
                 FOR UPDATE SKIP LOCKED
             )
-            RETURNING puuid
+            RETURNING puuid, region, queue
             """,
             (run_id, threshold_minutes, limit),
         ).fetchall()
+        stale_players = [{"puuid": str(row[0]), "region": str(row[1]), "queue": str(row[2])} for row in rows]
         if own_conn:
             conn.commit()
-        return [row[0] for row in rows]
+
+        return stale_players
     finally:
         if own_conn:
             conn.close()
@@ -192,7 +178,7 @@ def release_claims(puuids: list[str], conn: psycopg.Connection | None = None) ->
             """
             UPDATE player_state_registry
             SET claim_status = 'idle', claimed_by = NULL, claimed_at = NULL
-            WHERE dataset = 'players' AND puuid = ANY(%s::text[])
+            WHERE puuid = ANY(%s::text[])
             """,
             (puuids,),
         )
@@ -216,7 +202,7 @@ def release_expired_claims(claim_timeout_minutes: int, conn: psycopg.Connection 
             UPDATE player_state_registry
             SET claim_status = 'idle', claimed_by = NULL, claimed_at = NULL
             WHERE claim_status = 'claimed'
-              AND (now() - claimed_at) >= (%s * interval '1 minute')
+              AND claimed_at < (now() - (%s * interval '1 minute'))
             """,
             (claim_timeout_minutes,),
         )

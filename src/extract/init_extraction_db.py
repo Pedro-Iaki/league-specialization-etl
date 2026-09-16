@@ -6,6 +6,7 @@ This script should be run before starting a new data extraction pipeline to ensu
 import os
 import shutil
 import sqlite3
+import time
 
 from loguru import logger
 
@@ -53,7 +54,7 @@ def clear_raw_and_compacted_data():
 def reset_database():
     """Executes the cleanup and schema initialization."""
     if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
+        os.rename(DB_PATH, f"{DB_PATH}_{int(time.time())}.bak")
 
     clear_raw_and_compacted_data()
 

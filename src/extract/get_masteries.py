@@ -13,12 +13,8 @@ OUTPUT_PATH = BASE_DIR / "data" / "raw" / "masteries"
 OptStr = str | None
 
 
-def run(
-    run_id: int, api_client: APIClient, limit: int, runs_remaining: int | None = None
-) -> None:
-    players = db.claim_players_missing_masteries(
-        include_stale_success=True, limit=limit
-    )
+def run(run_id: int, api_client: APIClient, limit: int, run_n: int | None = None) -> None:
+    players = db.claim_players_missing_masteries(include_stale_success=True, limit=limit)
     if players is None or len(players) == 0:
         logger.error("No players missing masteries found.")
         return
@@ -53,21 +49,17 @@ def run(
             logger.error(f"No mastery data found for player {puuid}.")
             continue
 
-        this_path = save_masteries(
-            mastery_payload, output_path=OUTPUT_PATH, info=player_info, patch=patch
-        )
+        this_path = save_masteries(mastery_payload, output_path=OUTPUT_PATH, info=player_info, patch=patch)
         if this_path:
             db.update_mastery_task(task_id, "success", patch, file_path=str(this_path))
         else:
-            db.update_mastery_task(
-                task_id, "failed", patch, error_message="Failed to save mastery data."
-            )
+            db.update_mastery_task(task_id, "failed", patch, error_message="Failed to save mastery data.")
             logger.error(f"Failed to save mastery data for player {puuid}.")
             continue
 
         processed += 1
         logger.info(
-            f"Saved new mastery data. Remaining: {min(limit, len(players)) - processed}. Runs remaining: {runs_remaining if runs_remaining is not None else 'N/A'}."
+            f"Saved new mastery data. Remaining: {min(limit, len(players)) - processed}. Runs done: {run_n if run_n is not None else 'N/A'}."
         )
         if processed >= limit:
             break
@@ -120,9 +112,7 @@ def fetch_player_masteries(
         response = api_client.get(url)
     except TimeoutError as e:
         logger.error(f"Error fetching mastery data for player {puuid}: {e}")
-        db.update_mastery_task(
-            task_id, "failed", patch, error_message="retry limit reached."
-        )
+        db.update_mastery_task(task_id, "failed", patch, error_message="retry limit reached.")
         return None
 
     if not response.ok:
@@ -136,22 +126,15 @@ def fetch_player_masteries(
 
     raw_payload = response.json()
     try:
-        validated_masteries = [
-            models.ChampionMasteryEntry.model_validate(m).model_dump()
-            for m in raw_payload
-        ]
+        validated_masteries = [models.ChampionMasteryEntry.model_validate(m).model_dump() for m in raw_payload]
         return validated_masteries
     except RuntimeError as e:
         logger.error(f"Error validating mastery data for player {puuid}: {e}")
-        db.update_mastery_task(
-            task_id, "failed", patch, error_message=f"Validation error: {e}"
-        )
+        db.update_mastery_task(task_id, "failed", patch, error_message=f"Validation error: {e}")
         return None
 
 
-def save_masteries(
-    mastery_rows: list[dict], info: dict, patch: str, output_path: Path = OUTPUT_PATH
-) -> Path | None:
+def save_masteries(mastery_rows: list[dict], info: dict, patch: str, output_path: Path = OUTPUT_PATH) -> Path | None:
     """Persist all fetched masteries as raw JSON."""
 
     region = info.get("region")
@@ -177,9 +160,7 @@ def save_masteries(
         ("date", date),
     ]
     partitioned_path = output_helper.get_partitioned_path(output_path, partitions)
-    this_path = (
-        partitioned_path / f"masteries_{time.strftime('%H%M%S')}_{puuid}.parquet"
-    )
+    this_path = partitioned_path / f"masteries_{time.strftime('%H%M%S')}_{puuid}.parquet"
 
     output_helper.write_parquet(mastery_rows, this_path)
     return this_path

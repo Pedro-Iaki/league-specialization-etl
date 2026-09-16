@@ -2,6 +2,7 @@
 Most operations take an optional conn parameter, mostly for testing with mocked values, but keep in mind that whoever passes it must also handle the connection fully"""
 
 import json
+import queue
 import sqlite3
 from datetime import datetime, timezone
 
@@ -93,13 +94,15 @@ def finish_run(
             conn.close()
 
 
-def add_player_task(run_id: int, conn: sqlite3.Connection | None = None) -> int:
+def add_player_task(run_id: int, is_refresh: bool = False, conn: sqlite3.Connection | None = None) -> int:
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
     try:
         heartbeat_run(run_id, conn)
-        cur = conn.execute("INSERT INTO player_tasks (run_id, status) VALUES (?, 'pending')", (run_id,))
+        cur = conn.execute(
+            "INSERT INTO player_tasks (run_id, is_refresh, status) VALUES (?, ?, 'pending')", (run_id, is_refresh)
+        )
         if own_conn:
             conn.commit()
         task_id = cur.lastrowid
@@ -205,15 +208,17 @@ def add_player_records(
             conn.close()
 
 
-def add_mastery_task(run_id: int, player_id: str, conn: sqlite3.Connection | None = None) -> int:
+def add_mastery_task(
+    run_id: int, player_id: str, is_refresh: bool = False, conn: sqlite3.Connection | None = None
+) -> int:
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
     try:
         heartbeat_run(run_id, conn)
         cur = conn.execute(
-            "INSERT INTO mastery_tasks (run_id, player_id, status) VALUES (?, ?, 'pending')",
-            (run_id, player_id),
+            "INSERT INTO mastery_tasks (run_id, player_id, is_refresh, status) VALUES (?, ?, ?, 'pending')",
+            (run_id, player_id, is_refresh),
         )
         if own_conn:
             conn.commit()
@@ -899,14 +904,15 @@ def update_compaction_records(
         if own_conn:
             conn.close()
 
+
 def update_load_status(
     dataset: str,
-    player_ids: list[str],
+    players: list[dict[str, str]],
     status: str,
     conn: sqlite3.Connection | None = None,
 ) -> int:
     """Set player_load_status/mastery_load_status for the given players after a load attempt."""
-    if not player_ids:
+    if not players:
         return -1
 
     if dataset == "players":
@@ -920,10 +926,9 @@ def update_load_status(
     if own_conn:
         conn = get_connection()
     try:
-        placeholders = ",".join(["?"] * len(player_ids))
-        cur = conn.execute(
-            f"UPDATE players_recorded SET {column} = ? WHERE player_id IN ({placeholders})",
-            (status, *player_ids),
+        cur = conn.executemany(
+            f"UPDATE players_recorded SET {column} = ? WHERE player_id = ? AND region = ? AND queue = ?",
+            ((status, player["puuid"], player["region"], player["queueType"]) for player in players),
         )
         if own_conn:
             conn.commit()

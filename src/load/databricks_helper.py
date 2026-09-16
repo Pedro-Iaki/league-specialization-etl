@@ -46,8 +46,7 @@ def use_catalog_and_schema(cursor: Any, catalog: str, schema: str) -> None:
 def upload_parquet(local_path: str, dbfs_path: str) -> None:
     cfg = get_config()
     w = WorkspaceClient(config=Config(host=cfg["host"], token=cfg["token"]))
-    with open(local_path, "rb") as f:
-        w.files.upload(dbfs_path, f, overwrite=True)
+    w.files.upload_from(dbfs_path, local_path, overwrite=True)
 
 
 PANDAS_TO_SPARK_TYPES = {

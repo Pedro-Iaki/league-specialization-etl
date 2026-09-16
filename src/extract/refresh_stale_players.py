@@ -19,6 +19,78 @@ from extract.api_client_protocol import APIClient
 from load import player_registry
 
 
+def run(
+    run_id: int,
+    api_client: APIClient,
+    limit: int,
+    freshness_minutes: int,
+    claim_timeout_minutes: int,
+) -> dict:
+    """Claim a batch of stale puuids, refresh their rank + masteries, and release the claim.
+
+    Claims are always released in a `finally` block so an operational failure never leaves a
+    player permanently locked out of future refresh attempts (release_expired_claims is the
+    backstop for crashed workers that never reach the `finally`).
+    """
+    released_expired = player_registry.release_expired_claims(claim_timeout_minutes)
+    if released_expired:
+        logger.warning(f"Reaped {released_expired} expired refresh claim(s).")
+
+    worker = f"refresh_{run_id}"
+    players = player_registry.claim_stale_players(limit, run_id=worker, threshold_minutes=freshness_minutes)
+    if not players or len(players) == 0:
+        logger.info("No stale players to refresh.")
+        return {"claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0}
+
+    logger.info(f"Claimed {len(players)} stale player(s) for refresh.")
+    patch = str(api_client.get_patch())
+    date = datetime.now(timezone.utc).strftime("%y%m%d")
+    time = datetime.now(timezone.utc).strftime("%H%M%S")
+
+    masteries_refreshed = 0
+    players_refreshed = 0
+    try:
+        for player in players:
+            player_info = {
+                "puuid": player["puuid"],
+                "region": player["region"],
+                "queue": player["queue"],
+                "date": date,
+                "time": time,
+                "patch": patch,
+            }
+            if not handle_player_extraction(
+                info=player_info,
+                task_id=db.add_player_task(run_id, is_refresh=True),
+                api_client=api_client,
+            ):
+                continue
+            players_refreshed += 1
+
+            if not handle_mastery_extraction(
+                info=player_info,
+                task_id=db.add_mastery_task(run_id, player["puuid"], is_refresh=True),
+                run_id=run_id,
+                api_client=api_client,
+            ):
+                continue
+            masteries_refreshed += 1
+
+    finally:
+        player_registry.release_claims([player["puuid"] for player in players])
+
+    logger.info(
+        f"Stale refresh complete: {players_refreshed} player rank(s) and {masteries_refreshed} "
+        f"mastery snapshot(s) refreshed out of {len(players)} claimed."
+    )
+    return {
+        "status": True,
+        "claimed": len(players),
+        "players_refreshed": players_refreshed,
+        "masteries_refreshed": masteries_refreshed,
+    }
+
+
 def fetch_player_rank(
     puuid: str,
     region: str,
@@ -27,6 +99,11 @@ def fetch_player_rank(
     api_client: APIClient,
 ) -> dict | None:
     """Fetch and validate a single player's current league entry for `queue`."""
+    if api_client is None:
+        logger.error(
+            "No API client provided. Please set the RIOT_API_KEY environment variable and provide a valid API client."
+        )
+        return None
     db.update_player_task(task_id, "in_progress")
     url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/by-puuid/{puuid}"
     try:
@@ -56,98 +133,85 @@ def fetch_player_rank(
         return None
 
 
-def run(
-    run_id: int,
-    api_client: APIClient,
-    region: str,
-    queue: str,
-    limit: int,
-    freshness_minutes: int,
-    claim_timeout_minutes: int,
-) -> dict:
-    """Claim a batch of stale puuids, refresh their rank + masteries, and release the claim.
+def handle_player_extraction(info: dict, task_id: int, api_client: APIClient) -> bool:
+    puuid = str(info.get("puuid"))
+    region = str(info.get("region"))
+    queue = str(info.get("queue"))
+    date = str(info.get("date"))
+    time = str(info.get("time"))
+    patch = str(info.get("patch"))
+    if not all([puuid, region, queue, date, time, patch]):
+        logger.error(f"Missing required player info: {info}")
+        return False
 
-    Claims are always released in a `finally` block so an operational failure never leaves a
-    player permanently locked out of future refresh attempts (release_expired_claims is the
-    backstop for crashed workers that never reach the `finally`).
-    """
-    released_expired = player_registry.release_expired_claims(claim_timeout_minutes)
-    if released_expired:
-        logger.warning(f"Reaped {released_expired} expired refresh claim(s).")
+    entry = fetch_player_rank(puuid, region=region, queue=queue, task_id=task_id, api_client=api_client)
+    if entry is None:
+        logger.info(f"Failed to fetch rank for player {puuid} in {region} {queue}.")
+        return False
 
-    worker = f"refresh_{run_id}"
-    puuids = player_registry.claim_stale_players(limit, run_id=worker, threshold_minutes=freshness_minutes)
-    if not puuids:
-        logger.info("No stale players to refresh.")
-        return {"claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0}
-
-    logger.info(f"Claimed {len(puuids)} stale player(s) for refresh.")
-    patch = str(api_client.get_patch())
-    date = datetime.now(timezone.utc).strftime("%y%m%d")
-    time = datetime.now(timezone.utc).strftime("%H%M%S")
-
-    players_refreshed = 0
-    masteries_refreshed = 0
-    try:
-        for puuid in puuids:
-            player_task_id = db.add_player_task(run_id)
-            entry = fetch_player_rank(puuid, region=region, queue=queue, task_id=player_task_id, api_client=api_client)
-            if entry is not None:
-                output_path = get_players.save_players(
-                    [entry],
-                    output_path=get_players.OUTPUT_PATH,
-                    region=region,
-                    queue=queue,
-                    tier=entry["tier"],
-                    division=entry["rank"],
-                    patch=patch,
-                    date=date,
-                    time=time,
-                )
-                db.update_player_task(player_task_id, "success", file_path=str(output_path))
-                db.add_player_records(
-                    puuid,
-                    str(output_path),
-                    player_task_id,
-                    region,
-                    queue,
-                    entry["tier"],
-                    entry["rank"],
-                    patch,
-                )
-                players_refreshed += 1
-
-            info = db.get_player_info(puuid)
-            if not info:
-                logger.error(f"No stored player_info found for {puuid}; skipping mastery refresh.")
-                continue
-
-            mastery_task_id = db.add_mastery_task(run_id, puuid)
-            mastery_payload = get_masteries.fetch_player_masteries(
-                puuid,
-                patch,
-                mastery_task_id,
-                region=info.get("region"),
-                api_client=api_client,
-            )
-            if not mastery_payload:
-                continue
-
-            mastery_path = get_masteries.save_masteries(mastery_payload, info, patch)
-            if mastery_path:
-                db.update_mastery_task(mastery_task_id, "success", patch, file_path=str(mastery_path))
-                masteries_refreshed += 1
-            else:
-                db.update_mastery_task(mastery_task_id, "failed", patch, error_message="Failed to save mastery data.")
-    finally:
-        player_registry.release_claims(puuids)
-
-    logger.info(
-        f"Stale refresh complete: {players_refreshed} player rank(s) and {masteries_refreshed} "
-        f"mastery snapshot(s) refreshed out of {len(puuids)} claimed."
-    )
-    return {
-        "claimed": len(puuids),
-        "players_refreshed": players_refreshed,
-        "masteries_refreshed": masteries_refreshed,
+    player_info = {
+        "puuid": puuid,
+        "region": region,
+        "queue": queue,
+        "tier": entry["tier"],
+        "division": entry["rank"],
+        "date": date,
+        "time": time,
     }
+    output_path = get_players.save_players(
+        [entry], output_path=get_players.OUTPUT_PATH, player_info=player_info, patch=patch
+    )
+    db.update_player_task(task_id, "success", file_path=str(output_path))
+    db.add_player_records(
+        puuid,
+        str(output_path),
+        task_id,
+        region,
+        queue,
+        entry["tier"],
+        entry["rank"],
+        patch,
+    )
+    return True
+
+
+def handle_mastery_extraction(info: dict, task_id: int, run_id: int, api_client: APIClient):
+    puuid = str(info.get("puuid"))
+    region = str(info.get("region"))
+    queue = str(info.get("queue"))
+    date = str(info.get("date"))
+    time = str(info.get("time"))
+    patch = str(info.get("patch"))
+    if not all([puuid, region, queue, date, time, patch]):
+        logger.error(f"Missing required player info: {info}")
+        return
+
+    mastery_task_id = db.add_mastery_task(run_id, puuid, is_refresh=True)
+    mastery_payload = get_masteries.fetch_player_masteries(
+        puuid,
+        patch,
+        mastery_task_id,
+        region=region,
+        api_client=api_client,
+    )
+    if not mastery_payload:
+        logger.info(f"failed to fetch mastery data for player {puuid} in {region} {queue}.")
+        return
+
+    mastery_path = get_masteries.save_masteries(
+        mastery_payload,
+        info={
+            "puuid": puuid,
+            "region": region,
+            "queue": queue,
+            "date": date,
+            "time": time,
+            "patch": patch,
+        },
+        patch=patch,
+    )
+    if mastery_path:
+        db.update_mastery_task(mastery_task_id, "success", patch, file_path=str(mastery_path))
+    else:
+        db.update_mastery_task(mastery_task_id, "failed", patch, error_message="Failed to save mastery data.")
+        logger.error(f"Failed to save mastery data for player {puuid} in {region} {queue}.")

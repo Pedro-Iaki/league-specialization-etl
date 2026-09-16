@@ -35,14 +35,10 @@ def run(
     All operational information is stored in the local sqlite database.
     """
     if not region or not queue:
-        logger.error(
-            "Player extractor not supplied with vital parameters, make sure to assign it."
-        )
+        logger.error("Player extractor not supplied with vital parameters, make sure to assign it.")
         return
     if run_id < 0:
-        logger.error(
-            "Invalid run id supplied to player extractor, cancelling operation."
-        )
+        logger.error("Invalid run id supplied to player extractor, cancelling operation.")
         return
 
     time = datetime.now(
@@ -70,14 +66,10 @@ def run(
 
     # Discard snapshots fully recorded in the database this patch, partial matches are fine.
     recorded_players = set(
-        db.get_players_in_patch(
-            patch=patch, region=region, queue=queue, tier=tier, division=division
-        )
+        db.get_players_in_patch(patch=patch, region=region, queue=queue, tier=tier, division=division)
     )
     snapshot_players = {player["puuid"] for player in players if player.get("puuid")}
-    unique_new_players = sum(
-        1 for item in snapshot_players if item not in recorded_players
-    )
+    unique_new_players = sum(1 for item in snapshot_players if item not in recorded_players)
     if unique_new_players == 0:
         logger.info(f"No new players found for {region} {queue} {tier} {division}.")
         db.update_player_task(task_id, "success", file_path=None)
@@ -90,13 +82,15 @@ def run(
     output_path = save_players(
         players,
         output_path=OUTPUT_PATH,
-        region=region,
-        queue=queue,
-        tier=tier,
-        division=division,
+        player_info={
+            "region": region,
+            "queue": queue,
+            "tier": tier,
+            "division": division,
+            "date": date,
+            "time": time,
+        },
         patch=patch,
-        date=date,
-        time=time,
     )
 
     db.update_player_task(task_id, "success", file_path=str(output_path))
@@ -130,9 +124,7 @@ def pick_least_populated_division(
         divisions = [division]
 
     # Get a dictionary of (tier, division) -> (loop, count)
-    stats = db.get_page_info(
-        region=region, queue=queue, patch=patch, tiers=tiers, divisions=divisions
-    )
+    stats = db.get_page_info(region=region, queue=queue, patch=patch, tiers=tiers, divisions=divisions)
     candidate = min(  # Get the smallest where:
         stats.items(),
         key=lambda item: (
@@ -161,9 +153,7 @@ def fetch_players(
         )
         return None
     if recursion_limit <= 0:
-        logger.error(
-            f"Recursion limit reached while fetching players for {region} {queue} {tier} {division}."
-        )
+        logger.error(f"Recursion limit reached while fetching players for {region} {queue} {tier} {division}.")
         return None
 
     page, _loop = db.get_page_and_loop(region, queue, tier, division, patch)
@@ -173,9 +163,7 @@ def fetch_players(
     try:
         response = api_client.get(url, params={"page": page})
     except TimeoutError as e:
-        logger.error(
-            f"Error fetching players for {region} {queue} {tier} {division}: {e}"
-        )
+        logger.error(f"Error fetching players for {region} {queue} {tier} {division}: {e}")
         db.update_player_task(task_id, "failed", error_message="retry limit reached.")
         return None
 
@@ -193,16 +181,10 @@ def fetch_players(
     raw_payload = response.json()
 
     try:
-        validated_players = [
-            models.RiotPlayerEntry.model_validate(p).model_dump() for p in raw_payload
-        ]
-        db.update_page_info(
-            region, queue, tier, division, patch, len(validated_players)
-        )
+        validated_players = [models.RiotPlayerEntry.model_validate(p).model_dump() for p in raw_payload]
+        db.update_page_info(region, queue, tier, division, patch, len(validated_players))
         if len(validated_players) == 0:
-            logger.warning(
-                f"No players found for {region} {queue} {tier} {division}. Re-Fetching next page."
-            )
+            logger.warning(f"No players found for {region} {queue} {tier} {division}. Re-Fetching next page.")
             return fetch_players(
                 task_id=task_id,
                 api_client=api_client,
@@ -216,34 +198,22 @@ def fetch_players(
         else:
             return validated_players
     except RuntimeError as e:
-        logger.error(
-            f"Error validating player data for {region} {queue} {tier} {division}: {e}"
-        )
+        logger.error(f"Error validating player data for {region} {queue} {tier} {division}: {e}")
         db.update_player_task(task_id, "failed", error_message=f"Validation error: {e}")
         return None
 
 
-def save_players(
-    players: list[dict],
-    output_path: Path,
-    region: str,
-    queue: str,
-    tier: str,
-    division: str,
-    patch: str,
-    date: str,
-    time: str,
-) -> Path:
+def save_players(players: list[dict], output_path: Path, player_info: dict, patch: str) -> Path:
     partitions = [
-        ("region", region),
-        ("queueType", queue),
-        ("tier", tier),
-        ("rank", division),
+        ("region", player_info["region"]),
+        ("queueType", player_info["queue"]),
+        ("tier", player_info["tier"]),
+        ("rank", player_info["division"]),
         ("patch", patch),
-        ("date", date),
+        ("date", player_info["date"]),
     ]
     output_path = output_helper.get_partitioned_path(output_path, partitions)
-    output_path = output_path / build_players_filename(time)
+    output_path = output_path / build_players_filename(player_info["time"])
 
     slim_players = drop_partitioned_player_columns(players)
     output_helper.write_parquet(slim_players, output_path)

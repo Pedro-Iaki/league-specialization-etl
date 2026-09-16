@@ -28,7 +28,7 @@ MAX_UPLOAD_ATTEMPTS = 3
 def _upload(dataset: str, compacted_path: Path) -> None:
     time = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S")
     parquet_name = f"{dataset}_{time}.parquet"
-    upload_parquet(str(compacted_path), f"dbfs:/Volumes/league_pipeline/landing_zone/{dataset}/{parquet_name}")
+    upload_parquet(str(compacted_path), f"/Volumes/league_pipeline/landing_zone/{dataset}/{parquet_name}")
 
 
 def load_dataset(dataset: str) -> dict:
@@ -41,7 +41,11 @@ def load_dataset(dataset: str) -> dict:
     if table.num_rows == 0:
         return {"dataset": dataset, "status": "skipped", "rows": 0, "players": 0}
 
-    player_ids = sorted(set(table[ID_COLUMN].to_pylist()))
+    try:
+        players = table.select(["puuid", "region", "queueType"]).to_pylist()
+    except RuntimeError as e:
+        logger.error(f"Failed to extract players from {dataset}: {e}")
+        return {"dataset": dataset, "status": "extract_failed", "rows": table.num_rows, "players": 0}
 
     try:
         _upload(dataset, compacted_path)
@@ -50,16 +54,16 @@ def load_dataset(dataset: str) -> dict:
         logger.error(f"Failed to load {dataset} after {MAX_UPLOAD_ATTEMPTS} attempts, will retry on next run: {e}")
         status = "load_failed"
 
-    db.update_load_status(dataset, player_ids, status)
-    logger.info(f"{dataset}: {table.num_rows} row(s), {len(player_ids)} player(s) marked {status}.")
+    db.update_load_status(dataset, players, status)
+    logger.info(f"{dataset}: {table.num_rows} row(s), {len(players)} player(s) marked {status}.")
 
-    if status == "load_success":
+    if status == "load_success" and dataset == "players":
         try:
-            player_registry.upsert_players(player_ids, dataset)
+            player_registry.upsert_players(players)
         except ConnectionError as e:
-            logger.error(f"Failed to update Neon player registry for {dataset}: {e}")
+            logger.error("Failed to update Neon player registry")
 
-    return {"dataset": dataset, "status": status, "rows": table.num_rows, "players": len(player_ids)}
+    return {"dataset": dataset, "status": status, "rows": table.num_rows, "players": len(players)}
 
 
 def load_compacted() -> bool:
@@ -68,7 +72,6 @@ def load_compacted() -> bool:
 
     if success:
         logger.info("Load succeeded for all datasets, resetting extraction state.")
-        reset_extraction_state.run()
     else:
         logger.error("Load failed for one or more datasets, leaving extraction state untouched.")
 
