@@ -44,39 +44,58 @@ def run(
 
     logger.info(f"Claimed {len(players)} stale player(s) for refresh.")
     patch = str(api_client.get_patch())
-    date = datetime.now(timezone.utc).strftime("%y%m%d")
-    time = datetime.now(timezone.utc).strftime("%H%M%S")
+    now = datetime.now(timezone.utc)
+    date = now.strftime("%y%m%d")
+    time = now.strftime("%H%M%S")
 
     masteries_refreshed = 0
     players_refreshed = 0
+    players_attempted = 0
     try:
         for player in players:
-            player_info = {
-                "puuid": player["puuid"],
-                "region": player["region"],
-                "queue": player["queue"],
-                "date": date,
-                "time": time,
-                "patch": patch,
-            }
-            if not handle_player_extraction(
-                info=player_info,
+            players_attempted += 1
+            logger.info(f"Refreshing player {players_attempted}/{len(players)}.")
+            player_entry = handle_player_extraction(
+                info={
+                    "puuid": player["puuid"],
+                    "region": player["region"],
+                    "queue": player["queue"],
+                    "date": date,
+                    "time": time,
+                    "patch": patch,
+                },
                 task_id=db.add_player_task(run_id, is_refresh=True),
                 api_client=api_client,
-            ):
+            )
+            if not player_entry:
+                logger.warning(
+                    f"Failed to refresh player, Failures: {players_attempted - players_refreshed}. Skipping."
+                )
                 continue
             players_refreshed += 1
 
-            if not handle_mastery_extraction(
-                info=player_info,
+            logger.info("Refreshing mastery for player...")
+            if handle_mastery_extraction(
+                info={
+                    "puuid": player["puuid"],
+                    "region": player["region"],
+                    "queue": player["queue"],
+                    "date": date,
+                    "iso_time": now,
+                    "patch": patch,
+                    "tier": player_entry["tier"],
+                    "division": player_entry["rank"],
+                },
                 task_id=db.add_mastery_task(run_id, player["puuid"], is_refresh=True),
-                run_id=run_id,
                 api_client=api_client,
             ):
-                continue
-            masteries_refreshed += 1
+                masteries_refreshed += 1
+                logger.info(f"Successfully refreshed mastery. Failures: {players_refreshed - masteries_refreshed}")
+            else:
+                logger.warning(f"Failed to refresh mastery. Failures: {players_refreshed - masteries_refreshed}")
 
     finally:
+        logger.info("Releasing player claims...")
         player_registry.release_claims([player["puuid"] for player in players])
 
     logger.info(
@@ -133,7 +152,7 @@ def fetch_player_rank(
         return None
 
 
-def handle_player_extraction(info: dict, task_id: int, api_client: APIClient) -> bool:
+def handle_player_extraction(info: dict, task_id: int, api_client: APIClient) -> dict | None:
     puuid = str(info.get("puuid"))
     region = str(info.get("region"))
     queue = str(info.get("queue"))
@@ -142,12 +161,12 @@ def handle_player_extraction(info: dict, task_id: int, api_client: APIClient) ->
     patch = str(info.get("patch"))
     if not all([puuid, region, queue, date, time, patch]):
         logger.error(f"Missing required player info: {info}")
-        return False
+        return None
 
     entry = fetch_player_rank(puuid, region=region, queue=queue, task_id=task_id, api_client=api_client)
     if entry is None:
         logger.info(f"Failed to fetch rank for player {puuid} in {region} {queue}.")
-        return False
+        return None
 
     player_info = {
         "puuid": puuid,
@@ -172,46 +191,49 @@ def handle_player_extraction(info: dict, task_id: int, api_client: APIClient) ->
         entry["rank"],
         patch,
     )
-    return True
+    return entry
 
 
-def handle_mastery_extraction(info: dict, task_id: int, run_id: int, api_client: APIClient):
+def handle_mastery_extraction(info: dict, task_id: int, api_client: APIClient) -> bool:
     puuid = str(info.get("puuid"))
     region = str(info.get("region"))
     queue = str(info.get("queue"))
     date = str(info.get("date"))
-    time = str(info.get("time"))
+    iso_time = info.get("iso_time")
     patch = str(info.get("patch"))
-    if not all([puuid, region, queue, date, time, patch]):
+    tier = str(info.get("tier"))
+    division = str(info.get("division"))
+    if not all([puuid, region, queue, date, iso_time, patch, tier, division]):
         logger.error(f"Missing required player info: {info}")
-        return
+        return False
 
-    mastery_task_id = db.add_mastery_task(run_id, puuid, is_refresh=True)
     mastery_payload = get_masteries.fetch_player_masteries(
         puuid,
         patch,
-        mastery_task_id,
+        task_id,
         region=region,
         api_client=api_client,
     )
     if not mastery_payload:
         logger.info(f"failed to fetch mastery data for player {puuid} in {region} {queue}.")
-        return
+        return False
 
     mastery_path = get_masteries.save_masteries(
         mastery_payload,
         info={
-            "puuid": puuid,
             "region": region,
             "queue": queue,
-            "date": date,
-            "time": time,
-            "patch": patch,
+            "latest_logged_at": iso_time,
+            "tier": tier,
+            "division": division,
+            "puuid": puuid,
         },
         patch=patch,
     )
     if mastery_path:
-        db.update_mastery_task(mastery_task_id, "success", patch, file_path=str(mastery_path))
+        db.update_mastery_task(task_id, "success", patch, file_path=str(mastery_path))
     else:
-        db.update_mastery_task(mastery_task_id, "failed", patch, error_message="Failed to save mastery data.")
+        db.update_mastery_task(task_id, "failed", patch, error_message="Failed to save mastery data.")
         logger.error(f"Failed to save mastery data for player {puuid} in {region} {queue}.")
+        return False
+    return True
