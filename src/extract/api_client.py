@@ -20,11 +20,9 @@ class RiotAPIClient:
         self._setup_lock = Lock()
 
     @retry(
-        wait=wait_exponential(multiplier=1, min=2, max=30),
-        stop=stop_after_attempt(5),
-        retry=retry_if_exception_type(
-            (requests.exceptions.RequestException, ConnectionError)
-        ),
+        wait=wait_exponential(multiplier=2, min=2, max=80),
+        stop=stop_after_attempt(8),
+        retry=retry_if_exception_type((requests.exceptions.RequestException, ConnectionError)),
         before_sleep=before_sleep_log(logger, "WARNING"),  # type: ignore
     )
     def get_patch(self):
@@ -35,11 +33,9 @@ class RiotAPIClient:
         return patch
 
     @retry(
-        wait=wait_exponential(multiplier=1, min=2, max=30),
-        stop=stop_after_attempt(5),
-        retry=retry_if_exception_type(
-            (requests.exceptions.RequestException, ConnectionError)
-        ),
+        wait=wait_exponential(multiplier=2, min=2, max=80),
+        stop=stop_after_attempt(8),
+        retry=retry_if_exception_type((requests.exceptions.RequestException, ConnectionError)),
         before_sleep=before_sleep_log(logger, "WARNING"),  # type: ignore
     )
     def get(self, url: str, **kwargs) -> requests.Response:
@@ -79,19 +75,13 @@ class RiotAPIClient:
                         consumed = bucket.consume()
 
                         if not consumed:
-                            raise RuntimeError(
-                                "Token bucket state changed unexpectedly."
-                            )
+                            raise RuntimeError("Token bucket state changed unexpectedly.")
 
-                    logger.info(
-                        f"Efficiency at {max(bucket.calculate_efficiency() for bucket in self.buckets):.2f}%"
-                    )
+                    logger.info(f"Efficiency at {max(bucket.calculate_efficiency() for bucket in self.buckets):.2f}%")
 
                     return
 
-                wait_time = max(
-                    b.period / b.rate_limit for b in self.buckets if not b.peek()
-                )
+                wait_time = max(b.period / b.rate_limit for b in self.buckets if not b.peek())
 
             time.sleep(wait_time)
 
@@ -141,10 +131,6 @@ class TokenBucket:
 
     def calculate_efficiency(self) -> float:
         ideal_throughput = self.rate_limit / self.period
-        actual_throughput = (
-            (self.successes / self.total_time) if self.total_time > 0 else 0
-        )
-        efficiency = (
-            (actual_throughput / ideal_throughput) * 100 if ideal_throughput > 0 else 0
-        )
+        actual_throughput = (self.successes / self.total_time) if self.total_time > 0 else 0
+        efficiency = (actual_throughput / ideal_throughput) * 100 if ideal_throughput > 0 else 0
         return efficiency
