@@ -20,7 +20,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND']
+                values: ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER']
       - name: rank
         tests:
           - not_null
