@@ -20,8 +20,8 @@ class RiotAPIClient:
         self._setup_lock = Lock()
 
     @retry(
-        wait=wait_exponential(multiplier=2, min=2, max=80),
-        stop=stop_after_attempt(8),
+        wait=wait_exponential(multiplier=5, min=1, max=90),
+        stop=stop_after_attempt(4),
         retry=retry_if_exception_type((requests.exceptions.RequestException, ConnectionError)),
         before_sleep=before_sleep_log(logger, "WARNING"),  # type: ignore
     )
@@ -33,8 +33,8 @@ class RiotAPIClient:
         return patch
 
     @retry(
-        wait=wait_exponential(multiplier=2, min=2, max=80),
-        stop=stop_after_attempt(8),
+        wait=wait_exponential(multiplier=5, min=1, max=90),
+        stop=stop_after_attempt(4),
         retry=retry_if_exception_type((requests.exceptions.RequestException, ConnectionError)),
         before_sleep=before_sleep_log(logger, "WARNING"),  # type: ignore
     )
