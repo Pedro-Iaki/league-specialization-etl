@@ -14,6 +14,8 @@ import extract.extraction_db_helper as db
 import pydantic_models as models
 from extract import output_helper
 from extract.api_client_protocol import APIClient
+from load.player_registry import get_fresh_players
+from tenacity import P
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 OUTPUT_PATH = BASE_DIR / "data" / "raw" / "players"
@@ -27,6 +29,7 @@ def run(
     queue: str,
     tier: OptStr = None,
     division: OptStr = None,
+    freshness_minutes: int = 10080,
 ):
     """Fetches a player snapshot from riot api and saves it to a file\n
     Prioritizes fetching players from the least collected divisions that patch, prioritizing those who haven't looped, then those with the least players recorded.\n
@@ -64,23 +67,29 @@ def run(
     if players is None:
         return
 
-    # Discard snapshots fully recorded in the database this patch, partial matches are fine.
-    recorded_players = set(
-        db.get_players_in_patch(patch=patch, region=region, queue=queue, tier=tier, division=division)
+    # Remove players that are fresh in our player registry
+    fresh_players = get_fresh_players(freshness_minutes)
+    snapshot_player_ids = {player["puuid"] for player in players if player.get("puuid")}
+    fresh_player_ids = {player["puuid"] for player in fresh_players if player.get("puuid")}
+    snapshot_fresh_ids = snapshot_player_ids.intersection(fresh_player_ids)
+    snapshot_viable_players = [p for p in players if p.get("puuid") not in snapshot_fresh_ids]
+
+    # Then discard the snapshot if the remaining players are all already recorded in the database
+    recorded_players_ids = set(
+        db.get_players_recorded(patch=patch, region=region, queue=queue, tier=tier, division=division)
     )
-    snapshot_players = {player["puuid"] for player in players if player.get("puuid")}
-    unique_new_players = sum(1 for item in snapshot_players if item not in recorded_players)
-    if unique_new_players == 0:
-        logger.info(f"No new players found for {region} {queue} {tier} {division}.")
+    all_recorded = {p["puuid"] for p in snapshot_viable_players if p.get("puuid")}.issubset(recorded_players_ids)
+    if all_recorded or len(snapshot_viable_players) == 0:
+        logger.info(f"No new or stale players found for {region} {queue} {tier} {division}.")
         db.update_player_task(task_id, "success", file_path=None)
         return
 
     logger.info(
-        f"Fetched {unique_new_players}/{len(players)} (unique/total) players for {region} {queue} {tier} {division}."
+        f"Fetched {len(snapshot_viable_players)}/{len(players)} (unique/total) players for {region} {queue} {tier} {division}."
     )
 
     output_path = save_players(
-        players,
+        snapshot_viable_players,
         output_path=OUTPUT_PATH,
         player_info={
             "region": region,
@@ -94,7 +103,7 @@ def run(
     )
 
     db.update_player_task(task_id, "success", file_path=str(output_path))
-    for player in players:
+    for player in snapshot_viable_players:
         puuid = player.get("puuid")
         if puuid:
             db.add_player_records(

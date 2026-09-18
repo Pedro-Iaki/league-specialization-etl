@@ -29,9 +29,7 @@ def test_run_lifecycle_operators(mock_conn):
     assert run["started_at"] is not None
 
     db.heartbeat_run(run_id, conn=mock_conn)
-    heartbeat = mock_conn.execute(
-        "SELECT last_heartbeat FROM runs WHERE run_id = ?", (run_id,)
-    ).fetchone()[0]
+    heartbeat = mock_conn.execute("SELECT last_heartbeat FROM runs WHERE run_id = ?", (run_id,)).fetchone()[0]
     assert heartbeat is not None
 
     db.finish_run(run_id, "failed", "simulated failure", conn=mock_conn)
@@ -49,9 +47,7 @@ def test_player_task_lifecycle_operators(mock_conn):
     task_id = db.add_player_task(run_id, conn=mock_conn)
     assert task_id > 0
 
-    task = mock_conn.execute(
-        "SELECT status, attempts FROM player_tasks WHERE task_id = ?", (task_id,)
-    ).fetchone()
+    task = mock_conn.execute("SELECT status, attempts FROM player_tasks WHERE task_id = ?", (task_id,)).fetchone()
     assert task["status"] == "pending"
     assert task["attempts"] == 0
 
@@ -64,9 +60,7 @@ def test_player_task_lifecycle_operators(mock_conn):
     assert task["attempts"] == 1
     assert task["started_at"] is not None
 
-    db.update_player_task(
-        task_id, "success", file_path="/tmp/player_snapshot.json", conn=mock_conn
-    )
+    db.update_player_task(task_id, "success", file_path="/tmp/player_snapshot.json", conn=mock_conn)
     task = mock_conn.execute(
         "SELECT status, finished_at, file_path FROM player_tasks WHERE task_id = ?",
         (task_id,),
@@ -103,9 +97,7 @@ def test_player_record_and_mastery_operators(mock_conn):
         conn=mock_conn,
     )
 
-    record = mock_conn.execute(
-        "SELECT * FROM players_recorded WHERE player_id = ?", (player_id,)
-    ).fetchone()
+    record = mock_conn.execute("SELECT * FROM players_recorded WHERE player_id = ?", (player_id,)).fetchone()
     player_task_ids = json.loads(record["player_task_ids"])
     paths = json.loads(record["paths"])
     patches = json.loads(record["patches_logged"])
@@ -125,12 +117,8 @@ def test_player_record_and_mastery_operators(mock_conn):
         conn=mock_conn,
     )
 
-    mastery = mock_conn.execute(
-        "SELECT * FROM mastery_tasks WHERE task_id = ?", (mastery_task_id,)
-    ).fetchone()
-    record = mock_conn.execute(
-        "SELECT * FROM players_recorded WHERE player_id = ?", (player_id,)
-    ).fetchone()
+    mastery = mock_conn.execute("SELECT * FROM mastery_tasks WHERE task_id = ?", (mastery_task_id,)).fetchone()
+    record = mock_conn.execute("SELECT * FROM players_recorded WHERE player_id = ?", (player_id,)).fetchone()
     assert mastery["status"] == "success"
     assert mastery["file_path"] == "/tmp/mastery_player-record-mastery.json"
     assert record["mastery_status"] == "success"
@@ -152,9 +140,7 @@ def test_update_player_records_direct_operator(db_factory, mock_conn):
             "file_path": mastery_file_path,
         }
     )
-    factory.create_individual_players_recorded(
-        {"player_id": player_id, "mastery_status": "pending"}
-    )
+    factory.create_individual_players_recorded({"player_id": player_id, "mastery_status": "pending"})
 
     db.update_player_records(
         "failed",
@@ -165,9 +151,7 @@ def test_update_player_records_direct_operator(db_factory, mock_conn):
         mastery_task_id=mastery_task_id,
     )
 
-    record = mock_conn.execute(
-        "SELECT * FROM players_recorded WHERE player_id = ?", (player_id,)
-    ).fetchone()
+    record = mock_conn.execute("SELECT * FROM players_recorded WHERE player_id = ?", (player_id,)).fetchone()
     assert record["mastery_status"] == "failed"
     assert record["mastery_path"] == mastery_file_path
     assert record["mastery_task_id"] == mastery_task_id
@@ -234,9 +218,7 @@ def test_player_query_operators(mock_conn, db_factory):
     assert failed_id in missing_default
     assert stale_success_id not in missing_default
 
-    stale_candidates = db.claim_players_missing_masteries(
-        include_stale_success=True, conn=mock_conn, claim=False
-    )
+    stale_candidates = db.claim_players_missing_masteries(include_stale_success=True, conn=mock_conn, claim=False)
     assert stale_success_id in stale_candidates
     assert in_progress_id not in stale_candidates
 
@@ -264,10 +246,10 @@ def test_player_query_operators(mock_conn, db_factory):
     )
     assert pending_id in players_recent_filtered
 
-    players_patch = db.get_players_in_patch("15.1", conn=mock_conn)
+    players_patch = db.get_players_recorded("15.1", conn=mock_conn)
     assert stale_success_id in players_patch
 
-    players_patch_filtered = db.get_players_in_patch(
+    players_patch_filtered = db.get_players_recorded(
         "15.1",
         region="na1",
         queue="RANKED_SOLO_5x5",
@@ -324,19 +306,13 @@ def test_page_tracking_operators(mock_conn, db_factory):
     assert stats[("GOLD", "I")][0] == 2
     assert stats[("GOLD", "I")][1] == 3
 
-    page_missing = db.get_page_and_loop(
-        region, queue, "EMERALD", "III", patch, conn=mock_conn
-    )
+    page_missing = db.get_page_and_loop(region, queue, "EMERALD", "III", patch, conn=mock_conn)
     assert page_missing == (1, 0)
 
-    missing_update = db.update_page_info(
-        "xx", "yy", "zz", "ww", "pp", 12, conn=mock_conn
-    )
+    missing_update = db.update_page_info("xx", "yy", "zz", "ww", "pp", 12, conn=mock_conn)
     assert missing_update == 0
 
-    db.update_page_info(
-        region, queue, "GOLD", "I", patch, player_count=12, conn=mock_conn
-    )
+    db.update_page_info(region, queue, "GOLD", "I", patch, player_count=12, conn=mock_conn)
     row = mock_conn.execute(
         "SELECT current_page, last_player_count, loop_count FROM tier_division_pages WHERE region=? AND queue=? AND tier=? AND division=? AND patch=?",
         (region, queue, "GOLD", "I", patch),
@@ -345,9 +321,7 @@ def test_page_tracking_operators(mock_conn, db_factory):
     assert row["last_player_count"] == 12
     assert row["loop_count"] == 2
 
-    db.update_page_info(
-        region, queue, "GOLD", "I", patch, player_count=5, conn=mock_conn
-    )
+    db.update_page_info(region, queue, "GOLD", "I", patch, player_count=5, conn=mock_conn)
     row = mock_conn.execute(
         "SELECT current_page, last_player_count, loop_count FROM tier_division_pages WHERE region=? AND queue=? AND tier=? AND division=? AND patch=?",
         (region, queue, "GOLD", "I", patch),

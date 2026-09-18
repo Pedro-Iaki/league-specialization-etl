@@ -138,6 +138,7 @@ def run_snapshot_fetchers(config_manifest: dict, run_n, date, api_client) -> boo
             api_client=api_client,
             region=config_manifest["region"],
             queue=config_manifest["queue"],
+            freshness_minutes=int(config_manifest["freshness_threshold_minutes"]),
         )
         extract_masteries(
             run_id,

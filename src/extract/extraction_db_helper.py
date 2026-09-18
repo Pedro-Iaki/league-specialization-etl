@@ -2,7 +2,6 @@
 Most operations take an optional conn parameter, mostly for testing with mocked values, but keep in mind that whoever passes it must also handle the connection fully"""
 
 import json
-import queue
 import sqlite3
 from datetime import datetime, timezone
 
@@ -577,7 +576,7 @@ def get_players_in_timespan(
     return players
 
 
-def get_players_in_patch(
+def get_players_recorded(
     patch: str,
     region: OptStr = None,
     queue: OptStr = None,
@@ -586,9 +585,9 @@ def get_players_in_patch(
     conn: sqlite3.Connection | None = None,
 ) -> list[dict]:
     """
-    Get all players for a given patch, with optional region, queue, tier, and division parameters.
+    Get all players, with optional region, queue, tier, and division parameters.
     \nReturns a list of player dictionaries.
-    \nOnly considers players with masteries logged for that patch. Meaning running an operation on a patch that has no masteries logged will return an empty list.
+    \nOnly considers players with masteries logged Meaning running an operation on a patch that has no masteries logged will return an empty list.
     """
     own_conn = conn is None
     if own_conn:
@@ -597,10 +596,9 @@ def get_players_in_patch(
         query = """
 			SELECT player_id
 			FROM players_recorded
-			WHERE mastery_patch = ?
+			WHERE mastery_status = 'success'
 		"""
-        params = [patch]
-
+        params = []
         filters = []
         for column, value in (
             ("region", region),

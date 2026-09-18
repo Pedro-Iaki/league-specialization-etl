@@ -61,6 +61,31 @@ def upsert_players(players: list[dict], conn: psycopg.Connection | None = None) 
             conn.close()
 
 
+def get_fresh_players(
+    threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
+    conn: psycopg.Connection | None = None,
+) -> list[dict[str, Any]]:
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                puuid,
+                first_loaded_at,
+                last_updated_at
+            FROM player_state_registry
+            WHERE last_updated_at >= (now() - (%s * interval '1 minute'))
+        """,
+            (threshold_minutes,),
+        ).fetchall()
+        return [normalized for row in rows if (normalized := _normalize_row(row)) is not None]
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def get_stale_players(
     threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
     conn: psycopg.Connection | None = None,
