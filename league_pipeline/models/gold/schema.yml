@@ -11,3 +11,36 @@ models:
     columns:
       - name: puuid
         tests: [not_null, unique]
+
+  - name: fct_players_champion_activity
+    description: >
+      One row per player/champion combination the player currently holds mastery
+      points on. Flags whether the champion should be considered "active" in the
+      player's champion pool based on mastery gains within a lookback window
+      (var: active_champion_lookback_days, default 60 days). A champion is active
+      when it has at least one mastery gain inside the window AND that gain
+      exceeds the higher of an absolute points threshold
+      (var: active_champion_min_absolute_points, default 3000) or a relative
+      threshold (var: active_champion_min_relative_pct, default 0.10 of the
+      player's total mastery gained in the window).
+    columns:
+      - name: player_champion_activity_id
+        tests: [not_null, unique]
+      - name: puuid
+        tests: [not_null]
+      - name: champion_key
+        tests: [not_null]
+      - name: is_active_champion
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments: {combination_of_columns: [puuid, champion_key]}
+
+  - name: dim_players_active_champion_pool
+    description: >
+      One row per player with an array of champion_key values considered
+      "active" per fct_players_champion_activity. Players with no active
+      champions get an empty array rather than being dropped.
+    columns:
+      - name: puuid
+        tests: [not_null, unique]
