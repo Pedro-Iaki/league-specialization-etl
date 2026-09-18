@@ -3,28 +3,28 @@
 with active_champions as (
 
     select
-        puuid,
+        player_id,
         champion_key
     from {{ ref('fct_players_champion_activity') }}
-    where is_active_champion
+    where is_active
 
 ),
 
 aggregated as (
 
     select
-        puuid,
+        player_id,
         sort_array(collect_list(cast(champion_key as string))) as active_champion_ids,
         count(*) as active_champion_count
     from active_champions
-    group by puuid
+    group by player_id
 
 )
 
 select
-    p.puuid,
+    p.puuid as player_id,
     coalesce(a.active_champion_ids, array()) as active_champion_ids,
     coalesce(a.active_champion_count, 0) as active_champion_count
 from {{ ref('dim_players_current') }} p
 left join aggregated a
-    on p.puuid = a.puuid
+    on p.puuid = a.player_id

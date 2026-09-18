@@ -14,27 +14,59 @@ models:
 
   - name: fct_players_champion_activity
     description: >
-      One row per player/champion combination the player currently holds mastery
-      points on. Flags whether the champion should be considered "active" in the
-      player's champion pool based on mastery gains within a lookback window
-      (var: active_champion_lookback_days, default 60 days). A champion is active
-      when it has at least one mastery gain inside the window AND that gain
-      exceeds the higher of an absolute points threshold
-      (var: active_champion_min_absolute_points, default 3000) or a relative
-      threshold (var: active_champion_min_relative_pct, default 0.10 of the
-      player's total mastery gained in the window).
+      Dense one-row-per player_id/champion_key catalog -- every champion in
+      dim_champions gets a row for every player in dim_players_current,
+      including champions never played (which resolve to 0s and is_active =
+      false, rather than being absent as in fct_masteries_current).
+
+      is_active is computed one of two ways depending on days_tracked (the
+      full first-seen-to-last-seen span for this specific player/champion
+      combination, from fct_masteries_history):
+
+      1. days_tracked >= active_champion_min_tracking_days (default 3):
+         active when last_played_at <= active_champion_activity_window_days
+         (default 60) AND recent_champ_points exceeds the higher of
+         absolute_threshold or relative_threshold.
+
+      2. days_tracked < active_champion_min_tracking_days: not enough history
+         to trust a delta-based trend, so recent_champ_points is ignored
+         entirely. Active when last_played_at <=
+         (active_champion_activity_window_days * active_champion_immature_window_fraction),
+         i.e. a tighter window (default 30 days), based on last_played_at alone.
+
+      Thresholds:
+      - absolute_threshold = active_champion_min_absolute_points * least(days_tracked / active_champion_activity_window_days, 1)
+      - relative_threshold = active_champion_min_relative_pct * recent_total_points
     columns:
       - name: player_champion_activity_id
         tests: [not_null, unique]
-      - name: puuid
+      - name: player_id
         tests: [not_null]
       - name: champion_key
         tests: [not_null]
-      - name: is_active_champion
+      - name: recent_champ_points
+        description: Sum of mastery point deltas for this champion within the activity window.
+        tests: [not_null]
+      - name: recent_total_points
+        description: Sum of mastery point deltas across all of the player's champions within the activity window.
+        tests: [not_null]
+      - name: days_tracked
+        description: >
+          Calendar-day span (max snapshot_date - min snapshot_date) between the
+          first and last mastery snapshot ever observed for this specific
+          player/champion combination. 0 for a champion never played.
+        tests: [not_null]
+      - name: absolute_threshold
+        tests: [not_null]
+      - name: relative_threshold
+        tests: [not_null]
+      - name: last_played_at
+        description: Days between the most recent snapshot on record and this champion's last_play_time. Null if never played.
+      - name: is_active
         tests: [not_null]
     tests:
       - dbt_utils.unique_combination_of_columns:
-          arguments: {combination_of_columns: [puuid, champion_key]}
+          arguments: {combination_of_columns: [player_id, champion_key]}
 
   - name: dim_players_active_champion_pool
     description: >
@@ -42,5 +74,5 @@ models:
       "active" per fct_players_champion_activity. Players with no active
       champions get an empty array rather than being dropped.
     columns:
-      - name: puuid
+      - name: player_id
         tests: [not_null, unique]

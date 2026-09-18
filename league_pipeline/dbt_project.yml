@@ -27,6 +27,8 @@ vars:
   late_arrival_lookback_days: 5
   dedup_minutes_range: "{{ env_var('FRESHNESS_THRESHOLD_MINUTES', '1440') | int }}"
   mastery_freshness_days: 2
-  active_champion_lookback_days: 60
+  active_champion_activity_window_days: 60
   active_champion_min_absolute_points: 3000
   active_champion_min_relative_pct: 0.10
+  active_champion_min_tracking_days: 30
+  active_champion_immature_window_fraction: 0.5
