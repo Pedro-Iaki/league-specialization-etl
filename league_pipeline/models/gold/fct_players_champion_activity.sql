@@ -12,7 +12,7 @@
 with as_of as (
 
     select max(snapshot_date) as as_of_date
-    from {{ ref('fct_players_champion_delta') }}
+    from {{ ref('fct_players_champion_last_delta') }}
 
 ),
 
@@ -22,12 +22,22 @@ recent_deltas as (
         d.puuid,
         d.champion_key,
         d.points_delta,
-        d.snapshot_date
-    from {{ ref('fct_players_champion_delta') }} d
+        d.snapshot_date,
+        d.previous_snapshot_date
+    from {{ ref('fct_players_champion_last_delta') }} d
     cross join as_of
     where d.snapshot_date > date_sub(as_of.as_of_date, {{ activity_window_days }})
 
 ),
+
+recent_dates as (
+    select
+        puuid,
+        snapshot_date,
+        previous_snapshot_date
+    from recent_deltas
+    group by puuid
+)
 
 champion_recent_points as (
 
@@ -52,19 +62,13 @@ player_recent_points as (
 
 ),
 
-champion_tracking as (
+player_tracking as (
 
-    -- Full observation span for this specific player/champion combination:
-    -- first snapshot on record vs the latest, uncapped by the activity
-    -- window (the window only bounds the *ratio* used to prorate
-    -- absolute_threshold below, not this raw span). A champion only enters
-    -- the mastery pull once it has nonzero points, so this differs
-    -- meaningfully across a player's champions.
     select
         puuid,
-        datediff(max(snapshot_date), min(snapshot_date)) as days_tracked
+        datediff(max(snapshot_date), min(snapshot_date)) as total_days_tracked
     from {{ ref('dim_players_history') }}
-    group by puuid, champion_key
+    group by puuid
 
 ),
 
@@ -78,10 +82,6 @@ champion_last_played as (
 
 ),
 
--- Dense player x champion universe: every champion gets a row for every
--- player, including ones never played. A never-played combo simply has no
--- rows in champion_tracking / champion_recent_points / champion_last_played,
--- so it resolves to an explicit 0/inactive below rather than being absent.
 champion_universe as (
 
     select
@@ -100,16 +100,18 @@ joined as (
         ao.as_of_date,
         coalesce(cr.recent_champ_points, 0) as recent_champ_points,
         coalesce(pr.recent_total_points, 0) as recent_total_points,
-        coalesce(ct.days_tracked, 0) as days_tracked,
+        coalesce(ct.total_days_tracked, 0) as total_days_tracked,
         lp.last_play_time
     from champion_universe u
     cross join as_of ao
+    left join recent_dates rd
+        on u.puuid = rd.puuid
     left join champion_recent_points cr
         on u.puuid = cr.puuid
         and u.champion_key = cr.champion_key
     left join player_recent_points pr
         on u.puuid = pr.puuid
-    left join champion_tracking ct
+    left join player_tracking ct
         on u.puuid = ct.puuid
     left join champion_last_played lp
         on u.puuid = lp.puuid
@@ -123,7 +125,7 @@ flagged as (
         *,
         cast(datediff(as_of_date, last_play_time) as int) as last_played_at,
         cast({{ min_absolute_points }} as double)
-            * least(days_tracked / {{ activity_window_days }}.0, 1) as absolute_threshold,
+            * least(total_days_tracked / {{ activity_window_days }}.0, 1) as absolute_threshold,
         recent_total_points * {{ min_relative_pct }} as relative_threshold
     from joined
 
@@ -134,21 +136,20 @@ select
     {{ dbt_utils.generate_surrogate_key(['puuid', 'champion_key']) }} as player_champion_activity_id,
     puuid as player_id,
     champion_key,
+    previous_snapshot_date,
+    snapshot_date,
     recent_champ_points,
     recent_total_points,
-    days_tracked,
+    {{ dbt_utils.safe_divide('recent_champ_points',     'recent_total_points') }} as recent_pct_of_total,
+    total_days_tracked,
     absolute_threshold,
     relative_threshold,
     last_played_at,
     case
-        -- enough history to trust a delta trend: require both recency and
-        -- representation
-        when days_tracked >= {{ min_tracking_days }} then
+        when total_days_tracked >= {{ min_tracking_days }} then
             last_played_at is not null
             and last_played_at <= {{ activity_window_days }}
             and recent_champ_points > greatest(absolute_threshold, relative_threshold)
-        -- not enough history for a delta to mean anything: fall back to
-        -- last-played-time alone, at a tighter window
         else
             last_played_at is not null
             and last_played_at <= {{ min_tracking_days }}

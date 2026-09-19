@@ -30,5 +30,5 @@ vars:
   active_champion_activity_window_days: 60
   active_champion_min_absolute_points: 3000
   active_champion_min_relative_pct: 0.10
-  active_champion_min_tracking_days: 30
   active_champion_immature_window_fraction: 0.5
+  role_profile_recent_champion_count: 15

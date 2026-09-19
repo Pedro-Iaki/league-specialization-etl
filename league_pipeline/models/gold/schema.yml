@@ -68,7 +68,7 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments: {combination_of_columns: [player_id, champion_key]}
 
-  - name: dim_players_active_champion_pool
+  - name: dim_players_active_pool
     description: >
       One row per player with an array of champion_key values considered
       "active" per fct_players_champion_activity. Players with no active

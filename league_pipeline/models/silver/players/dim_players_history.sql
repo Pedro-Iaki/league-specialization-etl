@@ -24,13 +24,13 @@ with source as (
             when 'IV' then 4
             else null
         end as division,
+        league_points,
         patch,
         to_date(date, 'yyMMdd') as snapshot_date,
         wins,
         losses,
         wins + losses as total_games,
         {{ dbt_utils.safe_divide('wins', 'wins + losses') }} as win_rate,
-        freshBlood as in_motion,
         _ingested_at,
         floor(datediff(MINUTE, '2009-01-01', snapshot_date) / {{ dedup_minutes_range }}) as _weekly_bucket
     from {{ ref('bronze_players') }} p
@@ -67,11 +67,11 @@ select
     queue,
     tier,
     division,
+    league_points,
     patch,
     wins,
     losses,
     total_games,
     win_rate,
-    in_motion,
     snapshot_date
 from source
