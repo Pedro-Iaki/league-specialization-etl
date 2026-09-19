@@ -13,6 +13,7 @@ with source as (
         losses,
         snapshot_date
     from {{ ref('dim_players_history') }}
+    where league_points is not null
 ),
 
 with_absolute_lp as (
@@ -66,4 +67,4 @@ from deltas
 -- drop the first snapshot per player_id/queue (no prior baseline -> null deltas,
 -- filtered out the same way NULL != 0 is falsy) and any snapshot where
 -- nothing actually moved
-qualify ((wins_delta + losses_delta) != 0 or lp_delta != 0) and snapshot_date = max(snapshot_date) over (partition by player_id, queue)
+qualify ((wins_delta + losses_delta) != 0 or lp_delta != 0) and snapshot_date = max(snapshot_date) over (partition by player_id, queue) and period_in_days > 0

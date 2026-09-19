@@ -3,32 +3,36 @@
 with source as (
 
     select
-        puuid,
+        puuid as player_id,
         champion_key,
         snapshot_date,
         champion_points,
+        c.name as champion_name,
         last_play_time
 
-    from {{ ref('fct_masteries_current') }}
+    from {{ ref('fct_masteries_history') }}
+    left join {{ ref('dim_champions') }} c
+        on fct_masteries_history.champion_key = c.key
 ),
 
 deltas as (
 
     select
         {{ dbt_utils.generate_surrogate_key([
-            'puuid',
+            'player_id',
             'champion_key'
         ]) }} as champion_delta_id,
 
-        puuid as player_id,
+        player_id,
         champion_key,
+        champion_name,
         lag(snapshot_date) over (
-            partition by puuid, champion_key order by snapshot_date
+            partition by player_id, champion_key order by snapshot_date
         ) as previous_snapshot_date,
         snapshot_date,
         datediff(DAY, previous_snapshot_date, snapshot_date) as days_period,
         champion_points - lag(champion_points) over (
-            partition by puuid, champion_key
+            partition by player_id, champion_key
             order by snapshot_date
         ) as points_delta
 
@@ -38,4 +42,4 @@ deltas as (
 
 select *
 from deltas
-where points_delta != 0
+where points_delta != 0 and days_period > 0

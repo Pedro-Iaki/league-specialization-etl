@@ -21,22 +21,10 @@ recent_deltas as (
     select
         d.player_id,
         d.champion_key,
-        d.points_delta,
-        d.snapshot_date,
-        d.previous_snapshot_date
+        d.points_delta
     from {{ ref('fct_players_champion_last_delta') }} d
     cross join as_of
     where d.snapshot_date > date_sub(as_of.as_of_date, {{ activity_window_days }})
-
-),
-
-recent_dates as (
-    select
-        player_id,
-        max(snapshot_date) as snapshot_date,
-        max(previous_snapshot_date) as previous_snapshot_date
-    from recent_deltas
-    group by 1
 ),
 
 champion_recent_points as (
@@ -82,14 +70,29 @@ champion_last_played as (
 
 ),
 
+latest_players as (
+
+    select
+        puuid as player_id,
+        snapshot_date
+    from {{ ref('dim_players_history') }}
+    group by puuid, snapshot_date
+
+    qualify row_number() over (
+        partition by puuid
+        order by snapshot_date desc
+    ) = 1
+),
+
 champion_universe as (
 
     select
-        p.puuid as player_id,
-        c.key as champion_key
-    from {{ ref('dim_players_current') }} p
+        player_id,
+        c.key as champion_key,
+        c.name as champion_name,
+        snapshot_date
+    from latest_players
     cross join {{ ref('dim_champions') }} c
-
 ),
 
 joined as (
@@ -97,17 +100,15 @@ joined as (
     select
         u.player_id,
         u.champion_key,
+        u.champion_name,
+        u.snapshot_date,
         ao.as_of_date,
         coalesce(cr.recent_champ_points, 0) as recent_champ_points,
         coalesce(pr.recent_total_points, 0) as recent_total_points,
         coalesce(ct.total_days_tracked, 0) as total_days_tracked,
-        lp.last_play_time,
-        rd.previous_snapshot_date,
-        rd.snapshot_date
+        lp.last_play_time
     from champion_universe u
     cross join as_of ao
-    left join recent_dates rd
-        on u.player_id = rd.player_id
     left join champion_recent_points cr
         on u.player_id = cr.player_id
         and u.champion_key = cr.champion_key
@@ -138,7 +139,7 @@ select
     {{ dbt_utils.generate_surrogate_key(['player_id', 'champion_key']) }} as player_champion_activity_id,
     player_id,
     champion_key,
-    previous_snapshot_date,
+    champion_name,
     snapshot_date,
     recent_champ_points,
     recent_total_points,

@@ -15,7 +15,7 @@
 with recent_champions as (
 
     select
-        puuid,
+        puuid as player_id,
         champion_key,
         last_play_time
     from {{ ref('fct_masteries_current') }}
@@ -23,7 +23,7 @@ with recent_champions as (
     where last_play_time is not null
       and last_play_time > timestamp '2009-01-01'
     qualify row_number() over (
-        partition by puuid
+        partition by player_id
         order by last_play_time desc, champion_points desc, champion_key
     ) <= {{ recent_champion_count }}
 
@@ -32,18 +32,18 @@ with recent_champions as (
 sampled as (
 
     select
-        puuid,
+        player_id,
         collect_list(champion_key) as champions_sample,
         count(*) as champions_sampled_count
     from recent_champions
-    group by puuid
+    group by player_id
 
 ),
 
 champion_roles as (
 
     select
-        rc.puuid,
+        rc.player_id,
         rc.champion_key,
         explode(c.expected_positions) as roles
     from recent_champions rc
@@ -55,27 +55,27 @@ champion_roles as (
 role_counts as (
 
     select
-        puuid,
+        player_id,
         roles,
         count(*) as role_count
     from champion_roles
     where roles is not null
-    group by puuid, roles
+    group by player_id, roles
 
 ),
 
 role_pivot as (
 
     select
-        puuid,
-        sum(case when roles = 'top'     then role_count else 0 end) as top_count,
-        sum(case when roles = 'jungle'  then role_count else 0 end) as jungle_count,
-        sum(case when roles = 'middle'  then role_count else 0 end) as middle_count,
-        sum(case when roles = 'bottom'  then role_count else 0 end) as bottom_count,
-        sum(case when roles = 'support' then role_count else 0 end) as support_count,
+        player_id,
+        sum(case when roles = 'Top'     then role_count else 0 end) as top_count,
+        sum(case when roles = 'Jungle'  then role_count else 0 end) as jungle_count,
+        sum(case when roles = 'Middle'  then role_count else 0 end) as middle_count,
+        sum(case when roles = 'Bottom'  then role_count else 0 end) as bottom_count,
+        sum(case when roles = 'Support' then role_count else 0 end) as support_count,
         sum(role_count) as total_role_count
     from role_counts
-    group by puuid
+    group by player_id
 
 ),
 
@@ -95,9 +95,9 @@ player_counts as (
         coalesce(r.total_role_count, 0)  as total_role_count
     from {{ ref('dim_players_current') }} p
     left join sampled s
-        on p.puuid = s.puuid
+        on p.puuid = s.player_id
     left join role_pivot r
-        on p.puuid = r.puuid
+        on p.puuid = r.player_id
 
 ),
 
@@ -118,11 +118,11 @@ select
     -- every lane tied for the highest count; empty array if no lane data
     filter(
         array(
-            case when max_role_count > 0 and top_count     = max_role_count then 'top'     end,
-            case when max_role_count > 0 and jungle_count  = max_role_count then 'jungle'  end,
-            case when max_role_count > 0 and middle_count  = max_role_count then 'middle'  end,
-            case when max_role_count > 0 and bottom_count  = max_role_count then 'bottom'  end,
-            case when max_role_count > 0 and support_count = max_role_count then 'support' end
+            case when max_role_count > 0 and top_count     = max_role_count then 'Top'     end,
+            case when max_role_count > 0 and jungle_count  = max_role_count then 'Jungle'  end,
+            case when max_role_count > 0 and middle_count  = max_role_count then 'Middle'  end,
+            case when max_role_count > 0 and bottom_count  = max_role_count then 'Bottom'  end,
+            case when max_role_count > 0 and support_count = max_role_count then 'Support' end
         ),
         role -> role is not null
     ) as primary_roles,

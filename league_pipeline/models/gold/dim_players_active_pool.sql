@@ -4,8 +4,8 @@ with active_champions as (
 
     select
         player_id,
+        champion_name,
         champion_key,
-        previous_snapshot_date,
         snapshot_date,
         last_played_at
     from {{ ref('fct_players_champion_activity') }}
@@ -17,12 +17,18 @@ aggregated as (
 
     select
         player_id,
-        max(previous_snapshot_date) as previous_snapshot_date,
         max(snapshot_date) as snapshot_date,
-        
+
+        sort_array(collect_list(cast(champion_name as string))) as active_champion_names,
         sort_array(collect_list(cast(champion_key as string))) as active_champion_ids,
         count(champion_key) as active_champion_count,
         
+        sort_array(collect_list(
+            case 
+                when last_played_at <= 1
+                then cast(champion_name as string) 
+            end
+        )) as recent_champion_names,
         sort_array(collect_list(
             case 
                 when last_played_at <= 1
@@ -84,10 +90,12 @@ main_role as (
 
 select
     p.puuid as player_id,
-    a.previous_snapshot_date,
-    a.snapshot_date,
+    p.snapshot_date,
+    coalesce(a.active_champion_count, 0) > 0 as is_active,
+    coalesce(a.active_champion_names, array()) as active_champion_names,
     coalesce(a.active_champion_ids, array()) as active_champion_ids,
     coalesce(a.active_champion_count, 0) as active_champion_count,
+    coalesce(a.recent_champion_names, array()) as recent_champion_names,
     coalesce(a.recent_champion_ids, array()) as recent_champion_ids,
     coalesce(a.recent_champion_count, 0) as recent_champion_count,
     m.role_name as main_role,

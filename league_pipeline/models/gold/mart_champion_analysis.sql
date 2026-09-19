@@ -36,16 +36,16 @@ tier_population as (
     select
         p.tier,
         count(distinct p.player_id) as tier_player_count,
-        count(distinct case when ap.player_id is not null then p.player_id end) as active_pool_player_count
+        count(distinct ap.player_id) as active_pool_player_count
     from players p
     left join (
         select distinct player_id
         from {{ ref('fct_players_champion_activity') }}
         where is_active
+          and recent_total_points > 0
     ) ap
         on p.player_id = ap.player_id
     group by p.tier
-
 ),
 
 rank_velocity as (
@@ -79,7 +79,7 @@ active_metrics as (
     left join rank_velocity r
         on p.player_id = r.player_id
         and p.queue = r.queue
-    where a.is_active
+    where a.is_active and a.recent_total_points > 0
     group by p.tier, cast(a.champion_key as string)
 
 ),
@@ -121,11 +121,11 @@ select
     c.name as champion_name,
 
     -- sample sizes, so thin rows (e.g. Challenger) can be discounted
-    t.tier_player_count,
-    t.active_pool_player_count,
-    coalesce(a.active_player_count, 0) as active_player_count,
-    coalesce(m.mastery_player_count, 0) as mastery_player_count,
-    coalesce(m.expert_player_count, 0) as expert_player_count,
+    t.tier_player_count, -- total number of players in the tier
+    t.active_pool_player_count, -- number of active players in the tier
+    coalesce(a.active_player_count, 0) as active_player_count, -- number of active players for the champion in the tier
+    coalesce(m.mastery_player_count, 0) as mastery_player_count, -- number of players that played that champion
+    coalesce(m.expert_player_count, 0) as expert_player_count, -- number of players that reached expert threshold
 
     -- active-pool metrics
     {{ dbt_utils.safe_divide('coalesce(a.active_player_count, 0)', 't.active_pool_player_count') }} as play_rate,
@@ -137,6 +137,7 @@ select
     m.avg_mastery,
     m.median_mastery
 
+
 from tier_population t
 cross join {{ ref('dim_champions') }} c
 left join active_metrics a
@@ -145,3 +146,5 @@ left join active_metrics a
 left join mastery_metrics m
     on t.tier = m.tier
     and cast(c.key as string) = m.champion_key
+    
+where t.active_pool_player_count > 0

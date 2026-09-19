@@ -43,6 +43,7 @@ champion_avgs as (
 
 select
     c.key                                       as champion_key,
+    c.name                                      as champion_name,
     coalesce(a.player_count, 0)                 as player_count,
     a.avg_top_pct,
     a.avg_jungle_pct,
