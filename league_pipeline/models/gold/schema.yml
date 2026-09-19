@@ -76,3 +76,56 @@ models:
     columns:
       - name: player_id
         tests: [not_null, unique]
+  
+  - name: mart_champion_tier_analysis
+    description: >
+      One row per (tier, champion). Tier is the player's current tier from
+      dim_players_current. Every tier with at least one player is crossed with
+      every champion in dim_champions, so champions nobody plays in a tier
+      still appear (play_rate = 0, mastery columns null).
+ 
+      Rates are fractions in [0, 1].
+ 
+      Active-pool metrics (play_rate, specialization_bias, avg_lp_velocity)
+      use players where fct_players_champion_activity.is_active is true.
+      Mastery metrics (expert_population, avg_mastery, median_mastery) use
+      every player in the tier with mastery on the champion.
+    columns:
+      - name: tier_champion_id
+        tests: [not_null, unique]
+      - name: tier
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER']
+      - name: champion_key
+        tests: [not_null]
+      - name: play_rate
+        description: >
+          Players in the tier with this champion in their active pool, divided
+          by players in the tier with at least one active champion.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: specialization_bias
+        description: >
+          Average recent_pct_of_total (share of a player's recent mastery gain
+          that went to this champion) among players with it in their active
+          pool. High = one-trick territory, low = played alongside many others.
+      - name: avg_lp_velocity
+        description: >
+          Average lp_velocity (LP per day) of players with this champion in
+          their active pool. Only includes players whose latest snapshot moved.
+      - name: expert_population
+        description: >
+          Share of players in the tier with mastery on this champion whose
+          champion_points exceed the expert_mastery_threshold var (default 100000).
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: avg_mastery
+      - name: median_mastery
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments: {combination_of_columns: [tier, champion_key]}

@@ -4,7 +4,7 @@
 {% set min_absolute_points = var('active_champion_min_absolute_points', 3000) %}
 {% set min_relative_pct = var('active_champion_min_relative_pct', 0.10) %}
 {% set immature_window_fraction = var('active_champion_immature_window_fraction', 0.5) %}
-{% set min_tracking_days = ({{ activity_window_days }} * {{ immature_window_fraction }}) %}
+{% set min_tracking_days = (activity_window_days  *  immature_window_fraction) %}
 
 -- "Now" is pinned to the most recent snapshot_date present in the deltas
 -- table (not current_date()), so this table stays consistent even if the
@@ -33,11 +33,11 @@ recent_deltas as (
 recent_dates as (
     select
         puuid,
-        snapshot_date,
-        previous_snapshot_date
+        max(snapshot_date) as snapshot_date,
+        max(previous_snapshot_date) as previous_snapshot_date
     from recent_deltas
-    group by puuid
-)
+    group by 1
+),
 
 champion_recent_points as (
 

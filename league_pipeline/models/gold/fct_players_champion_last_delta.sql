@@ -20,7 +20,7 @@ deltas as (
             'champion_key'
         ]) }} as champion_delta_id,
 
-        puuid,
+        puuid as player_id,
         champion_key,
         lag(snapshot_date) over (
             partition by puuid, champion_key order by snapshot_date

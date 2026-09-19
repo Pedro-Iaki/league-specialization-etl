@@ -1,20 +1,20 @@
 {{
     config(
         materialized='incremental',
-        unique_key=['player_id', 'snapshot_date'] 
+        unique_key=['puuid', 'snapshot_date'] 
     )
 }}
 
 WITH active_pool AS (
-    SELECT * FROM {{ ref('players_active_pool') }}
+    SELECT * FROM {{ ref('dim_players_active_pool') }}
 ),
 
 champion_activity AS (
-    SELECT * FROM {{ ref('players_champion_activity') }}
+    SELECT * FROM {{ ref('fct_players_champion_activity') }}
 ),
 
 rank_delta AS (
-    SELECT * FROM {{ ref('players_rank_last_delta') }}
+    SELECT * FROM {{ ref('fct_players_rank_last_delta') }}
     {% if is_incremental() %}
     -- Ensure we only append deltas from new snapshots
     WHERE snapshot_date > (SELECT COALESCE(MAX(snapshot_date), '1900-01-01') FROM {{ this }})
