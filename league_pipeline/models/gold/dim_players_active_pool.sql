@@ -25,13 +25,13 @@ aggregated as (
         
         sort_array(collect_list(
             case 
-                when last_played_at >= current_timestamp() - interval {{ var('dedup_minutes_range', 10080) }} minute 
+                when last_played_at <= 1
                 then cast(champion_key as string) 
             end
         )) as recent_champion_ids,
         count(
             case 
-                when last_played_at >= current_timestamp() - interval {{ var('dedup_minutes_range', 10080) }} minute 
+                when last_played_at <= 1
                 then champion_key 
             end
         ) as recent_champion_count

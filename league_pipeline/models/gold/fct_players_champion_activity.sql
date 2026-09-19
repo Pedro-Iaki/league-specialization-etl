@@ -19,7 +19,7 @@ with as_of as (
 recent_deltas as (
 
     select
-        d.puuid,
+        d.player_id,
         d.champion_key,
         d.points_delta,
         d.snapshot_date,
@@ -32,7 +32,7 @@ recent_deltas as (
 
 recent_dates as (
     select
-        puuid,
+        player_id,
         max(snapshot_date) as snapshot_date,
         max(previous_snapshot_date) as previous_snapshot_date
     from recent_deltas
@@ -42,11 +42,11 @@ recent_dates as (
 champion_recent_points as (
 
     select
-        puuid,
+        player_id,
         champion_key,
         sum(points_delta) as recent_champ_points
     from recent_deltas
-    group by puuid, champion_key
+    group by player_id, champion_key
 
 ),
 
@@ -55,17 +55,17 @@ player_recent_points as (
     -- total mastery gained by a player, across all champions, within the
     -- activity window. Denominator for relative_threshold.
     select
-        puuid,
+        player_id,
         sum(points_delta) as recent_total_points
     from recent_deltas
-    group by puuid
+    group by player_id
 
 ),
 
 player_tracking as (
 
     select
-        puuid,
+        puuid as player_id,
         datediff(max(snapshot_date), min(snapshot_date)) as total_days_tracked
     from {{ ref('dim_players_history') }}
     group by puuid
@@ -75,7 +75,7 @@ player_tracking as (
 champion_last_played as (
 
     select
-        puuid,
+        puuid as player_id,
         champion_key,
         last_play_time
     from {{ ref('fct_masteries_current') }}
@@ -85,7 +85,7 @@ champion_last_played as (
 champion_universe as (
 
     select
-        p.puuid,
+        p.puuid as player_id,
         c.key as champion_key
     from {{ ref('dim_players_current') }} p
     cross join {{ ref('dim_champions') }} c
@@ -95,26 +95,28 @@ champion_universe as (
 joined as (
 
     select
-        u.puuid,
+        u.player_id,
         u.champion_key,
         ao.as_of_date,
         coalesce(cr.recent_champ_points, 0) as recent_champ_points,
         coalesce(pr.recent_total_points, 0) as recent_total_points,
         coalesce(ct.total_days_tracked, 0) as total_days_tracked,
-        lp.last_play_time
+        lp.last_play_time,
+        rd.previous_snapshot_date,
+        rd.snapshot_date
     from champion_universe u
     cross join as_of ao
     left join recent_dates rd
-        on u.puuid = rd.puuid
+        on u.player_id = rd.player_id
     left join champion_recent_points cr
-        on u.puuid = cr.puuid
+        on u.player_id = cr.player_id
         and u.champion_key = cr.champion_key
     left join player_recent_points pr
-        on u.puuid = pr.puuid
+        on u.player_id = pr.player_id
     left join player_tracking ct
-        on u.puuid = ct.puuid
+        on u.player_id = ct.player_id
     left join champion_last_played lp
-        on u.puuid = lp.puuid
+        on u.player_id = lp.player_id
         and u.champion_key = lp.champion_key
 
 ),
@@ -133,8 +135,8 @@ flagged as (
 
 select
 
-    {{ dbt_utils.generate_surrogate_key(['puuid', 'champion_key']) }} as player_champion_activity_id,
-    puuid as player_id,
+    {{ dbt_utils.generate_surrogate_key(['player_id', 'champion_key']) }} as player_champion_activity_id,
+    player_id,
     champion_key,
     previous_snapshot_date,
     snapshot_date,

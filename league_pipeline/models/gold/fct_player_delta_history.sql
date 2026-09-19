@@ -1,7 +1,7 @@
 {{
     config(
         materialized='incremental',
-        unique_key=['puuid', 'snapshot_date'] 
+        unique_key=['player_id', 'snapshot_date'] 
     )
 }}
 

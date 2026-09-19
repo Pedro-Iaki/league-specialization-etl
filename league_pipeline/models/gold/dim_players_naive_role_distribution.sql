@@ -56,11 +56,11 @@ role_counts as (
 
     select
         puuid,
-        role,
+        roles,
         count(*) as role_count
     from champion_roles
-    where role is not null
-    group by puuid, role
+    where roles is not null
+    group by puuid, roles
 
 ),
 
@@ -68,11 +68,11 @@ role_pivot as (
 
     select
         puuid,
-        sum(case when role = 'top'     then role_count else 0 end) as top_count,
-        sum(case when role = 'jungle'  then role_count else 0 end) as jungle_count,
-        sum(case when role = 'middle'  then role_count else 0 end) as middle_count,
-        sum(case when role = 'bottom'  then role_count else 0 end) as bottom_count,
-        sum(case when role = 'support' then role_count else 0 end) as support_count,
+        sum(case when roles = 'top'     then role_count else 0 end) as top_count,
+        sum(case when roles = 'jungle'  then role_count else 0 end) as jungle_count,
+        sum(case when roles = 'middle'  then role_count else 0 end) as middle_count,
+        sum(case when roles = 'bottom'  then role_count else 0 end) as bottom_count,
+        sum(case when roles = 'support' then role_count else 0 end) as support_count,
         sum(role_count) as total_role_count
     from role_counts
     group by puuid
@@ -85,6 +85,7 @@ player_counts as (
     -- usable mastery data still get a row (zero counts, null pcts)
     select
         p.puuid as player_id,
+        coalesce(s.champions_sample, array()) as champions_sample,
         coalesce(s.champions_sampled_count, 0) as champions_sampled_count,
         coalesce(r.top_count, 0)         as top_count,
         coalesce(r.jungle_count, 0)      as jungle_count,
@@ -111,7 +112,7 @@ with_max as (
 
 select
     player_id,
-    champions_sample,
+    coalesce(champions_sample, array()) as champions_sample,
     champions_sampled_count,
 
     -- every lane tied for the highest count; empty array if no lane data

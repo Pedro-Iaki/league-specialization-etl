@@ -1,4 +1,4 @@
-_{{ config(materialized='table', file_format='delta') }}
+{{ config(materialized='table', file_format='delta') }}
 
 {% set expert_threshold = var('expert_mastery_threshold', 100000) %}
 
@@ -21,7 +21,7 @@ _{{ config(materialized='table', file_format='delta') }}
 with players as (
 
     select
-        puuid,
+        puuid as player_id,
         queue,
         tier
     from {{ ref('dim_players_current') }}
@@ -35,15 +35,15 @@ tier_population as (
 
     select
         p.tier,
-        count(distinct p.puuid) as tier_player_count,
-        count(distinct case when ap.player_id is not null then p.puuid end) as active_pool_player_count
+        count(distinct p.player_id) as tier_player_count,
+        count(distinct case when ap.player_id is not null then p.player_id end) as active_pool_player_count
     from players p
     left join (
         select distinct player_id
         from {{ ref('fct_players_champion_activity') }}
         where is_active
     ) ap
-        on p.puuid = ap.player_id
+        on p.player_id = ap.player_id
     group by p.tier
 
 ),
@@ -53,7 +53,7 @@ rank_velocity as (
     -- Note: fct_players_rank_last_delta drops snapshots where nothing moved,
     -- so avg_lp_velocity only reflects players who had movement.
     select
-        puuid,
+        player_id,
         queue,
         lp_velocity
     from {{ ref('fct_players_rank_last_delta') }}
@@ -75,9 +75,9 @@ active_metrics as (
         avg(r.lp_velocity) as avg_lp_velocity
     from {{ ref('fct_players_champion_activity') }} a
     inner join players p
-        on a.player_id = p.puuid
+        on a.player_id = p.player_id
     left join rank_velocity r
-        on p.puuid = r.puuid
+        on p.player_id = r.player_id
         and p.queue = r.queue
     where a.is_active
     group by p.tier, cast(a.champion_key as string)
@@ -96,7 +96,7 @@ mastery_metrics as (
         percentile(m.champion_points, 0.5) as median_mastery
     from {{ ref('fct_masteries_current') }} m
     inner join players p
-        on m.puuid = p.puuid
+        on m.puuid = p.player_id
     group by p.tier, cast(m.champion_key as string)
 
 )
