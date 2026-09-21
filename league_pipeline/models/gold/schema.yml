@@ -1,16 +1,32 @@
 models:
-  - name: fct_players_champion_delta
+
+  # ---------------------------------------------------------------- facts ---
+
+  - name: fct_players_champion_delta_history
+    description: >
+      One row per (player, champion, snapshot) where the champion gained or
+      lost mastery points since the previous snapshot. Full history, not a
+      latest-row table - fct_players_champion_activity sums it over a trailing
+      window. Renamed from fct_players_champion_last_delta, whose name implied
+      the opposite.
     columns:
       - name: champion_delta_id
         tests: [not_null, unique]
+      - name: player_id
+        tests: [not_null]
+      - name: champion_key
+        tests: [not_null]
+      - name: points_delta
+        tests: [not_null]
+      - name: days_period
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 1, inclusive: true}
     tests:
       - dbt_utils.unique_combination_of_columns:
-          arguments: {combination_of_columns: [puuid, champion_key, snapshot_date]}
-
-  - name: dim_players_pool_profile_lifetime
-    columns:
-      - name: puuid
-        tests: [not_null, unique]
+          arguments:
+            combination_of_columns: [player_id, champion_key, snapshot_date]
 
   - name: fct_players_champion_activity
     description: >
@@ -19,23 +35,22 @@ models:
       including champions never played (which resolve to 0s and is_active =
       false, rather than being absent as in fct_masteries_current).
 
-      is_active is computed one of two ways depending on days_tracked (the
-      full first-seen-to-last-seen span for this specific player/champion
-      combination, from fct_masteries_history):
+      is_active is computed one of two ways depending on total_days_tracked
+      (the span between the player's first and last snapshot in
+      dim_players_history):
 
-      1. days_tracked >= active_champion_min_tracking_days (default 3):
+      1. total_days_tracked >= active_champion_activity_window_days *
+         active_champion_immature_window_fraction (default 60 * 0.5 = 30 days):
          active when last_played_at <= active_champion_activity_window_days
          (default 60) AND recent_champ_points exceeds the higher of
          absolute_threshold or relative_threshold.
 
-      2. days_tracked < active_champion_min_tracking_days: not enough history
-         to trust a delta-based trend, so recent_champ_points is ignored
-         entirely. Active when last_played_at <=
-         (active_champion_activity_window_days * active_champion_immature_window_fraction),
-         i.e. a tighter window (default 30 days), based on last_played_at alone.
+      2. Below that: not enough history to trust a delta-based trend, so
+         recent_champ_points is ignored entirely. Active when last_played_at
+         <= that same immature window (default 30 days), on recency alone.
 
       Thresholds:
-      - absolute_threshold = active_champion_min_absolute_points * least(days_tracked / active_champion_activity_window_days, 1)
+      - absolute_threshold = active_champion_min_absolute_points * least(total_days_tracked / active_champion_activity_window_days, 1)
       - relative_threshold = active_champion_min_relative_pct * recent_total_points
     columns:
       - name: player_champion_activity_id
@@ -50,49 +65,248 @@ models:
       - name: recent_total_points
         description: Sum of mastery point deltas across all of the player's champions within the activity window.
         tests: [not_null]
-      - name: days_tracked
+      - name: total_days_tracked
         description: >
-          Calendar-day span (max snapshot_date - min snapshot_date) between the
-          first and last mastery snapshot ever observed for this specific
-          player/champion combination. 0 for a champion never played.
+          Calendar-day span (max snapshot_date - min snapshot_date) across the
+          player's snapshots in dim_players_history. Per player, not per
+          player/champion.
         tests: [not_null]
       - name: absolute_threshold
         tests: [not_null]
       - name: relative_threshold
         tests: [not_null]
       - name: last_played_at
-        description: Days between the most recent snapshot on record and this champion's last_play_time. Null if never played.
+        description: Days between as_of_date and this champion's last_play_time. Null if never played.
+      - name: as_of_date
+        description: Most recent snapshot_date in the delta history. Pins "now" so the table is reproducible against backfilled data.
+        tests: [not_null]
       - name: is_active
         tests: [not_null]
     tests:
       - dbt_utils.unique_combination_of_columns:
-          arguments: {combination_of_columns: [player_id, champion_key]}
+          arguments:
+            combination_of_columns: [player_id, champion_key]
 
-  - name: dim_players_active_pool
+  - name: fct_players_rank_history
     description: >
-      One row per player with an array of champion_key values considered
-      "active" per fct_players_champion_activity. Players with no active
-      champions get an empty array rather than being dropped.
+      Full history of rank movement, one row per (player, queue, snapshot) that
+      has an earlier snapshot to compare against. Rows where nothing moved are
+      kept (has_movement = false) so averages are not conditioned on activity.
+      lp_velocity is LP per GAME, not per day - prefer the explicitly named
+      columns on fct_players_rank_recent_form.
+    columns:
+      - name: rank_delta_id
+        tests: [not_null, unique]
+      - name: player_id
+        tests: [not_null]
+      - name: period_in_days
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 1, inclusive: true}
+      - name: movement_type
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['promotion', 'demotion', 'held']
+      - name: is_counter_reset
+        description: True when wins or losses went down, i.e. a season/split counter reset. lp_delta on that row is meaningless.
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [player_id, queue, snapshot_date]
+
+  - name: fct_players_rank_last_delta
+    description: Latest rank movement per (player, queue), kept only if something moved. Thin filter over fct_players_rank_history.
+    columns:
+      - name: rank_delta_id
+        tests: [not_null, unique]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [player_id, queue]
+
+  - name: fct_players_rank_recent_form
+    description: >
+      Trailing-window aggregate of rank movement per (player, queue). Exists so
+      LP and win-rate rates have a fixed denominator instead of being read off
+      whichever single snapshot happened to contain games.
+    columns:
+      - name: player_form_id
+        tests: [not_null, unique]
+      - name: player_id
+        tests: [not_null]
+      - name: win_rate
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [player_id, queue]
+
+  - name: fct_players_mastery_profile
+    description: >
+      One row per player: lifetime mastery distribution shape, observed accrual
+      rate and recency. Lifetime counterpart to the pool_* columns on
+      dim_players_active_pool.
     columns:
       - name: player_id
         tests: [not_null, unique]
-  
-  - name: mart_champion_tier_analysis
+      - name: total_mastery_points
+        tests: [not_null]
+      - name: mastery_top1_share
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: mastery_hhi
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+
+  - name: fct_player_pool_history
     description: >
-      One row per (tier, champion). Tier is the player's current tier from
-      dim_players_current. Every tier with at least one player is crossed with
-      every champion in dim_champions, so champions nobody plays in a tier
-      still appear (play_rate = 0, mastery columns null).
- 
-      Rates are fractions in [0, 1].
- 
-      Active-pool metrics (play_rate, specialization_bias, avg_lp_velocity)
-      use players where fct_players_champion_activity.is_active is true.
-      Mastery metrics (expert_population, avg_mastery, median_mastery) use
-      every player in the tier with mastery on the champion.
+      Append-only frozen history of dim_players_active_pool, one row per
+      (player, snapshot). First write wins; rows keep the column set and the
+      definition they were written with, so columns added later are null on
+      older rows. Cannot be back-filled.
     columns:
-      - name: tier_champion_id
+      - name: player_pool_history_id
         tests: [not_null, unique]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [player_id, snapshot_date]
+
+  # ----------------------------------------------------------- dimensions ---
+
+  - name: dim_champion_role_weights
+    description: >
+      One row per champion: average lane share across the players who have it
+      in their recent sample. Derived from dim_players_naive_role_distribution,
+      which is itself derived from dim_champions.expected_positions - see the
+      bootstrapping caveat in CHANGES.md before treating this as observed data.
+    columns:
+      - name: champion_key
+        tests: [not_null, unique]
+      - name: player_count
+        tests: [not_null]
+
+  - name: dim_players_naive_role_distribution
+    description: One row per player; lane distribution over their N most recently played champions, from champion metadata.
+    columns:
+      - name: player_id
+        tests: [not_null, unique]
+
+  - name: dim_players_active_pool
+    description: >
+      One row per player: the champions considered active per
+      fct_players_champion_activity, the points-weighted lane mix inferred from
+      them, and the concentration of recent mastery gain across them. Players
+      with no active champions get empty arrays rather than being dropped.
+    columns:
+      - name: player_id
+        tests: [not_null, unique]
+      - name: active_champion_count
+        tests: [not_null]
+      - name: role_purity
+        description: HHI over the five role shares. 0.2 = evenly spread across all lanes, 1.0 = single lane.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0.2, max_value: 1}
+      - name: pool_hhi
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: pool_top1_share
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: main_role
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Top', 'Jungle', 'Middle', 'Bottom', 'Support']
+
+  # ----------------------------------------------------------------- marts ---
+
+  - name: mart_player_profile
+    description: >
+      Wide player-grain feature table. One row per player in
+      dim_players_current, no filtering, so a model can be trained and scored
+      on the same relation. Missing features are null, never zero.
+    columns:
+      - name: player_id
+        tests: [not_null, unique]
+      - name: tier
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER']
+      - name: absolute_lp
+        tests: [not_null]
+      - name: win_rate
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: win_rate_recent
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+
+  - name: mart_player_delta_history
+    description: >
+      One row per (player, queue, snapshot) with rank movement, trailing
+      trajectory windows, and pool/role features as of that date. Pool columns
+      are null for snapshots predating fct_player_pool_history.
+    columns:
+      - name: rank_delta_id
+        tests: [not_null, unique]
+      - name: player_id
+        tests: [not_null]
+      - name: win_rate
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+
+  - name: mart_tier_role_summary
+    description: >
+      One row per (tier, role, as_of_date), appended daily. Players with no
+      inferable role land in role = 'Unknown' so counts reconcile to the tier
+      population. full_refresh is disabled; drop the table by hand to restart
+      the series.
+    columns:
+      - name: tier_role_date_id
+        tests: [not_null, unique]
+      - name: player_count
+        tests: [not_null]
+      - name: flex_share
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [as_of_date, tier, role]
+
+  - name: mart_champion_tier_daily
+    description: >
+      One row per (tier, champion, as_of_date), appended daily. Every tier with
+      at least one player is crossed with every champion, so unplayed champions
+      still appear with play_rate = 0. Renamed from mart_champion_analysis,
+      which hashed as_of_date into its key but never selected it.
+
+      Active-pool metrics (play_rate, specialization_bias, avg_lp_per_game) use
+      players where is_active is true. Mastery metrics (expert_population,
+      avg_mastery, median_mastery) use every player in the tier with mastery on
+      the champion.
+    columns:
+      - name: tier_champion_date_id
+        tests: [not_null, unique]
+      - name: as_of_date
+        tests: [not_null]
       - name: tier
         tests:
           - not_null
@@ -102,30 +316,89 @@ models:
       - name: champion_key
         tests: [not_null]
       - name: play_rate
-        description: >
-          Players in the tier with this champion in their active pool, divided
-          by players in the tier with at least one active champion.
+        description: Players in the tier with this champion in their active pool, over players in the tier with at least one active champion.
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
       - name: specialization_bias
-        description: >
-          Average recent_pct_of_total (share of a player's recent mastery gain
-          that went to this champion) among players with it in their active
-          pool. High = one-trick territory, low = played alongside many others.
-      - name: avg_lp_velocity
-        description: >
-          Average lp_velocity (LP per day) of players with this champion in
-          their active pool. Only includes players whose latest snapshot moved.
+        description: Average share of a player's recent mastery gain that went to this champion, among players with it in their active pool. High = one-trick territory.
+      - name: avg_lp_per_game_lift
+        description: Champion's average LP per game minus its own tier's baseline. Comparable across tiers; the raw rate is not.
       - name: expert_population
-        description: >
-          Share of players in the tier with mastery on this champion whose
-          champion_points exceed the expert_mastery_threshold var (default 100000).
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
-      - name: avg_mastery
-      - name: median_mastery
     tests:
       - dbt_utils.unique_combination_of_columns:
-          arguments: {combination_of_columns: [tier, champion_key]}
+          arguments:
+            combination_of_columns: [tier, champion_key, as_of_date]
+
+  - name: mart_champion_profile
+    description: >
+      One row per champion, from the latest slice of mart_champion_tier_daily.
+      Per-tier play rates pivoted into columns, plus pooled high/low elo rates
+      and tier skew. Use mart_champion_tier_daily for anything needing a
+      specific tier or a time series.
+    columns:
+      - name: champion_key
+        tests: [not_null, unique]
+      - name: champion_name
+        tests: [not_null]
+      - name: play_rate_overall
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: tier_skew_ratio
+        description: high_elo_play_rate / low_elo_play_rate. >1 means the champion skews high elo. Prefer tier_skew_log_ratio for modelling.
+
+  - name: mart_champion_cooccurrence
+    description: >
+      One row per unordered champion pair held together in at least
+      cooccurrence_min_pair_players active pools, stored once with
+      champion_key_a < champion_key_b. Pools, not matches - this is "played by
+      the same people", not "played in the same game".
+    columns:
+      - name: champion_pair_id
+        tests: [not_null, unique]
+      - name: pair_player_count
+        tests: [not_null]
+      - name: jaccard
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: npmi
+        description: Normalised PMI in [-1, 1]. Better default than raw lift, which blows up for rare champions.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: -1, max_value: 1}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [champion_key_a, champion_key_b]
+
+  - name: mart_rank_transitions
+    description: >
+      One row per (queue, from state, to state) over the trailing lookback
+      window. transition_probability is P(next state | current state) and sums
+      to 1 per from-state, including the 'held' row. Only consecutive snapshot
+      pairs within rank_transition_max_period_days are counted, and counter
+      resets are excluded. Check from_state_observations before trusting any
+      cell - most will be thin until several weeks of daily history exist.
+    columns:
+      - name: rank_transition_id
+        tests: [not_null, unique]
+      - name: from_tier
+        tests: [not_null]
+      - name: to_tier
+        tests: [not_null]
+      - name: movement_type
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['promotion', 'demotion', 'held']
+      - name: transition_probability
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}

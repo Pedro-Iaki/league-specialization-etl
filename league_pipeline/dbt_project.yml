@@ -33,3 +33,25 @@ vars:
   active_champion_immature_window_fraction: 0.5
   role_profile_recent_champion_count: 15
   ranked_queue: "RANKED_SOLO_5x5"
+  
+  # ladder geometry (consumed by absolute_lp and rank_state_order)
+  divisions_per_tier: 4
+  lp_per_division: 100
+
+  # champion analysis
+  expert_mastery_threshold: 100000
+  high_elo_min_tier_order: 7      # DIAMOND and above
+  low_elo_max_tier_order: 4       # IRON through GOLD
+  cooccurrence_min_pair_players: 5
+
+  # player profile
+  flex_main_role_threshold: 0.5
+  recent_form_window_days: 28
+
+  # rank transitions
+  rank_transition_lookback_days: 90
+  rank_transition_max_period_days: 7
+
+  # trajectory windows on mart_player_delta_history
+  trajectory_short_window_days: 14
+  trajectory_long_window_days: 28

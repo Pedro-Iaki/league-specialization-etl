@@ -12,7 +12,7 @@
 with as_of as (
 
     select max(snapshot_date) as as_of_date
-    from {{ ref('fct_players_champion_last_delta') }}
+    from {{ ref('fct_players_champion_delta_history') }}
 
 ),
 
@@ -22,7 +22,7 @@ recent_deltas as (
         d.player_id,
         d.champion_key,
         d.points_delta
-    from {{ ref('fct_players_champion_last_delta') }} d
+    from {{ ref('fct_players_champion_delta_history') }} d
     cross join as_of
     where d.snapshot_date > date_sub(as_of.as_of_date, {{ activity_window_days }})
 ),
