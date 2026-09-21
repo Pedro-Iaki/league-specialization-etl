@@ -148,6 +148,7 @@ select
     absolute_threshold,
     relative_threshold,
     last_played_at,
+    as_of_date,
     case
         when total_days_tracked >= {{ min_tracking_days }} then
             last_played_at is not null

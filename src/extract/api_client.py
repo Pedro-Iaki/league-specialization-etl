@@ -34,8 +34,8 @@ class RiotAPIClient:
         self._rate_limit_lock = Lock()
 
     @retry(
-        wait=wait_exponential(multiplier=5, min=1, max=90),
-        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=6, min=1, max=90),
+        stop=stop_after_attempt(6),
         retry=retry_if_exception_type((requests.exceptions.RequestException, ConnectionError)),
         before_sleep=_log_retry,
     )
@@ -53,8 +53,8 @@ class RiotAPIClient:
         return str(patch)
 
     @retry(
-        wait=wait_exponential(multiplier=5, min=1, max=90),
-        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=6, min=1, max=90),
+        stop=stop_after_attempt(6),
         retry=retry_if_exception_type((requests.exceptions.RequestException, ConnectionError)),
         before_sleep=_log_retry,
     )

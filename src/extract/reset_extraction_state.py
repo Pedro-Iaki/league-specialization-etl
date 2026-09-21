@@ -4,7 +4,7 @@ import extract.init_extraction_db as init_db
 
 
 def reset_local_data():
-    init_db.reset_database()
+    init_db.clear_raw_and_compacted_data()
     logger.info("Extraction state reset after successful load.")
 
 

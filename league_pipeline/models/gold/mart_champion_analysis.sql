@@ -1,4 +1,6 @@
-{{ config(materialized='table', file_format='delta') }}
+   {{ config(materialized='incremental', file_format='delta',
+       incremental_strategy='merge', unique_key='tier_champion_date_id',
+       on_schema_change='append_new_columns', full_refresh=false) }}
 
 {% set expert_threshold = var('expert_mastery_threshold', 100000) %}
 
@@ -26,6 +28,13 @@ with players as (
         tier
     from {{ ref('dim_players_current') }}
     where tier is not null
+
+),
+
+as_of as (
+
+    select max(as_of_date) as as_of_date 
+    from {{ ref('fct_players_champion_activity') }}
 
 ),
 
@@ -102,7 +111,7 @@ mastery_metrics as (
 )
 
 select
-    {{ dbt_utils.generate_surrogate_key(['t.tier', 'c.key']) }} as tier_champion_id,
+    {{ dbt_utils.generate_surrogate_key(['t.tier', 'c.key', 'ao.as_of_date']) }} as tier_champion_date_id,
 
     t.tier,
     case t.tier
@@ -139,6 +148,7 @@ select
 
 
 from tier_population t
+cross join as_of ao
 cross join {{ ref('dim_champions') }} c
 left join active_metrics a
     on t.tier = a.tier

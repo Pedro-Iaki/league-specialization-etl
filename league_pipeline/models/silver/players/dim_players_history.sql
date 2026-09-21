@@ -34,7 +34,8 @@ with source as (
         _ingested_at,
         floor(datediff(MINUTE, '2009-01-01', to_date(date, 'yyMMdd')) / {{ dedup_minutes_range }}) as _weekly_bucket
     from {{ ref('bronze_players') }} p
-    where exists (
+    where p.queueType = '{{ var('ranked_queue') }}'
+    and exists (
         select 1
         from {{ ref('bronze_masteries') }} m
         where m.puuid = p.puuid

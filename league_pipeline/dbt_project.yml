@@ -32,3 +32,4 @@ vars:
   active_champion_min_relative_pct: 0.10
   active_champion_immature_window_fraction: 0.5
   role_profile_recent_champion_count: 15
+  ranked_queue: "RANKED_SOLO_5x5"
