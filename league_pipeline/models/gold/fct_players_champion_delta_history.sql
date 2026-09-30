@@ -1,24 +1,5 @@
 {{ config(materialized='table', file_format='delta') }}
 
--- Renamed from fct_players_champion_last_delta.
---
--- The old name was wrong and dangerous: this model is one row per
--- (player, champion, snapshot) over the FULL history, not a latest-row table
--- like fct_players_rank_last_delta. fct_players_champion_activity depends on
--- that full history (it sums deltas over a 60-day window), so anyone who
--- trusted the name and filtered it down to one row per champion would have
--- silently broken the activity flags.
---
--- Two fixes beyond the rename:
---   * the surrogate key now includes snapshot_date. It was (player_id,
---     champion_key), which is NOT unique at this grain - the `unique` test in
---     schema.yml was pointed at a model name that didn't exist, so it never
---     ran and never caught it.
---   * previous_snapshot_date is resolved in its own CTE before being used by
---     datediff, instead of being referenced as a lateral alias in the same
---     SELECT as the window function that defines it. fct_players_rank_history
---     already did it this way; this brings the two into line.
-
 with source as (
 
     select

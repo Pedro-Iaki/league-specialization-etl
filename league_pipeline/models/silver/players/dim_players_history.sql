@@ -8,7 +8,6 @@
 
 {% set mastery_freshness_days = var('mastery_freshness_days') %}
 {% set late_arrival_lookback_days = var('late_arrival_lookback_days') %}
-{% set dedup_minutes_range = var('dedup_minutes_range') %}
 
 with source as (
 
@@ -31,8 +30,7 @@ with source as (
         losses,
         wins + losses as total_games,
         {{ dbt_utils.safe_divide('wins', 'wins + losses') }} as win_rate,
-        _ingested_at,
-        floor(datediff(MINUTE, '2009-01-01', to_date(date, 'yyMMdd')) / {{ dedup_minutes_range }}) as _weekly_bucket
+        _ingested_at
     from {{ ref('bronze_players') }} p
     where p.queueType = '{{ var('ranked_queue') }}'
     and exists (
@@ -55,14 +53,14 @@ with source as (
     qualify row_number() over (
         partition by
             puuid,
-            _weekly_bucket
+            to_date(date, 'yyMMdd')
         order by _ingested_at desc
     ) = 1
 
 )
 
 select
-    {{ dbt_utils.generate_surrogate_key(['puuid', '_weekly_bucket']) }} as player_history_id,
+    {{ dbt_utils.generate_surrogate_key(['puuid', 'snapshot_date']) }} as player_history_id,
     puuid,
     region,
     queue,

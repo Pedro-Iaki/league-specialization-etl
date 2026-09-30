@@ -1,15 +1,76 @@
+version: 2
+
 sources:
   - name: raw
+    description: Raw Delta tables populated from the Riot API extraction and Databricks ingestion jobs.
     schema: raw
     tables:
       - name: players
-        config:
-          freshness:
-            warn_after: {count: 1000, period: hour}
-          loaded_at_field: _ingested_at
+        description: Ranked player snapshots loaded from Riot league entries, before dbt deduplication and normalization.
+        columns:
+          - name: puuid
+            description: Riot's globally unique player identifier.
+            tests: [not_null]
+          - name: region
+            description: Riot platform routing region used for extraction.
+            tests: [not_null]
+          - name: queueType
+            description: Ranked queue associated with the snapshot.
+            tests: [not_null]
+          - name: tier
+            description: Ranked tier reported by the Riot API.
+            tests: [not_null]
+          - name: rank
+            description: Ranked division reported by the Riot API.
+            tests: [not_null]
+          - name: date
+            description: Extraction date encoded as yyMMdd.
+            tests: [not_null]
+          - name: _ingested_at
+            description: Timestamp assigned when Databricks ingests the source file.
+            tests: [not_null]
+
       - name: masteries
-        config:
-          freshness:
-            warn_after: {count: 1000, period: hour}
-          loaded_at_field: _ingested_at
+        description: Champion mastery snapshots loaded from Riot champion-mastery responses, before dbt deduplication and normalization.
+        columns:
+          - name: puuid
+            description: Riot's globally unique player identifier.
+            tests: [not_null]
+          - name: championId
+            description: Numeric Riot champion identifier.
+            tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('raw', 'champions')
+                    field: key
+          - name: championPoints
+            description: Cumulative mastery points recorded at extraction time.
+            tests:
+              - not_null
+              - dbt_utils.accepted_range:
+                  arguments:
+                    min_value: 0
+                    inclusive: true
+          - name: date
+            description: Extraction date encoded as yyMMdd.
+            tests: [not_null]
+          - name: _ingested_at
+            description: Timestamp assigned when Databricks ingests the source file.
+            tests: [not_null]
+
       - name: champions
+        description: Current champion metadata and position classifications assembled from Data Dragon and the League of Legends Wiki.
+        columns:
+          - name: key
+            description: Numeric champion identifier used by champion-mastery records.
+            tests: [not_null, unique]
+          - name: name
+            description: Human-readable champion name.
+            tests: [not_null, unique]
+          - name: id
+            description: Stable string identifier used by Data Dragon.
+            tests: [not_null, unique]
+          - name: patch
+            description: Data Dragon patch from which the champion metadata was loaded.
+            tests: [not_null]

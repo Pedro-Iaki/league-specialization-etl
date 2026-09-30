@@ -1,20 +1,38 @@
+version: 2
+
 models:
+  - name: dim_champions
+    description: Current champion metadata and expected positions.
+    columns:
+      - name: key
+        tests: [not_null, unique]
+
   - name: dim_players_history
+    description: One ranked player snapshot per source date.
     columns:
       - name: player_history_id
         tests: [not_null, unique]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments: {combination_of_columns: [puuid, queue, snapshot_date]}
 
   - name: dim_players_current
+    description: Latest ranked snapshot for each player and queue.
     columns:
       - name: puuid
         tests: [not_null, unique]
 
   - name: fct_masteries_history
+    description: One champion-mastery snapshot per player and source date.
     columns:
       - name: mastery_history_id
         tests: [not_null, unique]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments: {combination_of_columns: [puuid, champion_key, snapshot_date]}
 
   - name: fct_masteries_current
+    description: Latest mastery snapshot for each player and champion.
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments: {combination_of_columns: [puuid, champion_key]}

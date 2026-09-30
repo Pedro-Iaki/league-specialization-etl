@@ -1,152 +1,197 @@
 {{ config(materialized='table', file_format='delta') }}
 
--- One row per player in dim_players_current.
---
--- Everything the previous version emitted is still here, unchanged. Added:
---   * role_top_pct ... role_support_pct - the points-weighted lane mix that
---     main_role was already being picked from. It was computed and then thrown
---     away, so downstream had a winner with no runner-up and no way to tell
---     "70/30 mid-jungle" from "35/32 mid-jungle". The five columns are
---     normalised to sum to 1 per player.
---   * role_purity - HHI over those five shares. 0.2 = perfectly spread across
---     all five lanes, 1.0 = single lane. This is the "purity" feature and it
---     behaves better than main_role_weight alone because it responds to the
---     shape of the whole distribution, not just its peak.
---   * pool_* - concentration of RECENT mastery points across the active
---     champions (top-1 / top-3 share, HHI, entropy). One-trick vs generalist,
---     measured on current behaviour rather than career totals.
---
--- These are added here rather than in a mart on purpose: fct_player_pool_history
--- freezes this model with `s.*`, so putting them here is what makes them
--- available as-of-date in mart_player_delta_history. A mart-level calculation
--- could never be backfilled onto past snapshots.
---
--- main_role remains an INFERRED affinity (champion metadata smoothed through
--- co-play), not an observed lane. See the note in CHANGES.md about how much
--- independent information it really carries.
+{% set max_favoured = var('favoured_champion_max_count', 10) %}
+{% set gap_multiplier = var('favoured_champion_gap_multiplier', 1.5) %}
+{% set min_log_gap = var('favoured_champion_min_log_gap', 0.69314718056) %}
 
 with active_champions as (
 
     select
-        player_id,
-        champion_name,
-        champion_key,
-        snapshot_date,
-        last_played_at,
-        recent_champ_points,
-        -- weight each champion by the mastery the player is actually gaining on
-        -- it, so one grinded champion outweighs several one-off games. If none
-        -- of the active champions gained points (immature players are active on
-        -- recency alone), fall back to equal weights.
+        a.player_id,
+        a.champion_key,
+        a.champion_name,
         case
-            when sum(recent_champ_points) over (partition by player_id) > 0
-                then recent_champ_points
+            when a.recent_total_points > 0 then a.recent_champion_points
             else 1
-        end as role_weight_factor
-    from {{ ref('fct_players_champion_activity') }}
-    where is_active
+        end as pool_points
+    from {{ ref('fct_players_champion_activity') }} a
+    where a.is_active
 
 ),
 
 pool_shares as (
 
     select
-        player_id,
-        champion_key,
-        recent_champ_points,
+        *,
         {{ dbt_utils.safe_divide(
-            'recent_champ_points',
-            'sum(recent_champ_points) over (partition by player_id)'
+            'pool_points',
+            'sum(pool_points) over (partition by player_id)'
         ) }} as champion_share,
         row_number() over (
             partition by player_id
-            order by recent_champ_points desc, champion_key
+            order by pool_points desc, champion_key
         ) as points_rank
     from active_champions
 
 ),
 
-pool_concentration as (
+top_candidates as (
 
-    -- champion_share is null for a player whose active champions all gained
-    -- zero recent points, so every metric here stays null for them rather than
-    -- collapsing to a fake 1.0 concentration.
+    select
+        *,
+        lead(pool_points) over (
+            partition by player_id order by points_rank
+        ) as next_champion_points
+    from pool_shares
+    where points_rank <= {{ max_favoured }}
+
+),
+
+gaps as (
+
     select
         player_id,
-        count(*) as pool_champion_count,
-        max(champion_share) as pool_top1_share,
-        sum(case when points_rank <= 3 then champion_share end) as pool_top3_share,
-        sum(pow(champion_share, 2)) as pool_hhi,
-        -sum(case when champion_share > 0 then champion_share * log2(champion_share) end) as pool_entropy
-    from pool_shares
+        points_rank,
+        ln(cast(pool_points as double) / next_champion_points) as log_gap
+    from top_candidates
+    where next_champion_points > 0
+
+),
+
+gap_summary as (
+
+    select
+        player_id,
+        percentile(log_gap, 0.5) as median_log_gap
+    from gaps
     group by player_id
 
 ),
 
-aggregated as (
+largest_gap as (
+
+    select player_id, points_rank, log_gap
+    from gaps
+    qualify row_number() over (
+        partition by player_id
+        order by log_gap desc, points_rank
+    ) = 1
+
+),
+
+favoured_boundaries as (
+
+    select
+        t.player_id,
+        case
+            when count(*) = 1 then 1
+            when max(g.log_gap) >= {{ min_log_gap }}
+                and (
+                    count(*) = 2
+                    or coalesce(max(s.median_log_gap), 0) = 0
+                    or max(g.log_gap) >= {{ gap_multiplier }} * max(s.median_log_gap)
+                ) then max(g.points_rank)
+            else count(*)
+        end as pool_favoured_champion_count,
+        max(g.log_gap) as pool_favoured_log_gap
+    from top_candidates t
+    left join largest_gap g on t.player_id = g.player_id
+    left join gap_summary s on t.player_id = s.player_id
+    group by t.player_id
+
+),
+
+pool_metrics as (
+
+    select
+        s.player_id,
+        count(*) as active_champion_count,
+        max(case when s.points_rank = 1 then s.champion_key end) as primary_champion_key,
+        max(case when s.points_rank = 1 then s.champion_name end) as primary_champion_name,
+        max(s.champion_share) as pool_top1_share,
+        least(greatest(sum(
+            case when s.points_rank <= b.pool_favoured_champion_count then s.champion_share else 0 end
+        ), 0.0), 1.0) as pool_favoured_champions_share,
+        max(b.pool_favoured_champion_count) as pool_favoured_champion_count,
+        max(b.pool_favoured_log_gap) as pool_favoured_log_gap,
+        sum(pow(s.champion_share, 2)) as pool_hhi,
+        -sum(s.champion_share * log2(s.champion_share)) as pool_entropy
+    from pool_shares s
+    join favoured_boundaries b on s.player_id = b.player_id
+    group by s.player_id
+
+),
+
+normalized as (
+
+    select
+        *,
+        case
+            when active_champion_count = 1 then 0
+            else least(greatest(
+                {{ dbt_utils.safe_divide('pool_entropy', 'log2(active_champion_count)') }},
+                0.0
+            ), 1.0)
+        end as pool_normalized_entropy
+    from pool_metrics
+
+),
+
+scored as (
+
+    select
+        *,
+        {{ playstyle_score('specialist', 'pool_top1_share', 'pool_favoured_champions_share', 'pool_hhi', 'pool_normalized_entropy', 'pool_favoured_champion_count') }} as specialist_score,
+        {{ playstyle_score('multispecialist', 'pool_top1_share', 'pool_favoured_champions_share', 'pool_hhi', 'pool_normalized_entropy', 'pool_favoured_champion_count') }} as multispecialist_score,
+        {{ playstyle_score('versatile', 'pool_top1_share', 'pool_favoured_champions_share', 'pool_hhi', 'pool_normalized_entropy', 'pool_favoured_champion_count') }} as versatile_score,
+        {{ playstyle_score('generalist', 'pool_top1_share', 'pool_favoured_champions_share', 'pool_hhi', 'pool_normalized_entropy', 'pool_favoured_champion_count') }} as generalist_score
+    from normalized
+
+),
+
+labeled as (
+
+    select
+        *,
+        case greatest(
+            specialist_score,
+            multispecialist_score,
+            versatile_score,
+            generalist_score
+        )
+            when specialist_score then 'specialist'
+            when multispecialist_score then 'multispecialist'
+            when versatile_score then 'versatile'
+            else 'generalist'
+        end as playstyle
+    from scored
+
+),
+
+pool_lists as (
 
     select
         player_id,
-        max(snapshot_date) as snapshot_date,
-
-        sort_array(collect_list(cast(champion_name as string))) as active_champion_names,
-        sort_array(collect_list(cast(champion_key as string))) as active_champion_ids,
-        count(champion_key) as active_champion_count,
-
-        sort_array(collect_list(
-            case
-                when last_played_at <= 1
-                then cast(champion_name as string)
-            end
-        )) as recent_champion_names,
-        sort_array(collect_list(
-            case
-                when last_played_at <= 1
-                then cast(champion_key as string)
-            end
-        )) as recent_champion_ids,
-        count(
-            case
-                when last_played_at <= 1
-                then champion_key
-            end
-        ) as recent_champion_count
-
+        sort_array(collect_list(champion_name)) as active_champion_names
     from active_champions
     group by player_id
 
 ),
 
--- These columns are constant per player in the dense activity table
-player_level as (
+role_sums as (
 
     select
-        player_id,
-        max(as_of_date) as as_of_date,
-        max(total_days_tracked) as total_days_tracked,
-        max(recent_total_points) as recent_total_points
-    from {{ ref('fct_players_champion_activity') }}
-    group by player_id
-
-),
-
-player_role_sums as (
-
-    select
-        ac.player_id,
-        sum(cr.avg_top_pct     * ac.role_weight_factor) as sum_top,
-        sum(cr.avg_jungle_pct  * ac.role_weight_factor) as sum_jungle,
-        sum(cr.avg_middle_pct  * ac.role_weight_factor) as sum_middle,
-        sum(cr.avg_bottom_pct  * ac.role_weight_factor) as sum_bottom,
-        sum(cr.avg_support_pct * ac.role_weight_factor) as sum_support
-    from active_champions ac
-    join {{ ref('dim_champion_role_weights') }} cr
-        on ac.champion_key = cr.champion_key
-    -- a champion nobody has sampled has all five averages null (they are
-    -- null all-or-nothing, since they share a denominator upstream). Drop it
-    -- instead of letting its weight sit in the normalisation denominator.
-    where cr.avg_top_pct is not null
-    group by ac.player_id
+        a.player_id,
+        sum(w.avg_top_pct * a.pool_points) as top_points,
+        sum(w.avg_jungle_pct * a.pool_points) as jungle_points,
+        sum(w.avg_middle_pct * a.pool_points) as middle_points,
+        sum(w.avg_bottom_pct * a.pool_points) as bottom_points,
+        sum(w.avg_support_pct * a.pool_points) as support_points
+    from active_champions a
+    inner join {{ ref('dim_champion_role_weights') }} w
+        on a.champion_key = w.champion_key
+    where w.avg_top_pct is not null
+    group by a.player_id
 
 ),
 
@@ -154,9 +199,9 @@ role_totals as (
 
     select
         *,
-        coalesce(sum_top, 0) + coalesce(sum_jungle, 0) + coalesce(sum_middle, 0)
-            + coalesce(sum_bottom, 0) + coalesce(sum_support, 0) as role_weight_total
-    from player_role_sums
+        top_points + jungle_points + middle_points + bottom_points + support_points
+            as total_role_points
+    from role_sums
 
 ),
 
@@ -164,11 +209,11 @@ role_shares as (
 
     select
         player_id,
-        {{ dbt_utils.safe_divide('sum_top',     'role_weight_total') }} as role_top_pct,
-        {{ dbt_utils.safe_divide('sum_jungle',  'role_weight_total') }} as role_jungle_pct,
-        {{ dbt_utils.safe_divide('sum_middle',  'role_weight_total') }} as role_middle_pct,
-        {{ dbt_utils.safe_divide('sum_bottom',  'role_weight_total') }} as role_bottom_pct,
-        {{ dbt_utils.safe_divide('sum_support', 'role_weight_total') }} as role_support_pct
+        {{ dbt_utils.safe_divide('top_points', 'total_role_points') }} as role_top_pct,
+        {{ dbt_utils.safe_divide('jungle_points', 'total_role_points') }} as role_jungle_pct,
+        {{ dbt_utils.safe_divide('middle_points', 'total_role_points') }} as role_middle_pct,
+        {{ dbt_utils.safe_divide('bottom_points', 'total_role_points') }} as role_bottom_pct,
+        {{ dbt_utils.safe_divide('support_points', 'total_role_points') }} as role_support_pct
     from role_totals
 
 ),
@@ -177,92 +222,81 @@ role_profile as (
 
     select
         *,
-        case
-            when role_top_pct is null then null
-            else
-                pow(coalesce(role_top_pct, 0), 2)
-                + pow(coalesce(role_jungle_pct, 0), 2)
-                + pow(coalesce(role_middle_pct, 0), 2)
-                + pow(coalesce(role_bottom_pct, 0), 2)
-                + pow(coalesce(role_support_pct, 0), 2)
-        end as role_purity
+        pow(role_top_pct, 2)
+            + pow(role_jungle_pct, 2)
+            + pow(role_middle_pct, 2)
+            + pow(role_bottom_pct, 2)
+            + pow(role_support_pct, 2) as role_purity
     from role_shares
 
 ),
 
 main_role as (
 
-    select
-        player_id,
-        role_name,
-        role_weight
+    select player_id, role as main_role, role_share as main_role_weight
     from (
-        select player_id, 'Top'     as role_name, role_top_pct     as role_weight from role_shares
+        select player_id, 'Top' as role, role_top_pct as role_share from role_shares
         union all
-        select player_id, 'Jungle'  as role_name, role_jungle_pct  as role_weight from role_shares
+        select player_id, 'Jungle', role_jungle_pct from role_shares
         union all
-        select player_id, 'Middle'  as role_name, role_middle_pct  as role_weight from role_shares
+        select player_id, 'Middle', role_middle_pct from role_shares
         union all
-        select player_id, 'Bottom'  as role_name, role_bottom_pct  as role_weight from role_shares
+        select player_id, 'Bottom', role_bottom_pct from role_shares
         union all
-        select player_id, 'Support' as role_name, role_support_pct as role_weight from role_shares
+        select player_id, 'Support', role_support_pct from role_shares
     )
-    -- no role data -> null main_role, rather than an arbitrary alphabetical winner
-    where role_weight is not null
-
     qualify row_number() over (
         partition by player_id
-        order by role_weight desc, role_name asc
+        order by role_share desc, role
     ) = 1
+
+),
+
+player_activity as (
+
+    select
+        player_id,
+        max(as_of_date) as as_of_date,
+        max(days_tracked) as days_tracked,
+        max(recent_total_points) as recent_total_points
+    from {{ ref('fct_players_champion_activity') }}
+    group by player_id
 
 )
 
 select
     p.puuid as player_id,
-    p.snapshot_date,
-    pl.as_of_date,
-    p.patch,
-    p.tier,
-    p.queue,
-    pl.total_days_tracked,
-    pl.recent_total_points,
-    coalesce(a.active_champion_count, 0) > 0 as is_active,
-    coalesce(a.active_champion_names, array()) as active_champion_names,
-    coalesce(a.active_champion_ids, array()) as active_champion_ids,
-    coalesce(a.active_champion_count, 0) as active_champion_count,
-    coalesce(a.recent_champion_names, array()) as recent_champion_names,
-    coalesce(a.recent_champion_ids, array()) as recent_champion_ids,
-    coalesce(a.recent_champion_count, 0) as recent_champion_count,
-
-    -- pool concentration over recent points on the active champions
-    pc.pool_top1_share,
-    pc.pool_top3_share,
-    pc.pool_hhi,
-    pc.pool_entropy,
-    case
-        when pc.pool_entropy is null then null
-        when pc.pool_champion_count <= 1 then 0
-        else {{ dbt_utils.safe_divide('pc.pool_entropy', 'log2(pc.pool_champion_count)') }}
-    end as pool_normalized_entropy,
-
-    -- points-weighted lane mix
-    rp.role_top_pct,
-    rp.role_jungle_pct,
-    rp.role_middle_pct,
-    rp.role_bottom_pct,
-    rp.role_support_pct,
-    rp.role_purity,
-
-    m.role_name as main_role,
-    m.role_weight as main_role_weight
+    a.as_of_date,
+    coalesce(a.days_tracked, 0) as days_tracked,
+    coalesce(a.recent_total_points, 0) as recent_total_points,
+    coalesce(m.active_champion_count, 0) > 0 as is_active,
+    coalesce(l.active_champion_names, array()) as active_champion_names,
+    coalesce(m.active_champion_count, 0) as active_champion_count,
+    m.primary_champion_key,
+    m.primary_champion_name,
+    m.pool_top1_share,
+    m.pool_favoured_champion_count,
+    m.pool_favoured_champions_share,
+    m.pool_favoured_log_gap,
+    m.pool_hhi,
+    m.pool_entropy,
+    m.pool_normalized_entropy,
+    m.specialist_score,
+    m.multispecialist_score,
+    m.versatile_score,
+    m.generalist_score,
+    m.playstyle,
+    r.role_top_pct,
+    r.role_jungle_pct,
+    r.role_middle_pct,
+    r.role_bottom_pct,
+    r.role_support_pct,
+    r.role_purity,
+    mr.main_role,
+    mr.main_role_weight
 from {{ ref('dim_players_current') }} p
-left join aggregated a
-    on p.puuid = a.player_id
-left join main_role m
-    on p.puuid = m.player_id
-left join player_level pl
-    on p.puuid = pl.player_id
-left join pool_concentration pc
-    on p.puuid = pc.player_id
-left join role_profile rp
-    on p.puuid = rp.player_id
+left join player_activity a on p.puuid = a.player_id
+left join labeled m on p.puuid = m.player_id
+left join pool_lists l on p.puuid = l.player_id
+left join role_profile r on p.puuid = r.player_id
+left join main_role mr on p.puuid = mr.player_id

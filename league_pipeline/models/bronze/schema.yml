@@ -1,5 +1,8 @@
+version: 2
+
 models:
   - name: bronze_players
+    description: Latest ingested record for each player, queue, and source date.
     columns:
       - name: puuid
         tests: [not_null]
@@ -27,16 +30,15 @@ models:
           - accepted_values:
               arguments:
                 values: ['I', 'II', 'III', 'IV']
-      - name: state_hash
-        tests: [not_null]
       - name: _ingested_at
         tests: [not_null]
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns: [puuid, state_hash]
+            combination_of_columns: [puuid, queueType, date]
 
   - name: bronze_masteries
+    description: Latest ingested record for each player, champion, and source date.
     columns:
       - name: puuid
         tests: [not_null]
@@ -48,11 +50,9 @@ models:
           - accepted_values:
               arguments:
                 values: ['na1', 'euw1', 'eun1', 'br1', 'la1', 'la2', 'kr', 'jp1', 'ru', 'tr1', 'oc1', 'ph2', 'sg2', 'th2', 'tw2', 'vn2', 'me1', 'sea', 'pbe']
-      - name: state_hash
-        tests: [not_null]
       - name: _ingested_at
         tests: [not_null]
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns: [puuid, state_hash]
+            combination_of_columns: [puuid, championId, date]

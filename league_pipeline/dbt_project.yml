@@ -10,7 +10,7 @@ seed-paths: ["seeds"]
 macro-paths: ["macros"]
 snapshot-paths: ["snapshots"]
 
-clean-targets:         # directories to be removed by `dbt clean`
+clean-targets:
   - "target"
   - "dbt_packages"
 
@@ -25,7 +25,6 @@ models:
 
 vars:
   late_arrival_lookback_days: 5
-  dedup_minutes_range: "{{ env_var('FRESHNESS_THRESHOLD_MINUTES', '1440') | int }}"
   mastery_freshness_days: 2
   active_champion_activity_window_days: 60
   active_champion_min_absolute_points: 3000
@@ -33,25 +32,45 @@ vars:
   active_champion_immature_window_fraction: 0.5
   role_profile_recent_champion_count: 15
   ranked_queue: "RANKED_SOLO_5x5"
-  
-  # ladder geometry (consumed by absolute_lp and rank_state_order)
+
   divisions_per_tier: 4
   lp_per_division: 100
 
-  # champion analysis
   expert_mastery_threshold: 100000
-  high_elo_min_tier_order: 7      # DIAMOND and above
-  low_elo_max_tier_order: 4       # IRON through GOLD
   cooccurrence_min_pair_players: 5
 
-  # player profile
-  flex_main_role_threshold: 0.5
-  recent_form_window_days: 28
-
-  # rank transitions
-  rank_transition_lookback_days: 90
-  rank_transition_max_period_days: 7
-
-  # trajectory windows on mart_player_delta_history
-  trajectory_short_window_days: 14
-  trajectory_long_window_days: 28
+  recent_form_window_days: 7
+  favoured_champion_max_count: 10
+  favoured_champion_gap_multiplier: 1.5
+  favoured_champion_min_log_gap: 0.69314718056
+  playstyle_feature_weights:
+    top1_share: 0.30
+    favoured_share: 0.15
+    hhi: 0.25
+    normalized_entropy: 0.15
+    favoured_count: 0.15
+  playstyle_profiles:
+    specialist:
+      top1_share: 0.75
+      favoured_share: 0.90
+      hhi: 0.60
+      normalized_entropy: 0.25
+      favoured_count: 0.10
+    multispecialist:
+      top1_share: 0.42
+      favoured_share: 0.90
+      hhi: 0.32
+      normalized_entropy: 0.45
+      favoured_count: 0.22
+    versatile:
+      top1_share: 0.30
+      favoured_share: 0.75
+      hhi: 0.20
+      normalized_entropy: 0.70
+      favoured_count: 0.44
+    generalist:
+      top1_share: 0.15
+      favoured_share: 0.70
+      hhi: 0.08
+      normalized_entropy: 0.95
+      favoured_count: 1.00

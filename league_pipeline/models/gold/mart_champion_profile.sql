@@ -1,102 +1,92 @@
 {{ config(materialized='table', file_format='delta') }}
 
-{% set high_elo_min_tier_order = var('high_elo_min_tier_order', 7) %}
-{% set low_elo_max_tier_order = var('low_elo_max_tier_order', 4) %}
+{% set expert_threshold = var('expert_mastery_threshold', 100000) %}
 
--- Grain: one row per champion in dim_champions, built from the latest
--- as_of_date slice of mart_champion_tier_daily. This is the champion-level
--- join key for modelling; mart_champion_tier_daily stays the source of truth
--- for anything that needs a specific tier or a time series.
---
--- The per-tier play rates are pivoted into columns so a champion is one row.
--- High/low elo aggregates are pooled (sum of numerators over sum of
--- denominators), not averaged across tiers - averaging tier-level rates would
--- weight Challenger, with a few hundred players, the same as Gold with tens of
--- thousands.
---
--- tier_skew_ratio > 1 means the champion is picked more often in
--- {{ 'tier_order >= ' ~ high_elo_min_tier_order }} (DIAMOND+) than in
--- {{ 'tier_order <= ' ~ low_elo_max_tier_order }} (IRON-GOLD). The log ratio is
--- the one to feed a model: it is symmetric around 0, whereas the raw ratio
--- squashes "half as popular" into [0,1] and stretches "twice as popular" into
--- [1,inf).
---
--- CAVEAT: play_rate here is a share of ACTIVE POOLS, not of games played. A
--- champion that everybody owns and occasionally grinds looks popular even if
--- it is rarely picked. Without match-level data that gap cannot be closed.
-
-with latest as (
+with as_of as (
 
     select max(as_of_date) as as_of_date
-    from {{ ref('mart_champion_tier_daily') }}
+    from {{ ref('mart_player_profile') }}
 
 ),
 
-tier_slice as (
-
-    select d.*
-    from {{ ref('mart_champion_tier_daily') }} d
-    join latest l
-        on d.as_of_date = l.as_of_date
-
-),
-
-rolled as (
+current_activity as (
 
     select
         champion_key,
-        max(as_of_date) as as_of_date,
-        count(distinct tier) as tiers_present,
+        player_id,
+        recent_share
+    from {{ ref('fct_players_champion_activity') }}
+    where is_active
+      and recent_total_points > 0
 
-        sum(active_player_count) as active_player_count,
-        sum(active_pool_player_count) as active_pool_player_count,
-        sum(mastery_player_count) as mastery_player_count,
-        sum(expert_player_count) as expert_player_count,
+),
 
-        max(case when tier = 'IRON'        then play_rate end) as play_rate_iron,
-        max(case when tier = 'BRONZE'      then play_rate end) as play_rate_bronze,
-        max(case when tier = 'SILVER'      then play_rate end) as play_rate_silver,
-        max(case when tier = 'GOLD'        then play_rate end) as play_rate_gold,
-        max(case when tier = 'PLATINUM'    then play_rate end) as play_rate_platinum,
-        max(case when tier = 'EMERALD'     then play_rate end) as play_rate_emerald,
-        max(case when tier = 'DIAMOND'     then play_rate end) as play_rate_diamond,
-        max(case when tier = 'MASTER'      then play_rate end) as play_rate_master,
-        max(case when tier = 'GRANDMASTER' then play_rate end) as play_rate_grandmaster,
-        max(case when tier = 'CHALLENGER'  then play_rate end) as play_rate_challenger,
+active_population as (
 
-        {{ dbt_utils.safe_divide(
-            'sum(case when tier_order >= ' ~ high_elo_min_tier_order ~ ' then active_player_count end)',
-            'sum(case when tier_order >= ' ~ high_elo_min_tier_order ~ ' then active_pool_player_count end)'
-        ) }} as high_elo_play_rate,
-        {{ dbt_utils.safe_divide(
-            'sum(case when tier_order <= ' ~ low_elo_max_tier_order ~ ' then active_player_count end)',
-            'sum(case when tier_order <= ' ~ low_elo_max_tier_order ~ ' then active_pool_player_count end)'
-        ) }} as low_elo_play_rate,
+    select count(distinct player_id) as player_count
+    from current_activity
 
-        -- player-weighted so a 3-player tier row cannot swing the champion mean
-        {{ dbt_utils.safe_divide(
-            'sum(specialization_bias * active_player_count)',
-            'sum(case when specialization_bias is not null then active_player_count end)'
-        ) }} as specialization_bias,
-        {{ dbt_utils.safe_divide(
-            'sum(avg_lp_per_game * form_player_count)',
-            'sum(case when avg_lp_per_game is not null then form_player_count end)'
-        ) }} as avg_lp_per_game,
-        {{ dbt_utils.safe_divide(
-            'sum(avg_lp_per_game_lift * form_player_count)',
-            'sum(case when avg_lp_per_game_lift is not null then form_player_count end)'
-        ) }} as avg_lp_per_game_lift,
-        {{ dbt_utils.safe_divide(
-            'sum(avg_win_rate_lift * form_player_count)',
-            'sum(case when avg_win_rate_lift is not null then form_player_count end)'
-        ) }} as avg_win_rate_lift,
-        {{ dbt_utils.safe_divide(
-            'sum(avg_mastery * mastery_player_count)',
-            'sum(case when avg_mastery is not null then mastery_player_count end)'
-        ) }} as avg_mastery,
-        sum(form_player_count) as form_player_count
+),
 
-    from tier_slice
+activity_metrics as (
+
+    select
+        champion_key,
+        count(distinct player_id) as active_player_count,
+        avg(recent_share) as avg_active_pool_share
+    from current_activity
+    group by champion_key
+
+),
+
+primary_player_metrics as (
+
+    select
+        active_primary_champion_key as champion_key,
+        count(*) as primary_player_count,
+        count(lp_per_game_recent) as recent_form_player_count,
+        avg(rank_score) as avg_current_rank_score,
+        percentile(rank_score, 0.5) as median_current_rank_score,
+        avg(lp_per_game_recent) as avg_recent_lp_per_game,
+        avg(win_rate_recent) as avg_recent_win_rate
+    from {{ ref('mart_player_profile') }}
+    where active_primary_champion_key is not null
+    group by active_primary_champion_key
+
+),
+
+growth_metrics as (
+
+    select
+        primary_champion_key as champion_key,
+        count(distinct player_id) as observed_player_count,
+        count(*) as observed_period_count,
+        sum(games_delta) as observed_games,
+        {{ dbt_utils.safe_divide('sum(wins_delta)', 'sum(games_delta)') }} as observed_win_rate,
+        {{ dbt_utils.safe_divide('sum(lp_delta)', 'sum(games_delta)') }} as expected_lp_per_game,
+        {{ dbt_utils.safe_divide('sum(lp_delta)', 'sum(period_in_days)') }} as expected_lp_per_day,
+        {{ dbt_utils.safe_divide(
+            'sum(lp_per_game_lift_vs_tier * games_delta)',
+            'sum(case when lp_per_game_lift_vs_tier is not null then games_delta end)'
+        ) }} as lp_per_game_lift_vs_tier,
+        avg(rank_score) as avg_end_rank_score,
+        percentile(rank_score, 0.5) as median_end_rank_score
+    from {{ ref('mart_player_delta_history') }}
+    where primary_champion_key is not null
+      and games_delta > 0
+    group by primary_champion_key
+
+),
+
+mastery_metrics as (
+
+    select
+        champion_key,
+        count(*) as mastery_player_count,
+        count(case when champion_points >= {{ expert_threshold }} then 1 end) as expert_player_count,
+        avg(champion_points) as avg_mastery_points,
+        percentile(champion_points, 0.5) as median_mastery_points
+    from {{ ref('fct_masteries_current') }}
     group by champion_key
 
 )
@@ -106,55 +96,47 @@ select
     c.name as champion_name,
     c.patch as champion_patch,
     c.expected_positions,
-    r.as_of_date,
-    r.tiers_present,
+    ao.as_of_date,
 
-    -- exposure
-    r.active_player_count,
-    r.active_pool_player_count,
-    r.mastery_player_count,
-    r.expert_player_count,
-    r.form_player_count,
-    {{ dbt_utils.safe_divide('r.active_player_count', 'r.active_pool_player_count') }} as play_rate_overall,
+    coalesce(a.active_player_count, 0) as active_player_count,
+    p.player_count as active_pool_player_count,
+    {{ dbt_utils.safe_divide('coalesce(a.active_player_count, 0)', 'p.player_count') }} as active_play_rate,
+    a.avg_active_pool_share,
 
-    -- play rate by tier, side by side
-    r.play_rate_iron,
-    r.play_rate_bronze,
-    r.play_rate_silver,
-    r.play_rate_gold,
-    r.play_rate_platinum,
-    r.play_rate_emerald,
-    r.play_rate_diamond,
-    r.play_rate_master,
-    r.play_rate_grandmaster,
-    r.play_rate_challenger,
+    coalesce(pp.primary_player_count, 0) as primary_player_count,
+    coalesce(pp.recent_form_player_count, 0) as recent_form_player_count,
+    pp.avg_current_rank_score,
+    pp.median_current_rank_score,
+    pp.avg_recent_lp_per_game,
+    pp.avg_recent_win_rate,
 
-    -- tier skew
-    r.high_elo_play_rate,
-    r.low_elo_play_rate,
-    {{ dbt_utils.safe_divide('r.high_elo_play_rate', 'nullif(r.low_elo_play_rate, 0)') }} as tier_skew_ratio,
-    log2(nullif({{ dbt_utils.safe_divide('r.high_elo_play_rate', 'nullif(r.low_elo_play_rate, 0)') }}, 0)) as tier_skew_log_ratio,
+    coalesce(g.observed_player_count, 0) as observed_player_count,
+    coalesce(g.observed_period_count, 0) as observed_period_count,
+    coalesce(g.observed_games, 0) as observed_games,
+    g.observed_win_rate,
+    g.expected_lp_per_game,
+    g.expected_lp_per_day,
+    g.lp_per_game_lift_vs_tier,
+    g.avg_end_rank_score,
+    g.median_end_rank_score,
 
-    -- outcomes relative to the tier baselines the players actually sit in
-    r.avg_lp_per_game,
-    r.avg_lp_per_game_lift,
-    r.avg_win_rate_lift,
-    r.specialization_bias,
+    coalesce(m.mastery_player_count, 0) as mastery_player_count,
+    coalesce(m.expert_player_count, 0) as expert_player_count,
+    {{ dbt_utils.safe_divide('m.expert_player_count', 'm.mastery_player_count') }} as expert_player_share,
+    m.avg_mastery_points,
+    m.median_mastery_points,
 
-    -- mastery
-    {{ dbt_utils.safe_divide('r.expert_player_count', 'r.mastery_player_count') }} as expert_population,
-    r.avg_mastery,
-
-    -- inferred role weights from the champion's playerbase
-    w.player_count as role_sample_player_count,
+    coalesce(w.player_count, 0) as role_sample_player_count,
     w.avg_top_pct as role_top_pct,
     w.avg_jungle_pct as role_jungle_pct,
     w.avg_middle_pct as role_middle_pct,
     w.avg_bottom_pct as role_bottom_pct,
     w.avg_support_pct as role_support_pct
-
 from {{ ref('dim_champions') }} c
-left join rolled r
-    on c.key = r.champion_key
-left join {{ ref('dim_champion_role_weights') }} w
-    on c.key = w.champion_key
+cross join as_of ao
+cross join active_population p
+left join activity_metrics a on c.key = a.champion_key
+left join primary_player_metrics pp on c.key = pp.champion_key
+left join growth_metrics g on c.key = g.champion_key
+left join mastery_metrics m on c.key = m.champion_key
+left join {{ ref('dim_champion_role_weights') }} w on c.key = w.champion_key

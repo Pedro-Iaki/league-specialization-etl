@@ -1,5 +1,8 @@
 {{ config(materialized='table', file_format='delta') }}
 
-select * except(valid_to)
-from {{ ref('fct_masteries_periods') }}
-where valid_to is null
+select *
+from {{ ref('fct_masteries_history') }}
+qualify row_number() over (
+    partition by puuid, champion_key
+    order by snapshot_date desc
+) = 1

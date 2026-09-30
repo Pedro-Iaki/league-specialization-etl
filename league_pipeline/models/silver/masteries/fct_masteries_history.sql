@@ -7,8 +7,6 @@
 ) }}
 
 {% set late_arrival_lookback_days = var('late_arrival_lookback_days') %}
-{% set dedup_minutes_range = var('dedup_minutes_range') %}
-{% set mastery_freshness_days = var('mastery_freshness_days') %}
 
 with source as (
 
@@ -19,8 +17,7 @@ with source as (
         championPoints as champion_points,
         timestamp_millis(lastPlayTime) as last_play_time,
         _ingested_at,
-        patch,
-        floor(datediff(MINUTE, '2009-01-01', to_date(date, 'yyMMdd')) / {{ dedup_minutes_range }}) as _weekly_bucket
+        patch
     from {{ ref('bronze_masteries') }} m
     where exists (
         select 1
@@ -39,14 +36,14 @@ with source as (
         partition by
             puuid,
             champion_key,
-            _weekly_bucket
+            to_date(date, 'yyMMdd')
         order by _ingested_at desc
     ) = 1
 
 )
 
 select
-    {{ dbt_utils.generate_surrogate_key(['puuid', 'champion_key', '_weekly_bucket']) }} as mastery_history_id,
+    {{ dbt_utils.generate_surrogate_key(['puuid', 'champion_key', 'snapshot_date']) }} as mastery_history_id,
     puuid,
     champion_key,
     champion_points,
