@@ -1,0 +1,92 @@
+resources:
+  jobs:
+    ingest_clean_transform:
+      name: Ingest_Clean_Transform
+      tasks:
+        - task_key: AL_Ingestion
+          disabled: false
+          email_notifications: {}
+          notebook_task:
+            notebook_path: src/load/ingest_players
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: DBT_Raw_To_Bronze
+          depends_on:
+            - task_key: AL_Ingestion
+          dbt_task:
+            catalog: league_pipeline
+            commands:
+              - dbt deps
+              - dbt test --select source:raw.*
+              - dbt build --select path:models/bronze
+            project_directory: league_pipeline
+            schema: bronze
+            source: GIT
+            warehouse_id: c815c35672de1d79
+          disabled: false
+          email_notifications: {}
+          environment_key: dbt-default
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Bronze_To_Silver
+          depends_on:
+            - task_key: DBT_Raw_To_Bronze
+          dbt_task:
+            catalog: league_pipeline
+            commands:
+              - dbt build --select path:models/silver
+            project_directory: league_pipeline
+            schema: bronze
+            source: GIT
+            warehouse_id: c815c35672de1d79
+          disabled: false
+          email_notifications: {}
+          environment_key: dbt-default
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Silver_To_Gold
+          depends_on:
+            - task_key: Bronze_To_Silver
+          dbt_task:
+            catalog: league_pipeline
+            commands:
+              - dbt build --select path:models/gold
+            project_directory: league_pipeline
+            schema: bronze
+            source: GIT
+            warehouse_id: c815c35672de1d79
+          disabled: false
+          email_notifications: {}
+          environment_key: dbt-default
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+      email_notifications:
+        no_alert_for_skipped_runs: false
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "5"
+        - environment_key: dbt-default
+          spec:
+            dependencies:
+              - dbt-databricks>=1.0.0,<2.0.0
+            environment_version: "5"
+      git_source:
+        git_branch: main
+        git_provider: gitHub
+        git_url: https://github.com/Pedro-Iaki/league-specialization-etl/
+      max_concurrent_runs: 1
+      performance_target: PERFORMANCE_OPTIMIZED
+      queue:
+        enabled: true
+      timeout_seconds: 0
+      trigger:
+        file_arrival:
+          url: /Volumes/league_pipeline/landing_zone/players/
+        pause_status: UNPAUSED
+      webhook_notifications: {}

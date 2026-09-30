@@ -1,0 +1,11 @@
+bundle:
+  name: league-specialization-etl
+
+include:
+  - resources/*.yml
+
+targets:
+  workspace:
+    default: true
+    workspace:
+      host: https://dbc-b99bb4cc-93e8.cloud.databricks.com
