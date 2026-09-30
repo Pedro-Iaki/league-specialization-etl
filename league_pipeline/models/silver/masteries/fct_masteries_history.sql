@@ -11,14 +11,16 @@
 with source as (
 
     select
-        puuid,
-        championId as champion_key,
-        to_date(date, 'yyMMdd') as snapshot_date,
-        championPoints as champion_points,
-        timestamp_millis(lastPlayTime) as last_play_time,
-        _ingested_at,
-        patch
+        m.puuid,
+        m.championId as champion_key,
+        to_date(m.date, 'yyMMdd') as snapshot_date,
+        m.championPoints as champion_points,
+        timestamp_millis(m.lastPlayTime) as last_play_time,
+        m._ingested_at,
+        m.patch
     from {{ ref('bronze_masteries') }} m
+    inner join {{ ref('dim_champions') }} c
+        on m.championId = c.key
     where exists (
         select 1
         from {{ ref('dim_players_history') }} p
@@ -26,7 +28,7 @@ with source as (
     )
 
     {% if is_incremental() %}
-    and to_date(date, 'yyMMdd') >= (
+    and to_date(m.date, 'yyMMdd') >= (
         select date_sub(max(snapshot_date), {{ late_arrival_lookback_days }})
         from {{ this }}
     )
@@ -34,10 +36,10 @@ with source as (
 
     qualify row_number() over (
         partition by
-            puuid,
+            m.puuid,
             champion_key,
-            to_date(date, 'yyMMdd')
-        order by _ingested_at desc
+            to_date(m.date, 'yyMMdd')
+        order by m._ingested_at desc
     ) = 1
 
 )

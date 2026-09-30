@@ -2,7 +2,7 @@
     materialized='incremental',
     file_format='delta',
     incremental_strategy='merge',
-    unique_key='player_history_id',
+    unique_key=['puuid', 'queue', 'snapshot_date'],
     on_schema_change='append_new_columns'
 ) }}
 

@@ -17,7 +17,6 @@ current_activity as (
         recent_share
     from {{ ref('fct_players_champion_activity') }}
     where is_active
-      and recent_total_points > 0
 
 ),
 

@@ -1,7 +1,7 @@
 {{ config(materialized='table', file_format='delta') }}
 
 select
-    key,
+    cast(key as bigint) as key,
     name,
     id,
     client_positions,

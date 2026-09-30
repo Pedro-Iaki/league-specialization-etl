@@ -37,13 +37,8 @@ sources:
             description: Riot's globally unique player identifier.
             tests: [not_null]
           - name: championId
-            description: Numeric Riot champion identifier.
-            tests:
-              - not_null
-              - relationships:
-                  arguments:
-                    to: source('raw', 'champions')
-                    field: key
+            description: Numeric identifier supplied by the mastery API; raw data may include separate mode-specific variants, such as League Classic champion IDs, that are absent from the standard Data Dragon roster.
+            tests: [not_null]
           - name: championPoints
             description: Cumulative mastery points recorded at extraction time.
             tests:
