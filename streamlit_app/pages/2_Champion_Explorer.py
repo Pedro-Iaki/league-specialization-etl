@@ -51,7 +51,7 @@ hero(
     "Champion explorer",
     "How does champion preference relate to climbing?",
     "Compare each champion's players with the wider population, inspect playstyle and role tendencies, "
-    "and explore how mastery preference relates to climbing efficiency.",
+    "and explore how mastery share relates to rank growth.",
 )
 
 names = sorted(champions["champion_name"].dropna().unique().tolist())
@@ -71,9 +71,17 @@ elif hasattr(positions, "tolist"):
     positions_label = ", ".join(map(str, positions.tolist()))
 else:
     positions_label = str(positions) if pd.notna(positions) else "Unavailable"
-st.caption(f"Metadata positions: {positions_label} · Champion patch: {champion.get('champion_patch', '—')}")
+st.caption(f"Reference positions: {positions_label} · Champion metadata patch: {champion.get('champion_patch', '—')}")
 
 trend = specialization_trend(observations_all) if observations_all is not None else None
+
+
+def cycle_association_metric() -> None:
+    st.session_state["specialization_metric_index"] = (
+        st.session_state.get("specialization_metric_index", 0) + 1
+    ) % 3
+
+
 cards = st.columns(6)
 cards[0].metric(
     "Primary players",
@@ -86,48 +94,57 @@ cards[1].metric(
     help="Players whose current active mastery pool contains this champion.",
 )
 cards[2].metric(
-    "Observed players",
+    "Historical players",
     format_compact(champion.get("observed_player_count")),
     help="Players who favoured this champion in at least one eligible completed rank period. Current primary or active status is not required.",
 )
-cards[3].metric("Observed win rate", format_percent(champion.get("observed_win_rate")))
-cards[4].metric(
-    "Climbing efficiency" if new_growth else "Legacy LP lift · preview",
-    format_signed(champion.get(growth_column(champions))),
+cards[3].metric(
+    "Mean player win rate", format_percent(champion.get("observed_win_rate")),
+    help="Mean player win rate from attributed ranked outcomes. This is not the champion's match-level win rate.",
 )
-with cards[5]:
-    label, cycle = st.columns([4, 1], gap="small")
-    label.caption("Specialization efficiency")
-    if cycle.button("↻", key="cycle_specialization", help="Cycle correlation, slope, and R²"):
-        st.session_state["specialization_metric_index"] = (
-            st.session_state.get("specialization_metric_index", 0) + 1
-        ) % 3
+cards[4].metric(
+    "LP/game above tier" if new_growth else "LP/game lift (older estimate)",
+    format_signed(champion.get(growth_column(champions))),
+    help="Positive values exceed the starting-tier baseline in this sample; negative values fall below it.",
+)
+with cards[5].container(key="association_metric"):
     index = st.session_state.get("specialization_metric_index", 0)
+    metric_names = ("Pearson r", "slope", "R²")
+    st.button(
+        "↻",
+        key="cycle_specialization",
+        help=f"Using: {metric_names[index]}. Click to cycle to the next mastery–growth association metric.",
+        on_click=cycle_association_metric,
+    )
     if trend is None:
-        st.metric("Pearson r", "—")
+        st.metric("MG Association", "—")
     elif index == 0:
-        st.metric("Pearson r", format_signed(trend["correlation"], digits=3))
+        st.metric("MG Association", format_signed(trend["correlation"], digits=3))
     elif index == 1:
-        st.metric("LP/game per +10 pp preference", format_signed(trend["slope_per_10pp"], digits=3))
+        st.metric("MG Association", format_signed(trend["slope_per_10pp"], digits=3))
     else:
-        st.metric("R²", format_percent(trend["r_squared"], digits=2))
+        st.metric("MG Association", format_percent(trend["r_squared"], digits=2))
 st.caption(
     "Primary = selected champion leads the current active pool; active = appears in that pool; "
-    "observed = favoured in an eligible completed rank period, regardless of current primary or active status. "
-    f"Active play rate: {format_percent(champion.get('active_play_rate'))}. "
-    "Climbing efficiency is the mean across players "
-    "of their median LP/game lift versus starting tier. The cycle card summarizes the full-sample "
-    f"linear association ({0 if trend is None else trend['players']:,} player-tier observations); it is descriptive."
+    "historical = favoured in an eligible completed rank period. "
+    f"Among players with an active pool, {format_percent(champion.get('active_play_rate'))} include this champion. "
+    "Cards use the full champion sample, independent of the filters below. MG Association compares "
+    "each player's mean mastery share on this champion in favoured rank periods with that player's median "
+    "LP/game above the starting-tier baseline. It includes "
+    f"{0 if trend is None else trend['players']:,} player–tier observations and is descriptive."
 )
 
-section("Primary relationship", f"Champion preference versus climbing efficiency for {selected}")
+section("Historical relationship", f"Mastery share and rank growth for {selected}")
 if observations_all is None:
     st.info("Player-level champion growth observations are unavailable in this snapshot.")
 else:
     controls = st.columns([1, 1, 1], gap="small")
     starting_tier = controls[0].selectbox("Starting tier", ["All tiers", *TIER_ORDER])
     minimum_periods = controls[1].slider("Minimum observed periods", 1, 6, 1)
-    minimum_games = controls[2].slider("Minimum attributed games", 1, 30, 1)
+    minimum_games = controls[2].slider(
+        "Minimum mastery-weighted games", 1, 30, 1,
+        help="Ranked games allocated by mastery share; these are estimated game equivalents, not observed champion matches.",
+    )
     observations = observations_all.loc[
         (observations_all["period_count"] >= minimum_periods)
         & (observations_all["attributed_games"] >= minimum_games)
@@ -149,31 +166,33 @@ else:
                 observations,
                 "champion_commitment",
                 AXIS_LABELS["champion_commitment"],
-                "Climbing efficiency (LP/game vs tier)",
+                "LP/game above starting-tier baseline",
                 binned_relationship(observations, "champion_commitment"),
             ),
             width="stretch",
         )
         st.caption(
-            "Champion preference is the mean share of mastery gained on this champion across its favoured periods. "
+            "Mastery share is the mean share gained on this champion across periods where it was favoured. "
+            "Gold line: mean outcome within quantile bands of mastery share. "
             "Period LP and games are each allocated by that share; their per-game ratio remains the period rate. "
             "Mastery gained on non-favoured champions leaves a corresponding share of period LP unassigned. "
             "Current primary or active status does not filter these points. Mastery estimates play representation, "
             "not the exact percentage of matches played on the champion."
         )
 
-section("Player mix", f"Who currently specializes in {selected}?")
+section("Player mix", f"Who has {selected} as their primary champion?")
 controls = st.columns([1, 1, 1], gap="small")
 basis = controls[0].segmented_control(
     "Mastery window", ["Active (60 days)", "All-time"], default="Active (60 days)"
 )
 view = controls[1].selectbox("Compare by", ["Tier", "Role"])
-over_under_mix = controls[2].toggle("Show over/under", key="mix_over_under")
+over_under_mix = controls[2].toggle("Difference from sample", key="mix_over_under")
 group = "main_role" if view == "Role" else "tier"
 composition = playstyle_composition(players, basis, group, champion_name=selected)
 st.caption(
     f"Window: {basis} · Classified primary players: {int(composition['players'].sum()):,} · "
-    "Over/under compares each playstyle share with all players in the same tier or role."
+    "Primary means the leading champion in the selected mastery window. Differences compare "
+    "playstyle shares with classified players in the same current tier or role."
 )
 if composition.empty:
     st.info("No classified primary players match this selection.")
@@ -187,7 +206,7 @@ else:
 left, right = st.columns(2, gap="large")
 with left:
     section("Role context", "Inferred role mix")
-    over_under_roles = st.toggle("Show over/under versus 20%", key="role_over_under")
+    over_under_roles = st.toggle("Difference from equal role shares (20%)", key="role_over_under")
     st.plotly_chart(champion_role_chart(champion, over_under_roles), width="stretch")
     st.caption(
         f"Role sample: {format_compact(champion.get('role_sample_player_count'))} players. "
@@ -199,10 +218,10 @@ with right:
     metrics = st.columns(3)
     metrics[0].metric("Mean mastery", format_compact(champion.get("avg_mastery_points")))
     metrics[1].metric("Median mastery", format_compact(champion.get("median_mastery_points")))
-    metrics[2].metric("Players ≥100K", format_compact(champion.get("expert_player_count")))
+    metrics[2].metric("Players ≥100K mastery", format_compact(champion.get("expert_player_count")))
     st.caption(
         f"Players with any mastery: {format_compact(champion.get('mastery_player_count'))}. "
-        "The 100K threshold is configured in dbt. Exact-point modes are not useful for this broad distribution."
+        "Mean and median use cumulative mastery among these players; 100K measures accumulated mastery, not skill."
     )
 
 section("Historical outcomes", "Playstyle by starting tier")
@@ -210,10 +229,10 @@ if tier_growth is None:
     st.info("Tier-specific champion growth observations are unavailable in this snapshot.")
 else:
     controls = st.columns([1, 1, 1], gap="small")
-    outcome = controls[0].selectbox("Outcome", ["Climbing efficiency", "Win rate"])
+    outcome = controls[0].selectbox("Outcome", ["LP/game above tier baseline", "Win rate"])
     minimum_players = controls[1].slider("Minimum players per cell", 1, 50, 3, 1)
-    over_under_outcome = controls[2].toggle("Show over/under", key="outcome_over_under")
-    metric = "climbing_efficiency" if outcome == "Climbing efficiency" else "observed_win_rate"
+    over_under_outcome = controls[2].toggle("Difference from champion's tier average", key="outcome_over_under")
+    metric = "climbing_efficiency" if outcome == "LP/game above tier baseline" else "observed_win_rate"
     base = tier_growth.loc[
         (tier_growth["champion_name"] == selected)
         & (tier_growth["cohort_scope"] == "champion_tier")
@@ -225,8 +244,8 @@ else:
         & (tier_growth["observed_player_count"] >= minimum_players)
     ].copy()
     st.caption(
-        "Window: observed rank periods · Climbing efficiency is player-equal LP/game lift versus starting tier. "
-        "Over/under subtracts this champion's average in the same starting tier; win-rate differences use percentage points."
+        "Each cell averages player summaries from eligible rank periods. Difference mode subtracts "
+        "this champion's average in the same starting tier; win-rate differences use percentage points."
     )
     if outcome == "Win rate" and not over_under_outcome:
         st.caption("Win-rate colors are zoomed to 45–55%; cells outside that range keep their actual value in the label and hover.")
@@ -248,13 +267,14 @@ else:
         ["All observed periods", "Last 60 days", "Last 30 days", "Latest completed period"],
     )
     minimum_ranked_players = controls[1].slider("Minimum players per tier", 1, 30, 3, 1)
-    over_under_ranked = controls[2].toggle("Show over/under", key="ranked_over_under")
+    over_under_ranked = controls[2].toggle("Difference from all players in tier", key="ranked_over_under")
     period_players = ranked_share_players.loc[ranked_share_players["window_name"] == window]
     ranked_by_tier = champion_ranked_share_by_tier(period_players, selected)
     ranked_by_tier = ranked_by_tier.loc[ranked_by_tier["players"] >= minimum_ranked_players]
     st.caption(
         "Each player contributes their median estimated ranked-mastery share in the window. "
-        "Over/under compares these players with all observed players in the same starting tier."
+        "Difference mode compares these players with all observed players in the same starting tier. "
+        "Windows end at the latest observed period, not today. Membership means this champion was favoured in at least one period."
     )
     if ranked_by_tier.empty:
         st.info("No starting tiers meet the selected player threshold.")
@@ -263,7 +283,7 @@ else:
     if period_players["first_period_end"].min() == period_players["last_period_end"].max():
         st.caption("Only one completed rank period is available so far; the window choices currently show the same observations.")
 
-section("Affinity", "Champions in the same active player pools")
+section("Pool overlap", "Champions in the same active player pools")
 st.caption("Co-occurrence describes player preference, not team synergy or champions used together in a match.")
 minimum_pair = st.slider("Minimum shared players", 20, 1000, 100, 20)
 neighbors = champion_neighbors(cooccurrence, selected, minimum_pair)
@@ -275,12 +295,31 @@ else:
         neighbors.loc[:, ["related_champion", "pair_player_count", "lift", "npmi"]].head(20),
         hide_index=True,
         width="stretch",
+        column_config={
+            "related_champion": "Champion",
+            "pair_player_count": st.column_config.NumberColumn("Shared players", format="%d"),
+            "lift": st.column_config.NumberColumn(
+                "Co-occurrence lift", format="%.2f",
+                help="Observed overlap divided by expected overlap if pool membership were independent. 1 is the reference.",
+            ),
+            "npmi": st.column_config.NumberColumn(
+                "Normalized association (NPMI)", format="%.3f",
+                help="Normalized pointwise mutual information: 0 indicates independence; positive values indicate greater overlap.",
+            ),
+        },
     )
 
 with st.expander("How to read these comparisons"):
     st.markdown(
-        "Over/under shows a signed difference, not a percentage ratio. A climbing-efficiency difference "
+        "Difference mode shows a signed difference, not a percentage ratio. A rank-growth difference "
         "is measured in LP per game; a share or win-rate difference is measured in percentage points. "
         "Players can favour several champions in one period. Ranked-mastery share estimates the portion "
         "of mastery gained from ranked games, not the exact portion of games played in ranked."
+    )
+    st.markdown(
+        "**LP/game above tier baseline** averages players' mastery-share-weighted median period outcomes "
+        "relative to their starting-tier baseline. Zero means the baseline, not zero LP gained. "
+        "**Pearson r** summarizes linear association; **slope** is the fitted LP/game difference for a "
+        "10-percentage-point increase in mastery share; **R²** describes the variation captured by that linear fit. "
+        "None establishes causation or predicts an individual player's result."
     )

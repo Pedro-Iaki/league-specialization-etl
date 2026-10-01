@@ -7,9 +7,9 @@ from app_core.config import PLAYSTYLE_ORDER, ROLE_ORDER, TIER_ORDER
 
 AXIS_LABELS = {
     "specialization_hhi": "Pool concentration (HHI)",
-    "top_champion_share": "Top champion share",
+    "top_champion_share": "Top champion mastery share",
     "inverse_entropy": "Pool concentration (1 − normalized entropy)",
-    "champion_commitment": "Champion preference (mastery share)",
+    "champion_commitment": "Champion mastery share",
 }
 
 
@@ -41,7 +41,7 @@ def growth_scatter_data(
         frame["inverse_entropy"] = 1 - frame["normalized_entropy"]
         frame["outcome"] = frame["climbing_efficiency"]
         frame["support_games"] = frame["games"]
-        return frame, "Climbing efficiency (LP/game vs tier)", "Observed rank periods"
+        return frame, "LP/game above starting-tier baseline", "Observed rank periods"
 
     frame = profile_basis(players, basis)
     frame["outcome"] = frame["lp_per_game_recent"]
@@ -97,7 +97,7 @@ def champion_landscape_data(champions: pd.DataFrame, players: pd.DataFrame) -> t
     frame["outcome"] = frame[growth_column]
     if "mean_commitment" in frame:
         frame["specialization_axis"] = frame["mean_commitment"]
-        return frame, "Historical mean champion commitment"
+        return frame, "Mean champion mastery share in favoured periods"
 
     active = players.loc[players["active_primary_champion_name"].notna()].groupby(
         "active_primary_champion_name", observed=True

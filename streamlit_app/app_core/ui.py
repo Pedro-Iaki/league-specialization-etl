@@ -54,6 +54,24 @@ h1, h2, h3 {
 [data-testid="stMetricLabel"] { color: var(--muted); }
 [data-testid="stMetricValue"] { color: var(--ink); }
 
+.st-key-association_metric { position: relative; }
+.st-key-association_metric [data-testid="stMetric"] { padding-right: 2.8rem; }
+.st-key-association_metric .st-key-cycle_specialization {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  z-index: 1;
+}
+.st-key-association_metric .st-key-cycle_specialization button {
+  min-height: 1.9rem;
+  height: 1.9rem;
+  width: 1.9rem;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
 .block-container {
   max-width: 1320px;
   padding-top: 2rem;
@@ -213,7 +231,7 @@ def source_pills(*models: str) -> None:
 def data_source_caption(freshness: str) -> None:
     mode = configured_data_mode()
     label = "versioned Parquet snapshot" if mode == "snapshot" else "live Databricks SQL"
-    st.sidebar.caption(f"Data source: {label}\n\nAnalytical date: {freshness}")
+    st.sidebar.caption(f"Data source: {label}\n\nLatest profile date: {freshness}")
 
 
 def format_compact(value: float | None) -> str:

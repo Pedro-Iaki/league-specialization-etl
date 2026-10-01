@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 from app_core.analysis import champion_ranked_share_by_tier, composition_vs_population, specialization_trend
-from app_core.charts import champion_tier_outcome_heatmap
+from app_core.charts import champion_tier_outcome_heatmap, playstyle_outcome_chart
 
 
 def test_over_under_includes_playstyles_missing_from_champion_players() -> None:
@@ -69,3 +69,17 @@ def test_playstyle_tier_over_under_uses_champion_tier_average() -> None:
     assert abs(win_rate.data[0].z[0][0] - 3) < 1e-9
     assert raw_win_rate.data[0].zmin == 0.45
     assert raw_win_rate.data[0].zmax == 0.55
+
+
+def test_playstyle_win_rate_bars_keep_outcomes_outside_old_zoom_visible() -> None:
+    summary = pd.DataFrame({
+        "playstyle": ["specialist", "generalist"],
+        "observed_win_rate": [0.3, 0.7],
+        "observed_player_count": [12, 15],
+        "observed_period_count": [20, 25],
+    })
+    figure = playstyle_outcome_chart(summary, "observed_win_rate", "Mean player win rate")
+    lower, upper = figure.layout.yaxis.range
+    assert lower == 0
+    for trace in figure.data:
+        assert all(lower <= value <= upper for value in trace.y)

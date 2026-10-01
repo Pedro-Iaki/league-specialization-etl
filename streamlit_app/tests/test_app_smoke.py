@@ -121,5 +121,20 @@ def test_champion_over_under_controls_render() -> None:
     outcome = next(widget for widget in app.selectbox if widget.label == "Outcome")
     outcome.set_value("Win rate").run()
     assert not app.exception
-    next(widget for widget in app.button if widget.label == "↻").click().run()
+    cycle = next(widget for widget in app.button if widget.label == "↻")
+    assert "Using: Pearson r." in cycle.proto.help
+    cycle.click().run()
     assert not app.exception
+    cycle = next(widget for widget in app.button if widget.label == "↻")
+    assert "Using: slope." in cycle.proto.help
+    assert any(metric.label == "MG Association" for metric in app.metric)
+
+
+@pytest.mark.parametrize("basis", ["Active (60 days)", "All-time"])
+def test_current_profile_windows_use_current_tier_without_historical_period_filter(basis: str) -> None:
+    app = AppTest.from_file(str(APP_ROOT / "app.py"), default_timeout=30).run()
+    next(widget for widget in app.selectbox if widget.label == "Specialization window").set_value(basis).run()
+    assert not app.exception
+    assert any(widget.label == "Current tier" for widget in app.selectbox)
+    assert not any("Minimum observed periods" in widget.label for widget in app.slider)
+    assert any("not adjusted for tier" in message.value for message in app.info)

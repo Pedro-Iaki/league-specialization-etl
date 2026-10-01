@@ -26,14 +26,14 @@ except DashboardDataError as error:
 data_source_caption(data_freshness([players]))
 hero(
     "Population analysis",
-    "How do specialization, tier, and role move together?",
-    "Compare the shape of champion pools across the ladder, then inspect player-equal rank outcomes "
-    "for the playstyle observed during completed rank periods.",
+    "How does champion-pool composition vary by tier and role?",
+    "Compare mastery-based playstyles across the tracked sample, then examine rank growth "
+    "and estimated ranked activity during completed observation periods.",
 )
 
-st.sidebar.subheader("Shared player filters")
+st.sidebar.subheader("Current player profiles")
 minimum_tracked = st.sidebar.slider("Minimum tracked days", 0, 60, 0, 5)
-minimum_players = st.sidebar.slider("Minimum players per result", 1, 100, 10, 5)
+st.sidebar.caption("Applies to population composition, role differences, and active versus lifetime classifications only.")
 cohort = players.loc[players["days_tracked"].fillna(0) >= minimum_tracked].copy()
 
 section("Population structure", "How playstyles are distributed")
@@ -55,23 +55,24 @@ else:
 
 left, right = st.columns(2, gap="large")
 with left:
-    section("Role association", "Playstyle skew by inferred role")
+    section("Role association", "Playstyle share relative to the sample")
     st.caption(f"Window: {basis} · Percentage-point difference from all classified players with an inferred role")
     skew = role_playstyle_skew(cohort, basis)
     st.plotly_chart(role_difference_heatmap(skew), use_container_width=True)
 with right:
     section("Time horizons", "Active pool versus lifetime mastery")
-    st.caption("Rows sum to 100%. This compares two current player classifications, not historical rank periods.")
+    st.caption("Each populated row sums to 100%: among players with this active playstyle, how is lifetime playstyle distributed? This is not a transition over time.")
     st.plotly_chart(transition_heatmap(active_alltime_transition(cohort)), use_container_width=True)
 
-section("Climbing outcomes", "Do observed playstyles differ within a starting tier?")
+section("Rank growth", "Rank outcomes by observed playstyle")
 if growth_styles is None:
-    st.info("Player-equal historical outcomes will appear after the new growth marts and snapshot are refreshed.")
+    st.info("Historical playstyle outcomes are unavailable in this dataset.")
 else:
     controls = st.columns([1, 1, 1], gap="small")
     outcome_tier = controls[0].selectbox("Starting tier", ["All tiers", *TIER_ORDER], index=0)
     outcome_role = controls[1].selectbox("Current inferred role", ["All roles", *ROLE_ORDER])
-    outcome = controls[2].selectbox("Outcome", ["Climbing efficiency", "Win rate"])
+    outcome = controls[2].selectbox("Outcome", ["LP/game above tier baseline", "Win rate"])
+    minimum_players = st.slider("Minimum player–tier observations per playstyle", 1, 100, 10, 5)
     growth = growth_styles.copy()
     if outcome_tier != "All tiers":
         growth = growth.loc[growth["starting_tier"] == outcome_tier]
@@ -91,14 +92,17 @@ else:
         if summary.empty:
             st.info("No playstyle reaches the selected player threshold.")
         else:
-            value = "climbing_efficiency" if outcome == "Climbing efficiency" else "observed_win_rate"
-            title = "Climbing efficiency (LP/game vs tier)" if outcome == "Climbing efficiency" else "Mean player win rate"
-            st.caption("Window: observed rank periods · One vote per player within each tier and playstyle group")
+            value = "climbing_efficiency" if outcome == "LP/game above tier baseline" else "observed_win_rate"
+            title = "LP/game above starting-tier baseline" if value == "climbing_efficiency" else "Mean player win rate"
+            st.caption(
+                "Each player contributes once per starting-tier and playstyle group. With all tiers selected, "
+                "players observed in multiple tiers contribute multiple times. Players can also appear in multiple playstyles."
+            )
             st.plotly_chart(playstyle_outcome_chart(summary, value, title), use_container_width=True)
 
-section("Queue mix", "Where is ranked play a larger share of mastery?")
+section("Estimated ranked activity", "How much mastery gain is attributed to ranked play?")
 if ranked_share_players is None:
-    st.info("This view will appear after the ranked-mastery player summary is exported.")
+    st.info("Estimated ranked-mastery shares are unavailable in this dataset.")
 else:
     controls = st.columns([1, 1, 1], gap="small")
     window = controls[0].selectbox(
@@ -144,17 +148,19 @@ else:
                 "Only one completed rank period is available so far. All time-window choices currently show the same observations."
             )
     st.caption(
-        "Tier is the player's most recent starting tier in this window. Role is inferred from the current active pool. "
+        "Tier is the player's most recent starting tier in this window. Role is inferred from the player's most recently played champions. "
         "Champion means favoured in at least one period in the window; a player can belong to several champion cells. "
         "The share is estimated from ranked wins and losses versus all mastery gained, so it is not an observed game-mode rate."
     )
+    st.caption("Time windows end at the latest observed period in the dataset, not today's date.")
 
 with st.expander("Reading the classifications"):
     profile = profile_basis(cohort, basis)
     st.markdown(
         f"""
         **{basis}** is a current mastery profile. Specialist, multi-specialist, versatile, and generalist
-        are deterministic labels based on concentration and favoured-pool features. There are
+        describe mastery-pool shapes, not skill or match tactics. Each label is the closest configured
+        profile based on mastery shares, concentration, entropy, and favoured-pool size. There are
         **{profile['playstyle'].isin(PLAYSTYLE_ORDER).sum():,} classified players** in this selection.
 
         The outcome chart uses the pool observed within each rank period. Its role selector uses the

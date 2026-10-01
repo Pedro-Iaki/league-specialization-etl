@@ -376,6 +376,7 @@ def specialization_relationship_chart(
     trend: pd.DataFrame | None = None,
     color: str = "tier",
 ) -> go.Figure:
+    tier_label = "Current tier" if y_label.startswith("Recent rank LP/game") else "Starting tier"
     plot = frame.loc[frame[x].notna() & frame["outcome"].notna()].copy()
     custom_columns = [column for column in ("support_games", "period_count") if column in plot]
     fig = px.scatter(
@@ -388,36 +389,43 @@ def specialization_relationship_chart(
         render_mode="webgl",
         custom_data=custom_columns,
         color_discrete_sequence=[BLUE, GOLD, "#2EC4B6", "#9B7EDE", "#D85F76"],
+        labels={"tier": tier_label, "starting_tier": tier_label, x: x_label, "outcome": y_label},
     )
     fig.update_traces(marker={"size": 6})
-    if x == "champion_commitment":
-        fig.update_traces(
-            hovertemplate="Champion preference: %{x:.1%}<br>Climbing efficiency: %{y:+.2f} LP/game<extra></extra>"
+    x_format = ".1%" if x in {"champion_commitment", "top_champion_share"} else ".3f"
+    support_label = "Mastery-weighted games" if x == "champion_commitment" else "Ranked games"
+    support_hover = "".join(
+        f"<br>{support_label if column == 'support_games' else 'Observed periods'}: %{{customdata[{index}]:,.1f}}"
+        for index, column in enumerate(custom_columns)
+    )
+    fig.update_traces(
+        hovertemplate=(
+            f"{x_label}: %{{x:{x_format}}}<br>{y_label}: %{{y:+.2f}}"
+            f"{support_hover}<extra>%{{fullData.name}}</extra>"
         )
+    )
     if trend is not None and not trend.empty:
         fig.add_trace(
             go.Scatter(
                 x=trend[x],
                 y=trend["outcome"],
                 mode="lines+markers",
-                name="Average in concentration bands",
+                name="Mean within quantile bands",
                 line={"color": GOLD, "width": 4},
                 marker={"size": 9},
                 customdata=trend["players"],
                 hovertemplate=(
-                    "Champion preference: %{x:.1%}<br>Mean climbing efficiency: %{y:+.2f} LP/game"
-                    "<br>Players: %{customdata:,}<extra></extra>"
-                    if x == "champion_commitment" else
-                    "%{x:.2f}<br>Mean outcome: %{y:+.2f}<br>Players: %{customdata:,}<extra></extra>"
+                    f"{x_label}: %{{x:{x_format}}}<br>Mean {y_label}: %{{y:+.2f}}"
+                    "<br>Observations: %{customdata:,}<extra></extra>"
                 ),
             )
         )
     fig.add_hline(y=0, line_dash="dot", line_color=MUTED, opacity=0.65)
     fig.update_xaxes(title=x_label)
-    if x == "champion_commitment":
+    if x in {"champion_commitment", "top_champion_share"}:
         fig.update_xaxes(tickformat=".0%")
     fig.update_yaxes(title=y_label)
-    return style_figure(fig, height=580, legend_title="Starting tier")
+    return style_figure(fig, height=580, legend_title=tier_label)
 
 
 def composition_view_chart(frame: pd.DataFrame, group: str) -> go.Figure:
@@ -460,14 +468,14 @@ def champion_efficiency_landscape(frame: pd.DataFrame, x_label: str, y_label: st
     fig.add_hline(y=0, line_dash="dot", line_color=MUTED, opacity=0.65)
     fig.update_traces(
         hovertemplate=(
-            "<b>%{hovertext}</b><br>Specialization: %{x:.2f}<br>"
-            "Climbing efficiency: %{y:+.2f}<br>Players: %{customdata[0]:,}<br>"
+            f"<b>%{{hovertext}}</b><br>{x_label}: %{{x:.2f}}<br>"
+            f"{y_label}: %{{y:+.2f}}<br>Players: %{{customdata[0]:,}}<br>"
             "Periods: %{customdata[1]:,}<extra></extra>"
         )
     )
     fig.update_xaxes(title=x_label)
     fig.update_yaxes(title=y_label)
-    fig.update_coloraxes(colorbar_title="Win rate")
+    fig.update_coloraxes(colorbar_title="Mean player win rate", colorbar_tickformat=".0%")
     return style_figure(fig, height=590)
 
 
@@ -484,13 +492,15 @@ def playstyle_outcome_chart(frame: pd.DataFrame, value: str, title: str) -> go.F
         custom_data=["observed_player_count", "observed_period_count"],
     )
     fig.update_layout(showlegend=False)
-    fig.update_traces(
-        hovertemplate="%{x}<br>Value: %{y:.2f}<br>Players: %{customdata[0]:,}<br>Periods: %{customdata[1]:,}<extra></extra>"
-    )
+    value_format = "%{y:.1%}" if value == "observed_win_rate" else "%{y:+.2f} LP/game"
+    fig.update_traces(hovertemplate=(
+        f"%{{x}}<br>{title}: {value_format}<br>Player–tier observations: %{{customdata[0]:,}}"
+        "<br>Observed periods: %{customdata[1]:,}<extra></extra>"
+    ))
     if value != "observed_win_rate":
         fig.add_hline(y=0, line_dash="dot", line_color=MUTED)
     else:
-        fig.update_yaxes(tickformat=".0%", range=[0.45, 0.55], dtick=0.02)
+        fig.update_yaxes(tickformat=".0%", range=[0, 1])
     fig.update_xaxes(title="")
     fig.update_yaxes(title=title)
     return style_figure(fig, height=430)
