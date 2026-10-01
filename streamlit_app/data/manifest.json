@@ -1,0 +1,81 @@
+{
+  "exported_at_utc": "2026-10-01T09:13:57.704657+00:00",
+  "source": "league_pipeline.gold",
+  "privacy": "Player and interval identifiers excluded from public extracts.",
+  "datasets": {
+    "players": {
+      "file": "player_profiles.parquet",
+      "rows": 37172,
+      "columns": 52,
+      "size_bytes": 4027260,
+      "min_as_of_date": "2026-09-29T00:00:00",
+      "max_as_of_date": "2026-09-29T00:00:00",
+      "min_snapshot_date": "2026-09-16T00:00:00",
+      "max_snapshot_date": "2026-09-29T00:00:00"
+    },
+    "champions": {
+      "file": "champion_profiles.parquet",
+      "rows": 173,
+      "columns": 38,
+      "size_bytes": 63630,
+      "min_as_of_date": "2026-09-29T00:00:00",
+      "max_as_of_date": "2026-09-29T00:00:00"
+    },
+    "champion_playstyles": {
+      "file": "champion_playstyle_profiles.parquet",
+      "rows": 690,
+      "columns": 20,
+      "size_bytes": 65761,
+      "min_as_of_date": "2026-09-29T00:00:00",
+      "max_as_of_date": "2026-09-29T00:00:00"
+    },
+    "cooccurrence": {
+      "file": "champion_cooccurrence.parquet",
+      "rows": 14878,
+      "columns": 14,
+      "size_bytes": 779984,
+      "min_as_of_date": "2026-09-29T00:00:00",
+      "max_as_of_date": "2026-09-29T00:00:00"
+    },
+    "rank_growth": {
+      "file": "rank_growth.parquet",
+      "rows": 3373,
+      "columns": 34,
+      "size_bytes": 151137,
+      "min_snapshot_date": "2026-09-23T00:00:00",
+      "max_snapshot_date": "2026-09-26T00:00:00",
+      "min_previous_snapshot_date": "2026-09-16T00:00:00",
+      "max_previous_snapshot_date": "2026-09-20T00:00:00"
+    },
+    "growth_players": {
+      "file": "growth_players.parquet",
+      "rows": 1066,
+      "columns": 10,
+      "size_bytes": 51863
+    },
+    "champion_growth_players": {
+      "file": "champion_growth_players.parquet",
+      "rows": 4089,
+      "columns": 10,
+      "size_bytes": 130297
+    },
+    "growth_player_styles": {
+      "file": "growth_player_styles.parquet",
+      "rows": 1066,
+      "columns": 7,
+      "size_bytes": 15433
+    },
+    "champion_tier_growth": {
+      "file": "champion_tier_growth.parquet",
+      "rows": 2842,
+      "columns": 14,
+      "size_bytes": 140289
+    },
+    "ranked_mastery_cohorts": {
+      "file": "ranked_mastery_cohorts.parquet",
+      "rows": 4296,
+      "columns": 8,
+      "size_bytes": 39955
+    }
+  }
+}
