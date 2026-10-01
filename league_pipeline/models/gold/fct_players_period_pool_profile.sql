@@ -6,16 +6,15 @@
 
 with rank_periods as (
 
-    select rank_delta_id, player_id, previous_snapshot_date, snapshot_date
-    from {{ ref('fct_players_rank_history') }}
-    where not is_counter_reset
+    select rank_period_id, player_id, previous_snapshot_date, snapshot_date
+    from {{ ref('fct_players_rank_periods') }}
 
 ),
 
 champion_points as (
 
     select
-        r.rank_delta_id,
+        r.rank_period_id,
         d.champion_key,
         max(d.champion_name) as champion_name,
         sum(d.points_delta) as points_gained
@@ -25,7 +24,7 @@ champion_points as (
         and d.snapshot_date > r.previous_snapshot_date
         and d.snapshot_date <= r.snapshot_date
     where d.points_delta > 0
-    group by r.rank_delta_id, d.champion_key
+    group by r.rank_period_id, d.champion_key
 
 ),
 
@@ -35,10 +34,10 @@ shares as (
         *,
         {{ dbt_utils.safe_divide(
             'points_gained',
-            'sum(points_gained) over (partition by rank_delta_id)'
+            'sum(points_gained) over (partition by rank_period_id)'
         ) }} as champion_share,
         row_number() over (
-            partition by rank_delta_id
+            partition by rank_period_id
             order by points_gained desc, champion_key
         ) as points_rank
     from champion_points
@@ -50,7 +49,7 @@ top_candidates as (
     select
         *,
         lead(points_gained) over (
-            partition by rank_delta_id order by points_rank
+            partition by rank_period_id order by points_rank
         ) as next_champion_points
     from shares
     where points_rank <= {{ max_favoured }}
@@ -60,7 +59,7 @@ top_candidates as (
 gaps as (
 
     select
-        rank_delta_id,
+        rank_period_id,
         points_rank,
         ln(cast(points_gained as double) / next_champion_points) as log_gap
     from top_candidates
@@ -70,18 +69,18 @@ gaps as (
 
 gap_summary as (
 
-    select rank_delta_id, percentile(log_gap, 0.5) as median_log_gap
+    select rank_period_id, percentile(log_gap, 0.5) as median_log_gap
     from gaps
-    group by rank_delta_id
+    group by rank_period_id
 
 ),
 
 largest_gap as (
 
-    select rank_delta_id, points_rank, log_gap
+    select rank_period_id, points_rank, log_gap
     from gaps
     qualify row_number() over (
-        partition by rank_delta_id
+        partition by rank_period_id
         order by log_gap desc, points_rank
     ) = 1
 
@@ -90,7 +89,7 @@ largest_gap as (
 favoured_boundaries as (
 
     select
-        t.rank_delta_id,
+        t.rank_period_id,
         case
             when count(*) = 1 then 1
             when max(g.log_gap) >= {{ min_log_gap }}
@@ -103,16 +102,16 @@ favoured_boundaries as (
         end as favoured_champion_count,
         max(g.log_gap) as favoured_log_gap
     from top_candidates t
-    left join largest_gap g on t.rank_delta_id = g.rank_delta_id
-    left join gap_summary s on t.rank_delta_id = s.rank_delta_id
-    group by t.rank_delta_id
+    left join largest_gap g on t.rank_period_id = g.rank_period_id
+    left join gap_summary s on t.rank_period_id = s.rank_period_id
+    group by t.rank_period_id
 
 ),
 
 pool_metrics as (
 
     select
-        s.rank_delta_id,
+        s.rank_period_id,
         count(*) as champion_count,
         sum(s.points_gained) as mastery_points_gained,
         max(case when s.points_rank = 1 then s.champion_key end) as primary_champion_key,
@@ -127,8 +126,8 @@ pool_metrics as (
         sum(pow(s.champion_share, 2)) as hhi,
         -sum(s.champion_share * log2(s.champion_share)) as entropy
     from shares s
-    inner join favoured_boundaries b on s.rank_delta_id = b.rank_delta_id
-    group by s.rank_delta_id
+    inner join favoured_boundaries b on s.rank_period_id = b.rank_period_id
+    group by s.rank_period_id
 
 ),
 
@@ -160,16 +159,32 @@ scored as (
 )
 
 select
-    *,
+    s.rank_period_id,
+    s.champion_count,
+    s.mastery_points_gained,
+    s.primary_champion_key,
+    s.primary_champion_name,
+    s.primary_champion_points,
+    s.top1_share,
+    s.favoured_champion_count,
+    s.favoured_champions_share,
+    s.favoured_log_gap,
+    s.hhi,
+    s.entropy,
+    s.normalized_entropy,
+    s.specialist_score,
+    s.multispecialist_score,
+    s.versatile_score,
+    s.generalist_score,
     case greatest(
-        specialist_score,
-        multispecialist_score,
-        versatile_score,
-        generalist_score
+        s.specialist_score,
+        s.multispecialist_score,
+        s.versatile_score,
+        s.generalist_score
     )
-        when specialist_score then 'specialist'
-        when multispecialist_score then 'multispecialist'
-        when versatile_score then 'versatile'
-        else 'generalist'
+        when s.specialist_score then 'specialist'
+        when s.multispecialist_score then 'multispecialist'
+        when s.versatile_score then 'versatile'
+        when s.generalist_score then 'generalist'
     end as playstyle
-from scored
+from scored s

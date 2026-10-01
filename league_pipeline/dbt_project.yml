@@ -26,6 +26,7 @@ models:
 vars:
   late_arrival_lookback_days: 5
   mastery_freshness_days: 2
+  rank_period_days: 7
   active_champion_activity_window_days: 60
   active_champion_min_absolute_points: 3000
   active_champion_min_relative_pct: 0.10
@@ -39,7 +40,6 @@ vars:
   expert_mastery_threshold: 100000
   cooccurrence_min_pair_players: 5
 
-  recent_form_window_days: 7
   favoured_champion_max_count: 10
   favoured_champion_gap_multiplier: 1.5
   favoured_champion_min_log_gap: 0.69314718056

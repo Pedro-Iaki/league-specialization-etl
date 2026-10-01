@@ -29,7 +29,7 @@ with profiles as (
 
     select
         'rank_period',
-        cast(rank_delta_id as string),
+        cast(rank_period_id as string),
         playstyle,
         specialist_score,
         multispecialist_score,

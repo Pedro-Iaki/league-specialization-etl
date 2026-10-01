@@ -8,6 +8,32 @@ with naive_roles as (
         champions_sampled_count
     from {{ ref('dim_players_naive_role_distribution') }}
 
+),
+
+latest_period as (
+
+    select max(period_bucket_start) as period_bucket_start
+    from {{ ref('fct_players_rank_periods') }}
+
+),
+
+recent_form as (
+
+    select
+        r.player_id,
+        r.queue,
+        r.period_bucket_days as window_days,
+        r.period_in_days as days_covered,
+        r.games_delta as games,
+        r.lp_delta,
+        {{ dbt_utils.safe_divide('r.wins_delta', 'r.games_delta') }} as win_rate,
+        {{ dbt_utils.safe_divide('r.lp_delta', 'r.games_delta') }} as lp_per_game,
+        {{ dbt_utils.safe_divide('r.lp_delta', 'r.period_in_days') }} as lp_per_day,
+        {{ dbt_utils.safe_divide('r.games_delta', 'r.period_in_days') }} as games_per_day
+    from {{ ref('fct_players_rank_periods') }} r
+    inner join latest_period l
+        on r.period_bucket_start = l.period_bucket_start
+
 )
 
 select
@@ -75,7 +101,7 @@ left join {{ ref('dim_players_active_pool') }} pool
     on p.puuid = pool.player_id
 left join {{ ref('fct_players_mastery_profile') }} m
     on p.puuid = m.player_id
-left join {{ ref('fct_players_rank_recent_form') }} f
+left join recent_form f
     on p.puuid = f.player_id
     and p.queue = f.queue
 left join naive_roles n on p.puuid = n.player_id
