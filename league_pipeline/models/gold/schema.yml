@@ -166,6 +166,8 @@ models:
     columns:
       - name: rank_period_id
         tests: [not_null, unique]
+      - name: is_lp_growth_eligible
+        description: Positive-game period within the configured absolute LP-per-game bound. Ineligible periods retain raw rank deltas, but have null tier-adjusted growth lift.
       - name: period_win_rate
         tests:
           - dbt_utils.accepted_range:
@@ -174,6 +176,34 @@ models:
         tests:
           - accepted_values:
               arguments: {values: [specialist, multispecialist, versatile, generalist]}
+      - name: estimated_ranked_mastery_share
+        description: Estimated solo-ranked fraction of positive mastery gained in the period, capped to [0, 1].
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+
+  - name: fct_players_period_champion_activity
+    description: Positive mastery gained by champion during a completed rank period, with pool share and favoured status.
+    columns:
+      - name: rank_period_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_players_rank_periods')
+                field: rank_period_id
+      - name: champion_key
+        tests: [not_null]
+      - name: champion_share
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: is_favoured
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments: {combination_of_columns: [rank_period_id, champion_key]}
 
   - name: fct_players_period_pool_profile
     description: Champion-pool concentration and playstyle during rank periods with positive mastery movement.
@@ -199,6 +229,36 @@ models:
           - accepted_values:
               arguments: {values: [specialist, multispecialist, versatile, generalist]}
 
+  - name: fct_players_period_champion_growth
+    description: Estimated growth attributable to each favoured champion in a rank period.
+    columns:
+      - name: rank_period_id
+        tests: [not_null]
+      - name: champion_key
+        tests: [not_null]
+      - name: attribution_share
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments: {combination_of_columns: [rank_period_id, champion_key]}
+
+  - name: fct_players_champion_growth_summary
+    description: One player vote per champion cohort, using the mastery-share-weighted median period LP/game lift.
+    columns:
+      - name: player_champion_growth_id
+        tests: [not_null, unique]
+      - name: median_lp_per_game_lift_vs_tier
+        tests: [not_null]
+      - name: cohort_scope
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [champion, champion_playstyle, champion_tier, champion_tier_playstyle]
+
   - name: mart_champion_profile
     description: Final overall champion profile for popularity, rank height, mastery, roles, and observed growth.
     columns:
@@ -210,6 +270,24 @@ models:
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
+      - name: observed_win_rate
+        tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: climbing_efficiency
+        description: Mean across players of their mastery-share-weighted median period LP/game lift versus starting tier.
+
+  - name: mart_champion_tier_growth
+    description: Player-equal champion growth by starting tier, with optional observed playstyle.
+    columns:
+      - name: champion_tier_growth_id
+        tests: [not_null, unique]
+      - name: champion_key
+        tests: [not_null]
+      - name: starting_tier
+        tests: [not_null]
+      - name: climbing_efficiency
+        tests: [not_null]
       - name: observed_win_rate
         tests:
           - dbt_utils.accepted_range:
@@ -231,6 +309,8 @@ models:
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
+      - name: climbing_efficiency
+        description: Mean across players of their mastery-share-weighted median period LP/game lift versus starting tier.
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments: {combination_of_columns: [champion_key, playstyle]}

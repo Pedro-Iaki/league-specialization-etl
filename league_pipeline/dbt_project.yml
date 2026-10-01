@@ -27,6 +27,9 @@ vars:
   late_arrival_lookback_days: 5
   mastery_freshness_days: 2
   rank_period_days: 7
+  max_abs_lp_per_game_for_growth: 50
+  estimated_ranked_mastery_points_per_win: 1000
+  estimated_ranked_mastery_points_per_loss: 300
   active_champion_activity_window_days: 60
   active_champion_min_absolute_points: 3000
   active_champion_min_relative_pct: 0.10

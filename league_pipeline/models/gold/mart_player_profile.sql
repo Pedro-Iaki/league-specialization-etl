@@ -33,6 +33,7 @@ recent_form as (
     from {{ ref('fct_players_rank_periods') }} r
     inner join latest_period l
         on r.period_bucket_start = l.period_bucket_start
+    where {{ lp_growth_eligible('r.lp_delta', 'r.games_delta') }}
 
 )
 

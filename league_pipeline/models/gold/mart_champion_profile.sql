@@ -57,23 +57,21 @@ primary_player_metrics as (
 growth_metrics as (
 
     select
-        primary_champion_key as champion_key,
-        count(distinct player_id) as observed_player_count,
-        count(*) as observed_period_count,
-        sum(games_delta) as observed_games,
-        {{ dbt_utils.safe_divide('sum(wins_delta)', 'sum(games_delta)') }} as observed_win_rate,
-        {{ dbt_utils.safe_divide('sum(lp_delta)', 'sum(games_delta)') }} as expected_lp_per_game,
-        {{ dbt_utils.safe_divide('sum(lp_delta)', 'sum(period_in_days)') }} as expected_lp_per_day,
-        {{ dbt_utils.safe_divide(
-            'sum(lp_per_game_lift_vs_tier * games_delta)',
-            'sum(case when lp_per_game_lift_vs_tier is not null then games_delta end)'
-        ) }} as lp_per_game_lift_vs_tier,
-        avg(rank_score) as avg_end_rank_score,
-        percentile(rank_score, 0.5) as median_end_rank_score
-    from {{ ref('mart_player_delta_history') }}
-    where primary_champion_key is not null
-      and games_delta > 0
-    group by primary_champion_key
+        champion_key,
+        count(*) as observed_player_count,
+        sum(observed_period_count) as observed_period_count,
+        sum(attributed_games) as attributed_games,
+        avg(player_mean_champion_share) as mean_commitment,
+        avg(player_mean_pool_hhi) as mean_pool_hhi,
+        avg(player_win_rate) as observed_win_rate,
+        avg(player_lp_per_game) as expected_lp_per_game,
+        avg(player_lp_per_day) as expected_lp_per_day,
+        avg(median_lp_per_game_lift_vs_tier) as climbing_efficiency,
+        avg(player_avg_end_rank_score) as avg_end_rank_score,
+        percentile(player_median_end_rank_score, 0.5) as median_end_rank_score
+    from {{ ref('fct_players_champion_growth_summary') }}
+    where cohort_scope = 'champion'
+    group by champion_key
 
 ),
 
@@ -111,11 +109,14 @@ select
 
     coalesce(g.observed_player_count, 0) as observed_player_count,
     coalesce(g.observed_period_count, 0) as observed_period_count,
-    coalesce(g.observed_games, 0) as observed_games,
+    coalesce(g.attributed_games, 0) as attributed_games,
+    coalesce(g.attributed_games, 0) as observed_games,
+    g.mean_commitment,
+    g.mean_pool_hhi,
     g.observed_win_rate,
     g.expected_lp_per_game,
     g.expected_lp_per_day,
-    g.lp_per_game_lift_vs_tier,
+    g.climbing_efficiency,
     g.avg_end_rank_score,
     g.median_end_rank_score,
 

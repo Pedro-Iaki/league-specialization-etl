@@ -1,5 +1,8 @@
 {{ config(materialized='table', file_format='delta') }}
 
+{% set mastery_points_per_win = var('estimated_ranked_mastery_points_per_win', 1000) %}
+{% set mastery_points_per_loss = var('estimated_ranked_mastery_points_per_loss', 300) %}
+
 with periods as (
 
     select
@@ -25,6 +28,7 @@ with periods as (
         r.losses_delta,
         r.games_delta,
         r.lp_delta,
+        {{ lp_growth_eligible('r.lp_delta', 'r.games_delta') }} as is_lp_growth_eligible,
         p.champion_count,
         p.mastery_points_gained,
         p.primary_champion_key,
@@ -50,7 +54,7 @@ tier_baselines as (
         {{ dbt_utils.safe_divide('sum(lp_delta)', 'sum(games_delta)') }}
             as tier_lp_per_game_baseline
     from periods
-    where games_delta > 0
+    where is_lp_growth_eligible
     group by queue, previous_tier
 
 )
@@ -58,11 +62,25 @@ tier_baselines as (
 select
     p.*,
     b.tier_lp_per_game_baseline,
+    p.wins_delta * {{ mastery_points_per_win }}
+        + p.losses_delta * {{ mastery_points_per_loss }} as expected_ranked_mastery_points,
+    case
+        when p.mastery_points_gained > 0 and p.games_delta > 0 then
+            least(greatest(
+                {{ dbt_utils.safe_divide(
+                    'p.wins_delta * ' ~ mastery_points_per_win ~ ' + p.losses_delta * ' ~ mastery_points_per_loss,
+                    'p.mastery_points_gained'
+                ) }},
+                0.0
+            ), 1.0)
+    end as estimated_ranked_mastery_share,
     {{ dbt_utils.safe_divide('p.lp_delta', 'p.games_delta') }} as lp_per_game,
     {{ dbt_utils.safe_divide('p.lp_delta', 'p.period_in_days') }} as lp_per_day,
     {{ dbt_utils.safe_divide('p.wins_delta', 'p.games_delta') }} as period_win_rate,
-    {{ dbt_utils.safe_divide('p.lp_delta', 'p.games_delta') }}
-        - b.tier_lp_per_game_baseline as lp_per_game_lift_vs_tier
+    case when p.is_lp_growth_eligible then
+        {{ dbt_utils.safe_divide('p.lp_delta', 'p.games_delta') }}
+            - b.tier_lp_per_game_baseline
+    end as lp_per_game_lift_vs_tier
 from periods p
 left join tier_baselines b
     on p.queue = b.queue
