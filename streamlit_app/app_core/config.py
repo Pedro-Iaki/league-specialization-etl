@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parents[1]
+MIN_SUPPORT_PLAYERS = 3
 REPO_ROOT = APP_ROOT.parent
 DATA_DIR = APP_ROOT / "data"
 MANIFEST_PATH = DATA_DIR / "manifest.json"
@@ -16,8 +17,6 @@ TIER_ORDER = [
     "EMERALD",
     "DIAMOND",
     "MASTER",
-    "GRANDMASTER",
-    "CHALLENGER",
 ]
 TIER_ORDER_HIGH_TO_LOW = list(reversed(TIER_ORDER))
 
@@ -65,6 +64,8 @@ DATASET_FILES = {
     "champion_growth_players": "champion_growth_players.parquet",
     "champion_tier_growth": "champion_tier_growth.parquet",
     "ranked_mastery_cohorts": "ranked_mastery_cohorts.parquet",
+    "champion_tier_mastery": "champion_tier_mastery.parquet",
+    "champion_player_mastery_share": "champion_player_mastery_share.parquet",
 }
 
 DATASET_LABELS = {
@@ -78,4 +79,6 @@ DATASET_LABELS = {
     "champion_growth_players": "Player and champion growth by starting tier",
     "champion_tier_growth": "Champion growth by starting tier",
     "ranked_mastery_cohorts": "Player ranked-mastery share by observation window",
+    "champion_player_mastery_share": "Player champion mastery shares by current tier",
+    "champion_tier_mastery": "Champion mastery by current tier and threshold",
 }

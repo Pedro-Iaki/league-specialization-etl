@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from app_core.config import PLAYSTYLE_ORDER, ROLE_ORDER, TIER_ORDER
+from app_core.config import MIN_SUPPORT_PLAYERS, PLAYSTYLE_ORDER, ROLE_ORDER, TIER_ORDER
 
 AXIS_LABELS = {
     "specialization_hhi": "Pool concentration (HHI)",
@@ -65,7 +65,7 @@ def playstyle_composition(
         grouped["share"] = pd.Series(dtype=float)
         return grouped
     grouped["share"] = grouped["players"] / grouped.groupby(group)["players"].transform("sum")
-    order = TIER_ORDER if group == "tier" else ROLE_ORDER
+    order = TIER_ORDER if group == "tier" else ROLE_ORDER if group == "main_role" else sorted(frame[group].dropna().unique())
     grouped[group] = pd.Categorical(grouped[group], categories=order, ordered=True)
     return grouped.sort_values([group, "playstyle"])
 
@@ -78,7 +78,16 @@ def role_playstyle_skew(players: pd.DataFrame, basis: str) -> pd.DataFrame:
     )
     within_role = counts.div(counts.sum(axis=1).replace(0, np.nan), axis=0)
     overall = frame["playstyle"].value_counts(normalize=True).reindex(PLAYSTYLE_ORDER, fill_value=0)
-    return (within_role.subtract(overall, axis=1) * 100).fillna(0)
+    differences = within_role.subtract(overall, axis=1) * 100
+    role_support = counts.sum(axis=1)
+    supported_cells = (counts >= MIN_SUPPORT_PLAYERS) | (
+        counts.eq(0) & role_support.ge(MIN_SUPPORT_PLAYERS).to_numpy()[:, None]
+    )
+    raw_differences = differences.copy()
+    differences = differences.where(supported_cells)
+    differences.attrs["support_counts"] = counts
+    differences.attrs["raw_differences"] = raw_differences
+    return differences
 
 
 def binned_relationship(frame: pd.DataFrame, x: str, bins: int = 10) -> pd.DataFrame:
@@ -89,6 +98,24 @@ def binned_relationship(frame: pd.DataFrame, x: str, bins: int = 10) -> pd.DataF
     return valid.groupby("bin", observed=True).agg(
         **{x: (x, "mean"), "outcome": ("outcome", "mean"), "players": ("outcome", "size")}
     ).reset_index(drop=True)
+
+
+def smoothed_relationship(frame: pd.DataFrame, x: str) -> pd.DataFrame:
+    """Local medians on overlapping x-neighborhoods; robust to extreme outcomes."""
+    valid = frame.loc[frame[x].notna() & frame["outcome"].notna(), [x, "outcome"]]
+    if len(valid) < 9 or valid[x].nunique() < 4:
+        return pd.DataFrame(columns=[x, "outcome", "players"])
+    x_values = valid[x].to_numpy(dtype=float)
+    outcomes = valid["outcome"].to_numpy(dtype=float)
+    neighbors = max(MIN_SUPPORT_PLAYERS, int(np.ceil(len(valid) * 0.3)))
+    grid = np.unique(np.quantile(x_values, np.linspace(0.05, 0.95, 50)))
+    medians = []
+    for point in grid:
+        nearby = np.argpartition(np.abs(x_values - point), neighbors - 1)[:neighbors]
+        medians.append(float(np.median(outcomes[nearby])))
+    kernel = np.array([1, 2, 3, 2, 1], dtype=float) / 9
+    smoothed = np.convolve(np.pad(medians, (2, 2), mode="edge"), kernel, mode="valid")
+    return pd.DataFrame({x: grid, "outcome": smoothed, "players": neighbors})
 
 
 def champion_landscape_data(champions: pd.DataFrame, players: pd.DataFrame) -> tuple[pd.DataFrame, str]:
@@ -193,3 +220,89 @@ def champion_ranked_share_by_tier(players: pd.DataFrame, champion_name: str) -> 
     champion["baseline_share"] = champion["starting_tier"].map(baseline)
     champion["difference_pp"] = 100 * (champion["share"] - champion["baseline_share"])
     return champion
+
+
+def tier_population_comparison(players: pd.DataFrame, champion_name: str, basis: str) -> pd.DataFrame:
+    """Compare primary-player tier membership with the tracked population."""
+    frame = profile_basis(players, basis)
+    frame = frame.loc[frame["tier"].isin(TIER_ORDER)]
+    baseline = frame.groupby("tier").size().reindex(TIER_ORDER, fill_value=0)
+    selected = frame.loc[frame["primary_champion_name"] == champion_name]
+    counts = selected.groupby("tier").size().reindex(TIER_ORDER, fill_value=0)
+    total, champion_total = baseline.sum(), counts.sum()
+    result = pd.DataFrame({"tier": TIER_ORDER, "all_players": baseline.to_numpy(), "champion_players": counts.to_numpy()})
+    result["all_share"] = result["all_players"] / total if total else np.nan
+    result["champion_share"] = result["champion_players"] / champion_total if champion_total else np.nan
+    result["representation_ratio"] = result["champion_share"] / result["all_share"].replace(0, np.nan)
+    return result
+
+
+def champion_overlap_summary(pairs: pd.DataFrame, champion_name: str) -> dict[str, float]:
+    """Conditional overlap from the selected champion's perspective, weighted by shared players."""
+    left = pairs.loc[pairs["champion_name_a"] == champion_name, ["pair_player_count", "prob_b_given_a"]].rename(columns={"prob_b_given_a": "conditional"})
+    right = pairs.loc[pairs["champion_name_b"] == champion_name, ["pair_player_count", "prob_a_given_b"]].rename(columns={"prob_a_given_b": "conditional"})
+    frame = pd.concat([left, right]).dropna()
+    if frame.empty or frame["pair_player_count"].sum() == 0:
+        return {"conditional": np.nan, "pairs": 0}
+    return {"conditional": float(np.average(frame["conditional"], weights=frame["pair_player_count"])), "pairs": len(frame)}
+
+
+def mastery_representation_by_tier(tier_mastery: pd.DataFrame, minimum_mastery: int) -> pd.DataFrame:
+    """Compare each champion's tier distribution of mastery points with the sample distribution."""
+    frame = tier_mastery.loc[
+        tier_mastery["minimum_mastery"].eq(minimum_mastery)
+        & tier_mastery["tier"].isin(TIER_ORDER)
+        & tier_mastery["player_count"].gt(0)
+        & tier_mastery["mean_mastery"].gt(0)
+    ].copy()
+    if frame.empty:
+        return frame
+
+    frame["mastery_points"] = frame["mean_mastery"] * frame["player_count"]
+    champion_totals = frame.groupby("champion_name", observed=True)["mastery_points"].transform("sum")
+    tier_totals = frame.groupby("tier", observed=True)["mastery_points"].transform("sum")
+    frame["champion_tier_share"] = frame["mastery_points"] / champion_totals
+    frame["sample_tier_share"] = tier_totals / frame["mastery_points"].sum()
+    frame["representation_ratio"] = frame["champion_tier_share"] / frame["sample_tier_share"]
+    frame["log2_representation"] = np.log2(frame["representation_ratio"])
+
+    rank_weight = frame["mean_rank_score"] * frame["player_count"]
+    tier_rank = rank_weight.groupby(frame["tier"], observed=True).sum() / frame["player_count"].groupby(frame["tier"], observed=True).sum()
+    frame["tier_rank_score"] = frame["tier"].map(tier_rank)
+    frame["tier"] = pd.Categorical(frame["tier"], categories=TIER_ORDER, ordered=True)
+    return frame.sort_values(["champion_name", "tier"])
+
+
+def expert_share_vs_sample(tier_mastery: pd.DataFrame, champion_name: str, minimum_mastery: int) -> pd.DataFrame:
+    """Compare a champion's expert share with the pooled holder share in each tier."""
+    frame = tier_mastery.loc[
+        tier_mastery["minimum_mastery"].eq(minimum_mastery)
+        & tier_mastery["tier"].isin(TIER_ORDER)
+        & tier_mastery["player_count"].gt(0)
+    ].copy()
+    baseline = frame.groupby("tier", observed=True).agg(
+        experts=("expert_player_count", "sum"), holders=("player_count", "sum")
+    )
+    baseline["sample_expert_share"] = baseline["experts"] / baseline["holders"]
+    selected = frame.loc[frame["champion_name"].eq(champion_name)].copy()
+    selected["expert_share"] = selected["expert_player_count"] / selected["player_count"]
+    selected["sample_expert_share"] = selected["tier"].map(baseline["sample_expert_share"])
+    selected["expert_share_difference_pct"] = 100 * (
+        selected["expert_share"] / selected["sample_expert_share"].replace(0, np.nan) - 1
+    )
+    return selected
+
+
+def playstyle_mastery_bands(players: pd.DataFrame, basis: str, minimum_mastery: int, bins: int = 8, tier: str | None = None) -> pd.DataFrame:
+    frame = profile_basis(players, basis)
+    if tier is not None:
+        frame = frame.loc[frame["tier"] == tier]
+    frame = frame.loc[(frame["total_mastery_points"] >= max(1, minimum_mastery)) & frame["playstyle"].isin(PLAYSTYLE_ORDER)].copy()
+    if frame.empty or frame["total_mastery_points"].nunique() < 2:
+        return pd.DataFrame(columns=["mastery", "log_mean_mastery", "playstyle", "players", "share"])
+    frame["band"] = pd.qcut(frame["total_mastery_points"], q=min(bins, frame["total_mastery_points"].nunique()), duplicates="drop")
+    band_mastery = frame.groupby("band", observed=True)["total_mastery_points"].agg(mastery="median", mean_mastery="mean").reset_index()
+    grouped = frame.groupby(["band", "playstyle"], observed=True).size().rename("players").reset_index().merge(band_mastery, on="band", how="left")
+    grouped["log_mean_mastery"] = np.log10(grouped["mean_mastery"].clip(lower=1))
+    grouped["share"] = grouped["players"] / grouped.groupby("band", observed=True)["players"].transform("sum")
+    return grouped

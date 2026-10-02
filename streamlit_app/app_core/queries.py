@@ -1,6 +1,54 @@
 from __future__ import annotations
 
 DATASET_QUERIES = {
+    "champion_player_mastery_share": """
+        select
+            c.name as champion_name,
+            p.tier,
+            m.champion_points,
+            p.total_mastery_points,
+            m.champion_points / p.total_mastery_points as mastery_share
+        from league_pipeline.silver.fct_masteries_current m
+        inner join league_pipeline.gold.mart_player_profile p on m.puuid = p.player_id
+        inner join league_pipeline.silver.dim_champions c on m.champion_key = c.key
+        where m.champion_points >= 15000
+          and p.total_mastery_points > 0
+          and p.tier in ('IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER')
+    """,
+    "champion_tier_mastery": """
+        with thresholds as (
+            select explode(array_union(sequence(0, 100000, 10000), array(15000, 250000, 500000, 1000000))) as minimum_mastery
+        ), observations as (
+            select
+            c.name as champion_name,
+            p.tier,
+            t.minimum_mastery,
+            m.champion_points,
+            p.rank_score
+            from league_pipeline.silver.fct_masteries_current m
+            join league_pipeline.gold.mart_player_profile p on m.puuid = p.player_id
+            join league_pipeline.silver.dim_champions c on m.champion_key = c.key
+            cross join thresholds t
+            where m.champion_points >= t.minimum_mastery
+              and p.tier in ('IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER')
+        )
+        select
+            champion_name,
+            coalesce(tier, 'ALL') as tier,
+            minimum_mastery,
+            count(*) as player_count,
+            count(case when champion_points >= 100000 then 1 end) as expert_player_count,
+            avg(champion_points) as mean_mastery,
+            percentile(champion_points, 0.25) as q1_mastery,
+            percentile(champion_points, 0.5) as median_mastery,
+            percentile(champion_points, 0.75) as q3_mastery,
+            min(champion_points) as min_mastery,
+            max(champion_points) as max_mastery,
+            avg(rank_score) as mean_rank_score,
+            percentile(rank_score, 0.5) as median_rank_score
+        from observations
+        group by champion_name, minimum_mastery, rollup(tier)
+    """,
     "players": """
         select
             as_of_date,
@@ -261,6 +309,8 @@ DATASET_QUERIES = {
 
 
 REQUIRED_COLUMNS = {
+    "champion_player_mastery_share": {"champion_name", "tier", "champion_points", "total_mastery_points", "mastery_share"},
+    "champion_tier_mastery": {"champion_name", "tier", "minimum_mastery", "player_count", "expert_player_count", "mean_mastery", "median_mastery", "mean_rank_score", "median_rank_score"},
     "players": {
         "as_of_date",
         "tier",

@@ -225,6 +225,10 @@ data/
 sandbox/Cleaned_Data/
 sandbox/Plots/
 
+# Public, anonymized Streamlit serving snapshots
+!streamlit_app/data/
+!streamlit_app/data/**
+
 # Config
 config/*
 

@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
         default=APP_ROOT / "data",
         help="Destination directory for Parquet snapshots and manifest.json.",
     )
+    parser.add_argument("--dataset", choices=sorted(DATASET_QUERIES), action="append", help="Export only the named dataset; can be repeated.")
     return parser.parse_args()
 
 
@@ -86,18 +87,21 @@ def dataset_metadata(path: Path, frame: pd.DataFrame) -> dict[str, Any]:
     return metadata
 
 
-def export_snapshots(output_dir: Path) -> dict[str, Any]:
+def export_snapshots(output_dir: Path, datasets: list[str] | None = None) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     connection = get_connection()
     cursor = connection.cursor()
+    manifest_path = output_dir / "manifest.json"
+    existing = json.loads(manifest_path.read_text(encoding="utf-8")) if datasets and manifest_path.exists() else {}
     manifest: dict[str, Any] = {
         "exported_at_utc": datetime.now(timezone.utc).isoformat(),
         "source": "league_pipeline.gold",
         "privacy": "Player and interval identifiers excluded from public extracts.",
-        "datasets": {},
+        "datasets": existing.get("datasets", {}),
     }
     try:
-        for name, query in DATASET_QUERIES.items():
+        for name in (datasets or DATASET_QUERIES):
+            query = DATASET_QUERIES[name]
             print(f"Exporting {name}...", flush=True)
             frame = fetch_frame(cursor, query)
             validate_public_frame(name, frame)
@@ -112,14 +116,13 @@ def export_snapshots(output_dir: Path) -> dict[str, Any]:
         cursor.close()
         connection.close()
 
-    manifest_path = output_dir / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest
 
 
 def main() -> None:
     args = parse_args()
-    manifest = export_snapshots(args.output_dir.resolve())
+    manifest = export_snapshots(args.output_dir.resolve(), args.dataset)
     total_bytes = sum(item["size_bytes"] for item in manifest["datasets"].values())
     print(f"Export complete: {total_bytes / 1_048_576:.2f} MiB", flush=True)
 

@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from app_core.config import DATA_DIR, DATASET_FILES, MANIFEST_PATH, REPO_ROOT
+from app_core.config import DATA_DIR, DATASET_FILES, MANIFEST_PATH, REPO_ROOT, TIER_ORDER
 from app_core.queries import DATASET_QUERIES, REQUIRED_COLUMNS
 
 
@@ -81,7 +81,12 @@ def load_dataset(name: str, mode: str | None = None) -> pd.DataFrame:
         raise DashboardDataError(f"Unknown dashboard dataset: {name}")
     selected_mode = mode or configured_data_mode()
     snapshot_version = MANIFEST_PATH.stat().st_mtime_ns if selected_mode == "snapshot" and MANIFEST_PATH.exists() else None
-    return _load_dataset_cached(name, selected_mode, snapshot_version)
+    frame = _load_dataset_cached(name, selected_mode, snapshot_version)
+    allowed_tiers = set(TIER_ORDER) | ({"ALL"} if name == "champion_tier_mastery" else set())
+    for tier_column in ("tier", "starting_tier", "previous_tier"):
+        if tier_column in frame:
+            frame = frame.loc[frame[tier_column].isna() | frame[tier_column].isin(allowed_tiers)]
+    return frame.copy()
 
 
 def load_optional_dataset(name: str) -> pd.DataFrame | None:

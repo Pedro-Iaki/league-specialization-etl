@@ -54,15 +54,39 @@ h1, h2, h3 {
 [data-testid="stMetricLabel"] { color: var(--muted); }
 [data-testid="stMetricValue"] { color: var(--ink); }
 
-.st-key-association_metric { position: relative; }
-.st-key-association_metric [data-testid="stMetric"] { padding-right: 2.8rem; }
-.st-key-association_metric .st-key-cycle_specialization {
+.st-key-association_metric,
+.st-key-primary_metric,
+.st-key-active_metric,
+.st-key-historical_metric,
+.st-key-ranked_share_metric,
+.st-key-mastery_mean_metric,
+.st-key-mastery_median_metric { position: relative; }
+.st-key-association_metric [data-testid="stMetric"],
+.st-key-primary_metric [data-testid="stMetric"],
+.st-key-active_metric [data-testid="stMetric"],
+.st-key-historical_metric [data-testid="stMetric"],
+.st-key-ranked_share_metric [data-testid="stMetric"],
+.st-key-mastery_mean_metric [data-testid="stMetric"],
+.st-key-mastery_median_metric [data-testid="stMetric"] { padding-right: 2.8rem; }
+.st-key-association_metric .st-key-cycle_specialization,
+.st-key-primary_metric .st-key-toggle_primary_pct,
+.st-key-active_metric .st-key-toggle_active_pct,
+.st-key-historical_metric .st-key-toggle_historical_pct,
+.st-key-ranked_share_metric .st-key-cycle_ranked_share,
+.st-key-mastery_mean_metric .st-key-toggle_mastery_mean_comparison,
+.st-key-mastery_median_metric .st-key-toggle_mastery_median_comparison {
   position: absolute;
   top: 0.7rem;
   right: 0.7rem;
   z-index: 1;
 }
-.st-key-association_metric .st-key-cycle_specialization button {
+.st-key-association_metric .st-key-cycle_specialization button,
+.st-key-primary_metric .st-key-toggle_primary_pct button,
+.st-key-active_metric .st-key-toggle_active_pct button,
+.st-key-historical_metric .st-key-toggle_historical_pct button,
+.st-key-ranked_share_metric .st-key-cycle_ranked_share button,
+.st-key-mastery_mean_metric .st-key-toggle_mastery_mean_comparison button,
+.st-key-mastery_median_metric .st-key-toggle_mastery_median_comparison button {
   min-height: 1.9rem;
   height: 1.9rem;
   width: 1.9rem;
@@ -232,6 +256,27 @@ def data_source_caption(freshness: str) -> None:
     mode = configured_data_mode()
     label = "versioned Parquet snapshot" if mode == "snapshot" else "live Databricks SQL"
     st.sidebar.caption(f"Data source: {label}\n\nLatest profile date: {freshness}")
+
+
+def support_warning(message: str, key: str) -> bool:
+    """Place a per-section low-support override beside its warning."""
+    state_key = f"show_omitted_{key}"
+    shown = st.session_state.get(state_key, False)
+
+    def flip() -> None:
+        st.session_state[state_key] = not st.session_state.get(state_key, False)
+
+    notice, action = st.columns([5, 1], gap="small", vertical_alignment="center")
+    detail = message.removeprefix("Insufficient data: ").strip()
+    notice.warning(message if not shown else f"Showing low-support results: {detail}")
+    action.button(
+        "Hide omitted" if shown else "Show omitted",
+        key=f"toggle_omitted_{key}",
+        help="Low-support results keep their counts so you can assess them.",
+        on_click=flip,
+        width="stretch",
+    )
+    return shown
 
 
 def format_compact(value: float | None) -> str:

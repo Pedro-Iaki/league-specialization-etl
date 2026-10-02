@@ -1,8 +1,20 @@
 {
-  "exported_at_utc": "2026-10-01T09:13:57.704657+00:00",
+  "exported_at_utc": "2026-10-02T10:37:56.371356+00:00",
   "source": "league_pipeline.gold",
   "privacy": "Player and interval identifiers excluded from public extracts.",
   "datasets": {
+    "champion_player_mastery_share": {
+      "file": "champion_player_mastery_share.parquet",
+      "rows": 1139520,
+      "columns": 5,
+      "size_bytes": 14496458
+    },
+    "champion_tier_mastery": {
+      "file": "champion_tier_mastery.parquet",
+      "rows": 22350,
+      "columns": 13,
+      "size_bytes": 989638
+    },
     "players": {
       "file": "player_profiles.parquet",
       "rows": 37172,

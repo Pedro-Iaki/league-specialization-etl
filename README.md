@@ -1,318 +1,131 @@
 # League Specialization ETL
 
-![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Status](https://img.shields.io/badge/extraction-operational-brightgreen)
-![Status](https://img.shields.io/badge/transformation-in%20development-yellow)
-![License](https://img.shields.io/badge/license-MIT-lightgrey)
+How does concentrating play on a smaller set of champions relate to ranked progression in League of Legends?
 
-An ETL pipeline built around the Riot Games API to investigate the relationship between champion specialization, gameplay patterns, and player performance in League of Legends.
+This project collects repeated ranked-player and champion-mastery snapshots, builds analytical tables in Databricks with dbt, and serves the results in a Streamlit dashboard. Its aim is to describe relationships between champion-pool choices and ranked outcomes in the **tracked sample**. An association in these data does not establish that specialization caused a player to climb.
 
-The project is also an exercise in building a data pipeline with production-oriented concerns: concurrency, state management, failure recovery, data quality, traceability, and efficient API consumption.
+The project also explores the engineering needed to make those comparisons possible: API rate limits, concurrent extraction, recoverable state, historical modeling, data quality checks, and a public serving layer that excludes player identifiers.
 
-> **Status:** Extraction is operational. Transformation is currently under development.
+## What the project answers
 
-## Table of Contents
+- How concentrated are players' current, lifetime, and observed-period champion pools?
+- How does concentration relate to rank movement within comparable starting tiers?
+- How do players associated with a champion differ by tier, inferred role, playstyle, mastery depth, and observed growth?
+- Which champions tend to coexist in the same players' active pools?
 
-- [Motivation](#motivation)
-- [Architecture](#architecture)
-- [Current Features](#current-features)
-- [Data Flow](#data-flow)
-- [Getting Started](#getting-started)
-- [Configuration](#configuration)
-- [Testing](#testing)
-- [Technology](#technology)
-- [Project Structure](#project-structure)
-- [Roadmap](#roadmap)
-- [Disclaimer](#disclaimer)
+The original research brief also called for examining mastery, win rate, recent activity, champion population across tiers, and champion selection patterns. The implemented views cover parts of that brief through the available snapshots and derived marts; they should not be read as a complete answer to every original question.
 
-## Motivation
+These are descriptive questions. The data contain rank snapshots and cumulative mastery, rather than a joined record of each ranked match, champion, lane, and result. Champion attribution, ranked-mastery share, and roles are estimates built from those observations.
 
-How does a player's specialization affect their performance?
+## Current state
 
-The goal is to investigate the relationship between gameplay patterns and player success by analyzing factors such as:
+The repository contains an end-to-end **extract, load, transform, and serve** path:
 
-- Champion specialization and mastery
-- Win rate
-- Rank and rank progression
-- Recent activity
-- Champion population across tiers
-- Champion selection patterns
-- Other relevant player and champion characteristics
+| Part | Implemented here | Detail |
+|---|---|---|
+| Collection | Riot API player and mastery extraction, local state and integrity checks, stale-player refresh | [Extraction code](src/extract/) |
+| Loading | Parquet compaction, Databricks landing-volume uploads, champion metadata load, and a Databricks ingestion notebook | [Loading code](src/load/) |
+| Transformation | dbt Bronze, Silver, and Gold models, schema tests, and business-rule tests | [dbt project README](league_pipeline/README.md) |
+| Presentation | Streamlit Overview, Population Analysis, Cross Champion View, and Champion Explorer, using included Parquet exports by default | [Dashboard README](streamlit_app/README.md) |
+| Orchestration definition | A Databricks job definition for ingestion and layer-by-layer dbt builds | [Job definition](resources/ingest_clean_transform.job.yml) |
 
-The analytical goal is to identify relationships between strategy and performance, rather than assume direct causality.
+The included dashboard files are a **snapshot**, not a live feed. Their export timestamp and coverage are recorded in the [snapshot manifest](streamlit_app/data/manifest.json). The dbt README records the most recent documented full and incremental build; those results describe that validation run, not every future run. The job definition is present in the repository; its deployment status is not established by the files alone.
 
-## Architecture
+## Data flow
 
-The pipeline is currently structured as an ETL, with a roadmap toward an ELT architecture using Airflow and dbt/Postgres.
-
-```text
-                    Riot Games API
-                          │
-                          ▼
-                  ┌───────────────┐
-                  │   Extraction  │
-                  │               │
-                  │ • Pagination  │
-                  │ • Rate Limit  │
-                  │ • Retry       │
-                  │ • Concurrency │
-                  └───────┬───────┘
-                          │
-                          ▼
-                 ┌─────────────────┐
-                 │      Bronze     │
-                 │                 │
-                 │ Raw API data    │
-                 │ Partitioned     │
-                 └────────┬────────┘
-                          │
-                 ┌────────▼────────┐
-                 │ Operational DB  │
-                 │                 │
-                 │ Runs / Tasks    │
-                 │ State / Errors  │
-                 │ Metadata        │
-                 └────────┬────────┘
-                          │
-                          ▼
-                 ┌─────────────────┐
-                 │     Silver      │
-                 │                 │
-                 │ Validation      │
-                 │ Consolidation   │
-                 │ Partitioning    │
-                 │ Quarantine      │
-                 └────────┬────────┘
-                          │
-                          ▼
-                    Gold / Analytics
-                       (roadmap)
+```mermaid
+flowchart LR
+    A[Riot ranked players and mastery API] --> B[Python extraction]
+    B --> C[Partitioned raw Parquet and local SQLite run state]
+    C --> D[Compacted Parquet]
+    D --> E[Databricks landing volumes]
+    F[Champion metadata] --> G[Databricks raw tables]
+    E --> G
+    G --> H[dbt Bronze: ingested observations]
+    H --> I[dbt Silver: current and historical records]
+    I --> J[dbt Gold: activity, periods, profiles, marts]
+    J --> K[Identifier-free Parquet exports]
+    K --> L[Streamlit dashboard]
+    J -. optional live queries .-> L
 ```
 
-The operational database acts as the source of truth for pipeline state, allowing executions to be tracked and recovered without blindly reprocessing previously completed work.
+The extractor scans configured ranked tiers and divisions, fetches mastery for discovered players, and revisits stale players. It records runs, tasks, files, and failures in local SQLite. A separate Postgres player registry supports freshness and refresh claims across collection cycles. Before upload, raw Parquet files are compacted. The Databricks ingestion notebook loads landed player and mastery files into raw tables; champion names and reference positions are loaded separately.
 
-## Current Features
+dbt preserves useful history and produces current records, rank periods, champion activity, player profiles, and champion marts. Fixed export queries create the public dashboard datasets and exclude player and interval identifiers. The optional live dashboard mode reads the Gold schema directly. See the [model reference](league_pipeline/docs/model_reference.md) for model grains, lineage, metric definitions, and interpretation edge cases.
 
-**Incremental, state-driven extraction**
-- Extraction is driven by persisted pipeline state rather than treating every execution as a completely new run
-- Runs and individual tasks are tracked through the operational database, so the pipeline knows what has already been processed and what still requires action
+## Analytical method
 
-**Concurrent extraction**
-- The extraction layer uses multithreading to process independent tasks concurrently
-- Shared state is explicitly synchronized, with dedicated tests covering concurrent execution and potential race conditions
+1. **Observe repeated snapshots.** Ranked entries provide tier, division, LP, and cumulative wins and losses. Champion-mastery entries provide cumulative mastery points and last-play information. Differences between snapshots, not individual match events, supply the historical activity signal.
+2. **Measure rank movement.** A project-defined rank score allows movement across division boundaries. Completed observations are grouped into configured seven-day rank periods. Eligible growth is reported as LP per recorded ranked game, then compared with the tracked sample's baseline for the same queue and starting tier. The current growth filter excludes periods with absolute movement above 50 LP per game.
+3. **Describe specialization.** The models calculate leading-champion share, concentration, entropy, and a favoured-champion subset for active, lifetime, or period pools. A weighted, configurable heuristic assigns one of four pool labels: specialist, multispecialist, versatile, or generalist. These labels describe the measured pool shape, not player skill.
+4. **Associate champions with outcomes.** Mastery gained during a period supplies weights for allocating that period's rank movement and games to favoured champions. The resulting champion figures are associations, not observed wins or LP earned while playing that champion. Champion summaries first aggregate within players so those with many periods do not automatically dominate the final average.
+5. **Compare and inspect.** Gold marts summarize players, champions, tiers, playstyles, and champion-pair overlap. The dashboard exposes support counts and controls for sparse groups. Co-occurrence measures shared player preference, not team synergy.
 
-**Dynamic rate limiting**
-- API consumption is controlled through token buckets whose limits are derived from the API's available rate limits
-- The objective is to maximize throughput while respecting Riot's API constraints
+The precise formulas, thresholds, model grains, and edge cases live in the [dbt model reference](league_pipeline/docs/model_reference.md) and [dbt configuration](league_pipeline/dbt_project.yml). Dashboard-specific reading guidance is in the [dashboard README](streamlit_app/README.md).
 
-**Failure handling and recovery**
-- Transient API failures are handled through retries with exponential backoff
-- Pipeline failures are persisted as operational state, so failed work can be identified and recovered without restarting the entire pipeline
-- Stalled executions can also be detected and marked accordingly
+## Engineering choices visible in the code
 
-**Data validation and integrity**
-- Pydantic validation
-- Database constraints
-- Integrity checks
-- File tracking
-- Output validation
-- Automated tests
-- Quarantine of invalid records
-- The transformation layer also checks for raw files that exist on disk but are not registered in the expected pipeline state
-
-**Data lineage**
-- The operational database tracks the relationship between pipeline runs, tasks, generated files, and their associated metadata
-- This provides lineage from processed data back to the execution that produced it
-
-**Partitioned data**
-- Data is organized according to Data Lake patterns and partitioned by relevant dimensions: `region/`, `queue/`, `patch/`
-- The Silver layer is written as Parquet datasets
-
-## Data Flow
-
-The extraction layer currently produces raw datasets for players and champion masteries. The transformation layer consolidates these datasets into structured Silver tables while separating invalid records into quarantine datasets.
-
-A simplified layout:
-
-```text
-data/
-├── raw/ # Unprocessed, extracted from the src/extract scripts
-│   ├── players/
-│   └── masteries/
-│
-├── silver/ # Cleaned parquets, but not yet setup for analysis
-│   ├── players/
-│   ├── masteries/
-│   └── assurance/
-│
-├── quarantine/ # Files or records that couldn't be salvaged
-│   ├── players_invalid.parquet
-│   └── masteries_invalid.parquet
-│
-└── database/ # Local orchestration databases for each step
-    ├── extraction.db
-    └── transform.db
-```
-
-## Getting Started
-
-### Requirements
-
-- Python 3.11+
-- A Riot Games API key ([developer.riotgames.com](https://developer.riotgames.com))
-
-### Installation
-
-```bash
-git clone https://github.com/<your-username>/league-specialization-etl.git
-cd league-specialization-etl
-
-# Create and activate a virtual environment
-python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install the project itself in editable mode
-pip install -e .
-```
-
-### Configuration
-
-Change the file at:
-
-```bash
-config/EXTRACTION_CONFIG.env
-```
-
-### Running the pipeline (Currently only extracts)
-
-```bash
-python src/extract/run_pipeline.py
-```
-
-> Extraction is fully operational today. Transformation (`run_transform.py`) is under active development — expect incomplete output until the Silver layer is finalized.
-
-## Configuration Reference
-
-Pipeline behavior is configured through environment variables rather than hardcoded execution parameters.
-
-```env
-RIOT_API_KEY=your_api_key_here
-VERSION=0.8.4
-PLAYERS_FETCH_DEPTH=30
-FULL_VERIFICATION_POST=True
-REGION=na1
-QUEUE=RANKED_SOLO_5x5
-TIERS=DIAMOND,EMERALD,PLATINUM,GOLD,SILVER,BRONZE,IRON
-DIVISIONS=I,II,III,IV
-```
-
-**The API key should never be committed to the repository.** Keep `EXTRACTION_CONFIG.env` in `.gitignore`.
-
-## Testing
-
-The project includes tests covering the operational behavior of the pipeline:
-
-- Environment and configuration validation
-- Database operations
-- File naming and partitioning
-- Output generation
-- Pagination
-- Integrity checks
-- Cleanup behavior
-- Concurrent execution
-- Player extraction
-- Champion mastery extraction
-
-Concurrency tests specifically execute multiple workers against shared pipeline state to verify that concurrent runs do not corrupt files or database state.
-
-```bash
-pytest
-```
-
-## Technology
-
-| Category | Tools |
+| Choice | Reason it matters |
 |---|---|
-| Language | Python |
-| Storage | SQLite, Parquet |
-| Data processing | Pandas, PyArrow, Pydantic |
-| Networking | Requests, Tenacity |
-| Concurrency | ThreadPoolExecutor |
-| Logging | Loguru |
-| Testing | Pytest |
+| Persist extraction runs, tasks, and file status in SQLite | Supports inspection and recovery of partial local work instead of assuming each collection pass starts from nothing. |
+| Keep a separate Postgres player registry | Allows previously loaded players to be revisited when stale and refresh work to be claimed across runs. |
+| Respect API limits with synchronized token buckets and retry handling | Lets concurrent collection proceed while accounting for Riot's reported limits and transient failures. |
+| Retain raw observations, then model history in dbt | Keeps source evidence and makes current-record selection and historical assumptions testable. |
+| Use explicit, configurable heuristics for pools and rank periods | Makes definitions inspectable and revisable; they are analytical choices rather than game-provided facts. |
+| Export fixed, identifier-free dashboard datasets | Keeps the public app independent of warehouse availability and avoids publishing player identifiers in its serving files. |
 
-## Project Structure
+These are implementation choices evidenced by the repository. The motivations, alternatives, and lessons behind them are still open for the project author to add.
 
-```text
-├── config/ # The thing you care about if you want to use it
-│   └── EXTRACTION_CONFIG.env
-│
-├── sandbox/ # IGNORE, these are sketches of data transformations
-│   ├── Initial_Cleaning.py
-│   └── Transformation_Experiments.py
-│
-├── src/
-│   ├── extract/ # all scripts related to extracting the data initially
-│   │   ├── tests/
-│   │   ├── api_client.py
-│   │   ├── api_client_protocol.py
-│   │   ├── extract.extraction_db_helper.py
-│   │   ├── extraction_schemas.sql
-│   │   ├── get_masteries.py
-│   │   ├── get_players.py
-│   │   ├── init_extraction_db.py
-│   │   ├── output_helper.py
-│   │   ├── run_pipeline.py
-│   │   └── verify_integrity.py
-│   │
-│   ├── transform/ # WIP, but handles the data wrangling and subsequent organization
-│   │   ├── tests/
-│   │   ├── consolidate_silver.py
-│   │   ├── init_transform_db.py
-│   │   ├── run_transform.py
-│   │   ├── transform_db_helper.py
-│   │   └── transform_schemas.sql
-│   │
-│   ├── load/
-│   └── pydantic_models.py # Models used by pydantic to validate our data
-│
-├── data/ # Where your data, Bronze -> Gold, will end up at
-├── README.md
-├── pyproject.toml
-├── requirements.txt
-└── TODO # IGNORE as well
+## Try the dashboard
+
+The quickest local entry point uses the included snapshot and requires no Riot key or warehouse connection:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r streamlit_app\requirements.txt
+cd streamlit_app
+..\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-## Roadmap
+See the [dashboard README](streamlit_app/README.md) for pages, snapshot refresh, optional Databricks mode, and dashboard tests. The [project-page proposal](streamlit_app/docs/project_page_proposal.md) is a draft for a future explanatory page; it is not currently one of the dashboard pages.
 
-The current focus is completing and stabilizing the transformation layer.
+## Work on the pipeline
 
-**Near-term**
-- Completing Silver transformations
-- Additional data quality checks
-- Expanded integration tests
+The full collection and warehouse path needs a Riot API key, a Databricks workspace and SQL warehouse, and a Postgres `DATABASE_URL` for the player registry. The code reads local configuration from `config/EXTRACTION_CONFIG.env`, `config/DATABRICKS_CONFIG.env`, and `.env.local`; the first two have [extraction](config/EXTRACTION_CONFIG.env.example) and [Databricks](config/DATABRICKS_CONFIG.env.example) examples. Keep credentials out of Git.
 
-**Analytics (Gold layer)**
-- Champion specialization metrics
-- Rank progression analysis
-- Champion population analysis
-- Performance analysis
+The current `requirements.txt` is a record of the development environment, not a verified clean-install lockfile: it contains an editable Git dependency, while the champion metadata loader imports `lupa` without listing it there. After preparing the required dependencies and configuration, run the extractor with `src` on the Python path:
 
-**Platform evolution**
-- Migration of orchestration to Airflow
-- Migration of transformations toward dbt
-- Migration from SQLite to Postgres
-- Evolution from ETL toward ELT
+```powershell
+$env:PYTHONPATH = "src"
+python -m extract.run_pipeline
+```
 
-## License
+That command performs collection, stale-player refresh, periodic compaction, and upload as configured. It is an environment-dependent data collection run, not a small demo command. The repository also contains the [ingestion notebook](src/load/ingest_players.ipynb) and a [Databricks job definition](resources/ingest_clean_transform.job.yml) for loading raw tables and building dbt layers.
 
-This project is provided under the MIT license. See "MIT license" tab at the top for more information.
+For a configured `league_pipeline` dbt profile, run from the project directory:
 
-## Disclaimer
+```powershell
+cd league_pipeline
+dbt deps
+dbt build
+```
 
-This project is an independent data engineering project using publicly available Riot Games API services.
+Use `dbt build --full-refresh` when changing the grain, unique key, or relevant schema of incremental history models. The [dbt README](league_pipeline/README.md) records the validated build context and details. To refresh the dashboard snapshot after a successful Gold build, follow the [export instructions](streamlit_app/README.md#refresh-the-snapshot).
 
-League of Legends and Riot Games are trademarks of Riot Games, Inc. This project is not affiliated with or endorsed by Riot Games.
+## Verification and limits
+
+Extraction tests cover configuration, file output, state operations, pagination, concurrency, and integrity behavior. dbt tests check source and model contracts plus reconciliation rules such as current-record selection, rank-period consistency, and mastery attribution. Dashboard tests cover metrics, snapshot contracts, and page rendering. Run local Python checks from the repository root with `python -m pytest src/extract/tests streamlit_app/tests`; warehouse validation requires its own configured dbt build.
+
+The tests check properties of the implementation; they do not make the tracked players a random sample or turn mastery into match-level evidence. Region, queue, tiers, dates, short observation windows, patch changes, and small groups can all affect comparisons. An inferred role is not an observed lane, and the ranked-mastery share is an estimate rather than a measured percentage of ranked matches. Interpret dashboard results with their denominators, support counts, and snapshot dates.
+
+## Documentation map
+
+- [dbt project README](league_pipeline/README.md): layers, main outputs, and recorded build validation.
+- [dbt model reference](league_pipeline/docs/model_reference.md): table-by-table grain, lineage, formulas, and edge cases.
+- [dashboard README](streamlit_app/README.md): run modes, page guide, chart conventions, and export process.
+- [dashboard editorial review](streamlit_app/docs/dashboard_review.md): design and wording decisions already made, plus proposed follow-ups.
+- [About the project page proposal](streamlit_app/docs/project_page_proposal.md): draft copy and scope for a possible future app page.
+
+## License and attribution
+
+Released under the [MIT License](LICENSE). This is an independent project using Riot Games API services. League of Legends and Riot Games are trademarks of Riot Games, Inc.; the project is not affiliated with or endorsed by Riot Games.

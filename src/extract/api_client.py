@@ -1,7 +1,5 @@
-import os
 import time
 from threading import Lock, RLock
-from typing import Optional
 
 import requests
 from loguru import logger
@@ -159,7 +157,8 @@ class TokenBucket:
     EPSILON = 1e-12  # Small value to handle floating-point precision issues
 
     def __init__(self, rate_limit: int, period: int):
-        self.rate_limit = rate_limit
+        # Apply a safety margin to the rate limit to avoid hitting the exact limit
+        self.rate_limit = round(rate_limit * 0.99)
         self.period = period
         self.capacity = float(rate_limit)
 

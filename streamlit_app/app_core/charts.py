@@ -6,11 +6,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from app_core.analysis import smoothed_relationship
 from app_core.config import (
     BACKGROUND,
     BLUE,
     GOLD,
     GRID,
+    MIN_SUPPORT_PLAYERS,
     MUTED,
     PANEL,
     PLAYSTYLE_COLORS,
@@ -43,6 +45,19 @@ def style_figure(fig: go.Figure, *, height: int = 440, legend_title: str = "") -
     fig.update_xaxes(gridcolor=GRID, zerolinecolor=GRID, title_font_color=MUTED)
     fig.update_yaxes(gridcolor=GRID, zerolinecolor=GRID, title_font_color=MUTED)
     return fig
+
+
+def annotate_sparse_cells(
+    fig: go.Figure, x_values: list[str], y_values: list[str], values: np.ndarray, labels: np.ndarray
+) -> None:
+    """Show support labels even where Plotly omits text for a missing heatmap value."""
+    for row, y_label in enumerate(y_values):
+        for column, x_label in enumerate(x_values):
+            if not np.isfinite(values[row, column]) and labels[row, column]:
+                fig.add_annotation(
+                    x=x_label, y=y_label, text=labels[row, column],
+                    showarrow=False, font={"color": MUTED, "size": 11},
+                )
 
 
 def playstyle_composition_chart(composition: pd.DataFrame) -> go.Figure:
@@ -155,43 +170,100 @@ def concentration_distribution_chart(players: pd.DataFrame) -> go.Figure:
     return style_figure(fig, height=680)
 
 
-def transition_heatmap(matrix: pd.DataFrame) -> go.Figure:
+def transition_heatmap(matrix: pd.DataFrame, counts: pd.DataFrame | None = None) -> go.Figure:
     labels = [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER]
+    show_sparse = matrix.attrs.get("show_sparse", False)
+    if counts is None:
+        counts = matrix.attrs.get("support_counts")
+    if counts is None:
+        counts = pd.DataFrame(np.nan, index=matrix.index, columns=matrix.columns)
+        display = matrix.map(lambda value: "—" if pd.isna(value) else f"{value:.1%}")
+    else:
+        row_support = counts.sum(axis=1)
+        supported_cells = (counts >= MIN_SUPPORT_PLAYERS) | (
+            counts.eq(0) & row_support.ge(MIN_SUPPORT_PLAYERS).to_numpy()[:, None]
+        )
+        if not show_sparse:
+            matrix = matrix.where(supported_cells)
+        display = matrix.map(lambda value: "" if pd.isna(value) else f"{value:.1%}")
+        display = display.mask(
+            matrix.notna(),
+            display + "<br>n=" + counts.fillna(0).astype(int).astype(str),
+        )
+        if show_sparse:
+            display = display.mask(
+                matrix.notna() & (counts > 0) & (counts < MIN_SUPPORT_PLAYERS),
+                display + " ⚠",
+            )
+        else:
+            display = display.mask((counts > 0) & (counts < MIN_SUPPORT_PLAYERS), f"n<{MIN_SUPPORT_PLAYERS}")
+        display = display.mask(matrix.isna() & counts.eq(0), "—")
+    data = matrix.to_numpy(dtype=float)
+    labels_array = display.to_numpy()
     fig = go.Figure(
         go.Heatmap(
-            z=matrix.to_numpy(),
+            z=data,
             x=labels,
             y=labels,
             colorscale=[[0, BACKGROUND], [0.35, BLUE], [1, GOLD]],
-            text=np.vectorize(lambda value: f"{value:.1%}")(matrix.to_numpy()),
+            customdata=counts.to_numpy(),
+            text=np.where(np.isfinite(data), labels_array, ""),
             texttemplate="%{text}",
-            hovertemplate="Active: %{y}<br>All-time: %{x}<br>Share: %{z:.1%}<extra></extra>",
+            hovertemplate="Active: %{y}<br>All-time: %{x}<br>Share: %{z:.1%}<br>Players: %{customdata:,.0f}<extra></extra>",
             colorbar={"title": "Row share", "tickformat": ".0%"},
         )
     )
+    annotate_sparse_cells(fig, labels, labels, data, labels_array)
     fig.update_xaxes(title="All-time mastery playstyle")
     fig.update_yaxes(title="Active-pool playstyle", autorange="reversed")
     return style_figure(fig, height=500)
 
 
-def role_difference_heatmap(matrix: pd.DataFrame) -> go.Figure:
+def role_difference_heatmap(matrix: pd.DataFrame, counts: pd.DataFrame | None = None) -> go.Figure:
     labels = [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER]
-    max_abs = max(float(np.nanmax(np.abs(matrix.to_numpy()))), 1.0)
+    show_sparse = matrix.attrs.get("show_sparse", False)
+    if counts is None:
+        counts = matrix.attrs.get("support_counts")
+    if show_sparse and matrix.attrs.get("raw_differences") is not None:
+        matrix = matrix.attrs["raw_differences"]
+    finite = np.abs(matrix.to_numpy(dtype=float))
+    finite = finite[np.isfinite(finite)]
+    max_abs = max(float(finite.max()) if finite.size else 1.0, 1.0)
+    if counts is None:
+        counts = pd.DataFrame(np.nan, index=matrix.index, columns=matrix.columns)
+    display = matrix.map(lambda value: "" if pd.isna(value) else f"{value:+.1f} pp")
+    display = display.mask(
+        matrix.notna(),
+        display + "<br>n=" + counts.fillna(0).astype(int).astype(str),
+    )
+    if show_sparse:
+        display = display.mask(
+            matrix.notna() & (counts > 0) & (counts < MIN_SUPPORT_PLAYERS),
+            display + " ⚠",
+        )
+    else:
+        display = display.mask((counts > 0) & (counts < MIN_SUPPORT_PLAYERS), f"n<{MIN_SUPPORT_PLAYERS}")
+    display = display.mask(matrix.isna() & counts.eq(0), "—")
+    data = matrix.to_numpy(dtype=float)
+    labels_array = display.to_numpy()
+    y_values = matrix.index.tolist()
     fig = go.Figure(
         go.Heatmap(
-            z=matrix.to_numpy(),
+            z=data,
             x=labels,
-            y=matrix.index,
+            y=y_values,
             zmid=0,
             zmin=-max_abs,
             zmax=max_abs,
             colorscale=[[0, "#C95364"], [0.5, PANEL], [1, "#2EC4B6"]],
-            text=np.vectorize(lambda value: f"{value:+.1f} pp")(matrix.to_numpy()),
+            customdata=counts.to_numpy(),
+            text=np.where(np.isfinite(data), labels_array, ""),
             texttemplate="%{text}",
-            hovertemplate="Role: %{y}<br>Playstyle: %{x}<br>Difference: %{z:+.1f} pp<extra></extra>",
+            hovertemplate="Role: %{y}<br>Playstyle: %{x}<br>Difference: %{z:+.1f} pp<br>Players: %{customdata:,.0f}<extra></extra>",
             colorbar={"title": "Percentage points"},
         )
     )
+    annotate_sparse_cells(fig, labels, y_values, data, labels_array)
     fig.update_xaxes(title="")
     fig.update_yaxes(title="", autorange="reversed")
     return style_figure(fig, height=440)
@@ -404,7 +476,7 @@ def specialization_relationship_chart(
             f"{support_hover}<extra>%{{fullData.name}}</extra>"
         )
     )
-    if trend is not None and not trend.empty:
+    if trend is not None and not trend.empty and trend["outcome"].notna().any():
         fig.add_trace(
             go.Scatter(
                 x=trend[x],
@@ -420,6 +492,21 @@ def specialization_relationship_chart(
                 ),
             )
         )
+    smooth = smoothed_relationship(plot, x)
+    if not smooth.empty:
+        fig.add_trace(go.Scatter(
+            x=smooth[x],
+            y=smooth["outcome"],
+            mode="lines",
+            name="Smoothed local median (optional)",
+            visible="legendonly",
+            line={"color": "#2EC4B6", "width": 3},
+            customdata=smooth["players"],
+            hovertemplate=(
+                f"{x_label}: %{{x:{x_format}}}<br>Local median {y_label}: %{{y:+.2f}}"
+                "<br>Nearby observations: %{customdata:,}<extra></extra>"
+            ),
+        ))
     fig.add_hline(y=0, line_dash="dot", line_color=MUTED, opacity=0.65)
     fig.update_xaxes(title=x_label)
     if x in {"champion_commitment", "top_champion_share"}:
@@ -438,7 +525,7 @@ def composition_view_chart(frame: pd.DataFrame, group: str) -> go.Figure:
         color="Playstyle",
         color_discrete_map={PLAYSTYLE_LABELS[key]: color for key, color in PLAYSTYLE_COLORS.items()},
         category_orders={
-            group: TIER_ORDER if group == "tier" else ROLE_ORDER,
+            group: TIER_ORDER if group == "tier" else ROLE_ORDER if group == "main_role" else sorted(plot[group].dropna().unique()),
             "Playstyle": [PLAYSTYLE_LABELS[key] for key in PLAYSTYLE_ORDER],
         },
         custom_data=["players"],
@@ -448,7 +535,7 @@ def composition_view_chart(frame: pd.DataFrame, group: str) -> go.Figure:
         hovertemplate="%{x}<br>%{fullData.name}: %{y:.1%}<br>Players: %{customdata[0]:,}<extra></extra>"
     )
     fig.update_yaxes(title="Share within group", tickformat=".0%")
-    fig.update_xaxes(title="Current tier" if group == "tier" else "Current inferred role")
+    fig.update_xaxes(title="Current tier" if group == "tier" else "Current inferred role" if group == "main_role" else "Rank-score band")
     return style_figure(fig, height=460)
 
 
@@ -497,6 +584,7 @@ def playstyle_outcome_chart(frame: pd.DataFrame, value: str, title: str) -> go.F
         f"%{{x}}<br>{title}: {value_format}<br>Player–tier observations: %{{customdata[0]:,}}"
         "<br>Observed periods: %{customdata[1]:,}<extra></extra>"
     ))
+    fig.update_traces(texttemplate="n=%{customdata[0]}", textposition="outside", selector={"type": "bar"})
     if value != "observed_win_rate":
         fig.add_hline(y=0, line_dash="dot", line_color=MUTED)
     else:
@@ -517,7 +605,7 @@ def composition_delta_chart(frame: pd.DataFrame, group: str) -> go.Figure:
         barmode="group",
         color_discrete_map={PLAYSTYLE_LABELS[key]: color for key, color in PLAYSTYLE_COLORS.items()},
         category_orders={
-            group: TIER_ORDER if group == "tier" else ROLE_ORDER,
+            group: TIER_ORDER if group == "tier" else ROLE_ORDER if group == "main_role" else sorted(plot[group].dropna().unique()),
             "Playstyle": [PLAYSTYLE_LABELS[key] for key in PLAYSTYLE_ORDER],
         },
         custom_data=["share", "population_share", "players"],
@@ -530,8 +618,8 @@ def composition_delta_chart(frame: pd.DataFrame, group: str) -> go.Figure:
             "Champion player count: %{customdata[2]:,}<extra></extra>"
         )
     )
-    fig.update_xaxes(title="Current tier" if group == "tier" else "Current inferred role")
-    fig.update_yaxes(title="Difference from all players in same tier/role (pp)")
+    fig.update_xaxes(title="Current tier" if group == "tier" else "Current inferred role" if group == "main_role" else "Rank-score band")
+    fig.update_yaxes(title="Difference from all players in same group (pp)")
     return style_figure(fig, height=460)
 
 
@@ -540,7 +628,10 @@ def champion_tier_outcome_heatmap(
     tier_baselines: pd.DataFrame,
     metric: str,
     over_under: bool,
+    minimum_players: int = MIN_SUPPORT_PLAYERS,
 ) -> go.Figure:
+    minimum_players = style_tiers.attrs.get("minimum_players", minimum_players)
+    show_sparse = style_tiers.attrs.get("show_sparse", False)
     baseline = tier_baselines.loc[:, ["starting_tier", metric]].rename(columns={metric: "baseline"})
     plot = style_tiers.merge(baseline, on="starting_tier", how="left")
     if over_under:
@@ -562,11 +653,24 @@ def champion_tier_outcome_heatmap(
     baseline_values = plot.pivot(index="playstyle", columns="starting_tier", values="baseline").reindex(
         index=styles, columns=tiers
     )
+    if not show_sparse:
+        values = values.where(counts >= minimum_players)
     display = values.map(
         lambda value: "" if pd.isna(value)
         else f"{value:+.1f}" if over_under or metric != "observed_win_rate"
         else f"{value:.0%}"
     )
+    if not show_sparse:
+        display = display.mask((counts > 0) & (counts < minimum_players), f"n<{minimum_players}")
+    display = display.mask(
+        counts.notna() & (counts >= minimum_players),
+        display + "<br>n=" + counts.fillna(0).astype(int).astype(str),
+    )
+    if show_sparse:
+        display = display.mask(
+            counts.notna() & (counts < minimum_players),
+            display + "<br>n=" + counts.fillna(0).astype(int).astype(str) + " ⚠",
+        )
     data = values.to_numpy(dtype=float)
     if over_under or metric != "observed_win_rate":
         finite = np.abs(data[np.isfinite(data)])
@@ -592,7 +696,7 @@ def champion_tier_outcome_heatmap(
             x=tiers,
             y=[PLAYSTYLE_LABELS[style] for style in styles],
             customdata=custom,
-            text=display.to_numpy(),
+            text=np.where(np.isfinite(data), display.to_numpy(), ""),
             texttemplate="%{text}",
             colorscale=colorscale,
             zmid=0 if over_under or metric != "observed_win_rate" else 0.5,
@@ -605,6 +709,9 @@ def champion_tier_outcome_heatmap(
                 "Players: %{customdata[0]:,.0f}<extra></extra>"
             ),
         )
+    )
+    annotate_sparse_cells(
+        fig, tiers, [PLAYSTYLE_LABELS[style] for style in styles], data, display.to_numpy()
     )
     fig.update_xaxes(title="Starting tier")
     fig.update_yaxes(title="Observed playstyle", autorange="reversed")
@@ -629,6 +736,7 @@ def champion_ranked_share_chart(frame: pd.DataFrame, over_under: bool) -> go.Fig
             "Champion mean: %{customdata[1]:.1%}<br>All players in tier: %{customdata[2]:.1%}<extra></extra>"
         )
     )
+    fig.update_traces(texttemplate="n=%{customdata[0]}", textposition="outside", selector={"type": "bar"})
     if over_under:
         fig.add_hline(y=0, line_dash="dot", line_color=MUTED)
         fig.update_yaxes(title="Difference from all players in tier (pp)")
@@ -638,8 +746,13 @@ def champion_ranked_share_chart(frame: pd.DataFrame, over_under: bool) -> go.Fig
     return style_figure(fig, height=430)
 
 
-def ranked_share_heatmap(summary: pd.DataFrame, x_dimension: str, y_dimension: str) -> go.Figure:
+def ranked_share_heatmap(
+    summary: pd.DataFrame, x_dimension: str, y_dimension: str,
+    minimum_players: int = MIN_SUPPORT_PLAYERS,
+) -> go.Figure:
     """Show mean player median ranked-mastery share and player support."""
+    minimum_players = summary.attrs.get("minimum_players", minimum_players)
+    show_sparse = summary.attrs.get("show_sparse", False)
     x_values = (
         [value for value in (TIER_ORDER if x_dimension == "Tier" else ROLE_ORDER) if value in set(summary[x_dimension])]
         if x_dimension != "Champion"
@@ -656,14 +769,29 @@ def ranked_share_heatmap(summary: pd.DataFrame, x_dimension: str, y_dimension: s
     counts = summary.pivot(index=y_dimension, columns=x_dimension, values="player_count").reindex(
         index=y_values, columns=x_values
     )
+    if not show_sparse:
+        values = values.where(counts >= minimum_players)
     text_values = values.map(lambda value: "" if pd.isna(value) else f"{value:.0%}")
+    if not show_sparse:
+        text_values = text_values.mask((counts > 0) & (counts < minimum_players), f"n<{minimum_players}")
+    text_values = text_values.mask(
+        counts.notna() & (counts >= minimum_players),
+        text_values + "<br>n=" + counts.fillna(0).astype(int).astype(str),
+    )
+    if show_sparse:
+        text_values = text_values.mask(
+            counts.notna() & (counts < minimum_players),
+            text_values + "<br>n=" + counts.fillna(0).astype(int).astype(str) + " ⚠",
+        )
+    data = values.to_numpy(dtype=float)
+    labels_array = text_values.to_numpy()
     fig = go.Figure(
         go.Heatmap(
-            z=values.to_numpy(),
+            z=data,
             x=x_values,
             y=y_values,
             customdata=counts.to_numpy(),
-            text=text_values.to_numpy(),
+            text=np.where(np.isfinite(data), labels_array, ""),
             texttemplate="%{text}",
             zmin=0,
             zmax=1,
@@ -675,6 +803,7 @@ def ranked_share_heatmap(summary: pd.DataFrame, x_dimension: str, y_dimension: s
             ),
         )
     )
+    annotate_sparse_cells(fig, x_values, y_values, data, labels_array)
     fig.update_xaxes(title=x_dimension, tickangle=-35 if x_dimension == "Champion" else 0)
     fig.update_yaxes(title=y_dimension, autorange="reversed")
     return style_figure(fig, height=max(440, 36 * len(y_values) + 135))

@@ -15,7 +15,7 @@ FORBIDDEN_PUBLIC_COLUMNS = {
 }
 OPTIONAL_DATASETS = {
     "growth_players", "growth_player_styles", "champion_growth_players",
-    "champion_tier_growth",
+    "champion_tier_growth", "champion_tier_mastery", "champion_player_mastery_share",
 }
 
 
@@ -38,3 +38,12 @@ def test_manifest_matches_snapshot_row_counts() -> None:
             continue
         frame = pd.read_parquet(DATA_DIR / filename)
         assert manifest["datasets"][name]["rows"] == len(frame)
+
+
+def test_champion_mastery_snapshot_has_dashboard_thresholds() -> None:
+    path = DATA_DIR / DATASET_FILES["champion_tier_mastery"]
+    if not path.exists():
+        return
+    frame = pd.read_parquet(path)
+    assert {"ALL", "IRON", "MASTER"}.issubset(set(frame["tier"]))
+    assert {15_000, *range(0, 100_000, 10_000)}.issubset(set(frame["minimum_mastery"]))
