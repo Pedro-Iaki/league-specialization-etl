@@ -2,9 +2,9 @@
 
 How does concentrating play on a smaller set of champions relate to ranked progression in League of Legends?
 
-This project collects repeated ranked-player and champion-mastery snapshots, builds analytical tables in Databricks with dbt, and serves the results in a Streamlit dashboard. Its aim is to describe relationships between champion-pool choices and ranked outcomes in the **tracked sample**. An association in these data does not establish that specialization caused a player to climb.
+I built this project as a software developer moving from mobile games into data engineering. It is both an attempt to investigate a popular advice of improving by minimizing learning scope and a portfolio of the engineering required to study that question: API collection under rate limits, historical data modeling, checks across pipeline stages, and an interactive dashboard. The data can reveal associations in the **tracked sample**; they cannot show that specializing causes a player to climb.
 
-The project also explores the engineering needed to make those comparisons possible: API rate limits, concurrent extraction, recoverable state, historical modeling, data quality checks, and a public serving layer that excludes player identifiers.
+In League of Legends, a player chooses a champion for each match. Ranked players occupy tiers and divisions and gain or lose League Points (LP). Champion mastery is a cumulative measure of experience with each champion. This project observes rank and mastery at intervals rather than collecting each match, then estimates how champion-pool choices relate to rank movement.
 
 ## What the project answers
 
@@ -15,7 +15,7 @@ The project also explores the engineering needed to make those comparisons possi
 
 The original research brief also called for examining mastery, win rate, recent activity, champion population across tiers, and champion selection patterns. The implemented views cover parts of that brief through the available snapshots and derived marts; they should not be read as a complete answer to every original question.
 
-These are descriptive questions. The data contain rank snapshots and cumulative mastery, rather than a joined record of each ranked match, champion, lane, and result. Champion attribution, ranked-mastery share, and roles are estimates built from those observations.
+The initial expectation was that specialization might show a noticeable rank-growth advantage, perhaps varying by champion, role, and tier. The project expanded from one-time player profiles to temporal analysis because a single snapshot could describe *who* played a champion but not how their choices and rank changed together. Champion attribution, ranked-mastery share, and roles remain estimates because the data do not join individual ranked matches to champions, lanes, and results.
 
 ## Current state
 
@@ -27,25 +27,59 @@ The repository contains an end-to-end **extract, load, transform, and serve** pa
 | Loading | Parquet compaction, Databricks landing-volume uploads, champion metadata load, and a Databricks ingestion notebook | [Loading code](src/load/) |
 | Transformation | dbt Bronze, Silver, and Gold models, schema tests, and business-rule tests | [dbt project README](league_pipeline/README.md) |
 | Presentation | Streamlit Overview, Population Analysis, Cross Champion View, and Champion Explorer, using included Parquet exports by default | [Dashboard README](streamlit_app/README.md) |
-| Orchestration definition | A Databricks job definition for ingestion and layer-by-layer dbt builds | [Job definition](resources/ingest_clean_transform.job.yml) |
+| Orchestration | A deployed Databricks job for ingestion and layer-by-layer dbt builds, with its definition versioned here | [Job definition](resources/ingest_clean_transform.job.yml) |
 
-The included dashboard files are a **snapshot**, not a live feed. Their export timestamp and coverage are recorded in the [snapshot manifest](streamlit_app/data/manifest.json). The dbt README records the most recent documented full and incremental build; those results describe that validation run, not every future run. The job definition is present in the repository; its deployment status is not established by the files alone.
+The included dashboard files are a **snapshot**, not a live feed. Their export timestamp and coverage are recorded in the [snapshot manifest](streamlit_app/data/manifest.json). The dbt README records the most recent documented full and incremental build; those results describe that validation run, not every future run. A public dashboard deployment is still planned.
+
+## How the project developed
+
+The first extractor fetched ranked players and mastery and wrote JSON. It proved the idea, but had no durable task tracking, concurrency controls, integrity checks, or historical analysis. I added partitioned Parquet, a local SQLite run and file ledger, retries, logging, pagination, and rate-limit-aware concurrent requests. A separate Postgres registry now tracks which players need refreshing across collection cycles and machines.
+
+The decisive change was to collect repeated observations. Differences in cumulative mastery and ranked wins, losses, and LP made week-scale player histories possible. Early local Pandas exploration suggested enough analytical value to move the transformation work into dbt on Databricks rather than formalize a temporary local transformation layer. Databricks provides the table storage, compute, job tracking, and inspection tools for this stage of the project. The dashboard grew from the resulting Gold marts.
+
+This took roughly three months of self-directed work. The main lesson was that the game data made the engineering problem larger than expected: broad champion, role, and tier coverage with a personal API key demanded careful collection and explicit estimates. The [engineering journey](docs/engineering_journey.md) records the decisions, problems, and tradeoffs behind the final architecture.
 
 ## Data flow
 
 ```mermaid
-flowchart LR
-    A[Riot ranked players and mastery API] --> B[Python extraction]
-    B --> C[Partitioned raw Parquet and local SQLite run state]
-    C --> D[Compacted Parquet]
-    D --> E[Databricks landing volumes]
-    F[Champion metadata] --> G[Databricks raw tables]
-    E --> G
-    G --> H[dbt Bronze: ingested observations]
-    H --> I[dbt Silver: current and historical records]
-    I --> J[dbt Gold: activity, periods, profiles, marts]
-    J --> K[Identifier-free Parquet exports]
-    K --> L[Streamlit dashboard]
+    flowchart TD
+    subgraph Extraction["Extraction and local storage"]
+        A["Riot ranked players + mastery API"]
+        B["Python extraction"]
+        C["Raw Parquet + SQLite run state"]
+        P["Postgres freshness registry"]
+        D["Compacted Parquet"]
+
+        A --> B
+        B --> C
+        B <--> P
+        C --> D
+    end
+
+    subgraph Warehouse["Databricks and dbt"]
+        E["Landing volumes"]
+        F["Champion metadata"]
+        G["Raw tables"]
+        H["Bronze: ingested observations"]
+        I["Silver: current + historical records"]
+        J["Gold: activity, periods, profiles, marts"]
+
+        E --> G
+        F --> G
+        G --> H
+        H --> I
+        I --> J
+    end
+
+    subgraph Delivery["Exports and dashboard"]
+        K["Identifier-free Parquet exports"]
+        L["Streamlit dashboard"]
+
+        K --> L
+    end
+
+    D --> E
+    J --> K
     J -. optional live queries .-> L
 ```
 
@@ -55,26 +89,36 @@ dbt preserves useful history and produces current records, rank periods, champio
 
 ## Analytical method
 
-1. **Observe repeated snapshots.** Ranked entries provide tier, division, LP, and cumulative wins and losses. Champion-mastery entries provide cumulative mastery points and last-play information. Differences between snapshots, not individual match events, supply the historical activity signal.
-2. **Measure rank movement.** A project-defined rank score allows movement across division boundaries. Completed observations are grouped into configured seven-day rank periods. Eligible growth is reported as LP per recorded ranked game, then compared with the tracked sample's baseline for the same queue and starting tier. The current growth filter excludes periods with absolute movement above 50 LP per game.
-3. **Describe specialization.** The models calculate leading-champion share, concentration, entropy, and a favoured-champion subset for active, lifetime, or period pools. A weighted, configurable heuristic assigns one of four pool labels: specialist, multispecialist, versatile, or generalist. These labels describe the measured pool shape, not player skill.
-4. **Associate champions with outcomes.** Mastery gained during a period supplies weights for allocating that period's rank movement and games to favoured champions. The resulting champion figures are associations, not observed wins or LP earned while playing that champion. Champion summaries first aggregate within players so those with many periods do not automatically dominate the final average.
-5. **Compare and inspect.** Gold marts summarize players, champions, tiers, playstyles, and champion-pair overlap. The dashboard exposes support counts and controls for sparse groups. Co-occurrence measures shared player preference, not team synergy.
+1. **Sample ranked players.** The extractor pages through configured tiers and divisions, initially for North America solo queue. The aim was roughly even coverage by tier, which deliberately differs from the actual ranked population; an earlier collection bug also overrepresented Diamond through Platinum. Tier-specific comparisons therefore matter more than an unqualified overall average.
+2. **Observe repeated snapshots.** Ranked entries provide tier, division, LP, and cumulative wins and losses. Champion-mastery entries provide cumulative mastery points and last-play information. Differences between snapshots, not individual match events, supply the historical activity signal.
+3. **Measure rank movement.** A project-defined rank score allows movement across division boundaries. Completed observations are grouped into configured seven-day buckets, chosen to fit weekly play patterns while limiting API calls. Eligible growth is reported as LP per recorded ranked game, then compared with the tracked sample's baseline for the same queue and starting tier. The current growth filter excludes periods with absolute movement above 50 LP per game to reduce the impact of unobserved rank changes.
+4. **Describe specialization.** The models calculate leading-champion share, concentration, entropy, and a favoured-champion subset for active, lifetime, or period pools. Exploratory clustering and game knowledge informed four profiles; a weighted, configurable dbt heuristic assigns specialist, multispecialist, versatile, or generalist. These are descriptions of measured pool shape, not validated behavioral types or skill grades.
+5. **Associate champions with outcomes.** Mastery gained during a period supplies weights for allocating that period's rank movement and games to favoured champions. The resulting champion figures are associations, not observed wins or LP earned while playing that champion. Champion summaries first aggregate within players so those with many periods do not automatically dominate the final average.
+6. **Compare and inspect.** Gold marts summarize players, champions, tiers, playstyles, and champion-pair overlap. The dashboard exposes support counts and controls for sparse groups. Co-occurrence measures shared player preference, not team synergy.
 
 The precise formulas, thresholds, model grains, and edge cases live in the [dbt model reference](league_pipeline/docs/model_reference.md) and [dbt configuration](league_pipeline/dbt_project.yml). Dashboard-specific reading guidance is in the [dashboard README](streamlit_app/README.md).
 
-## Engineering choices visible in the code
+The active pool uses a 60-day reference window. For players tracked for less than 30 days, the model falls back to recent last-play dates without the usual mastery-gain threshold. A single game in another mode can therefore make a champion appear active; this is especially relevant to the short history in the included snapshot. The inferred-role method can identify broad role patterns, but it cannot establish the lane used for a particular champion match or reliably separate rare off-role picks from shared player preferences.
 
-| Choice | Reason it matters |
+## Why the pipeline is built this way
+
+| Choice | Purpose and tradeoff |
 |---|---|
-| Persist extraction runs, tasks, and file status in SQLite | Supports inspection and recovery of partial local work instead of assuming each collection pass starts from nothing. |
-| Keep a separate Postgres player registry | Allows previously loaded players to be revisited when stale and refresh work to be claimed across runs. |
-| Respect API limits with synchronized token buckets and retry handling | Lets concurrent collection proceed while accounting for Riot's reported limits and transient failures. |
-| Retain raw observations, then model history in dbt | Keeps source evidence and makes current-record selection and historical assumptions testable. |
-| Use explicit, configurable heuristics for pools and rank periods | Makes definitions inspectable and revisable; they are analytical choices rather than game-provided facts. |
-| Export fixed, identifier-free dashboard datasets | Keeps the public app independent of warehouse availability and avoids publishing player identifiers in its serving files. |
+| Use rank and mastery snapshots instead of match histories | Covers many champions and tiers within a personal API request budget, at the cost of indirect, noisier estimates. |
+| Keep local run, task, and file state in SQLite | Gives each collection job a lightweight operational ledger that can be inspected and reset without retaining all task metadata indefinitely. |
+| Keep player freshness and refresh claims in Postgres | Preserves the longer-lived player registry across machines and local resets; transactional claims coordinate refresh work. |
+| Use concurrent extraction with synchronized token buckets | Raises throughput within the reported API limits. A small margin below the theoretical limit avoids timing drift and repeated 429 responses. |
+| Store raw observations and transform with Databricks and dbt | Separates collection from analytical modeling, keeps source evidence, and provides jobs, lineage, tests, and room to change the model. |
+| Keep playstyle rules deterministic and configurable | Lets the full analytical path remain in dbt and makes exploratory definitions inspectable without claiming a trained or validated classifier. |
+| Export fixed, identifier-free dashboard datasets | Makes the public app independent of warehouse uptime and removes player and interval identifiers from its serving files. |
 
-These are implementation choices evidenced by the repository. The motivations, alternatives, and lessons behind them are still open for the project author to add.
+The operational ledger and validation checks make failures easier to diagnose; they are not a guarantee that every possible failed load is automatically recoverable. See the [engineering journey](docs/engineering_journey.md) for incidents that shaped these decisions.
+
+## What the current data suggests
+
+The included export is early evidence, intended to exercise and explain the pipeline. Its [manifest](streamlit_app/data/manifest.json) records 37,172 current player-profile rows and 3,373 rank-growth rows, with profile data as of 2026-09-29. The current Master group contains 59 profiles. Collection happened in development bursts, and there is only a short span of completed historical periods.
+
+In this sample, pool composition varies visibly by tier, role, and champion; the Master group appears more concentrated than many lower tiers. The original question remains open: the current growth comparisons do **not** show a clear, general specialization advantage or establish a champion-specific climbing strategy. Small historical groups, biased collection, mastery-based attribution, and possible activity from other game modes limit stronger claims. More regular snapshots are needed before treating these patterns as stable.
 
 ## Try the dashboard
 
@@ -87,7 +131,7 @@ cd streamlit_app
 ..\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-See the [dashboard README](streamlit_app/README.md) for pages, snapshot refresh, optional Databricks mode, and dashboard tests. The [project-page proposal](streamlit_app/docs/project_page_proposal.md) is a draft for a future explanatory page; it is not currently one of the dashboard pages.
+See the [dashboard README](streamlit_app/README.md) for the four current pages, snapshot refresh, optional Databricks mode, and dashboard tests.
 
 ## Work on the pipeline
 
@@ -116,16 +160,21 @@ Use `dbt build --full-refresh` when changing the grain, unique key, or relevant 
 
 Extraction tests cover configuration, file output, state operations, pagination, concurrency, and integrity behavior. dbt tests check source and model contracts plus reconciliation rules such as current-record selection, rank-period consistency, and mastery attribution. Dashboard tests cover metrics, snapshot contracts, and page rendering. Run local Python checks from the repository root with `python -m pytest src/extract/tests streamlit_app/tests`; warehouse validation requires its own configured dbt build.
 
-The tests check properties of the implementation; they do not make the tracked players a random sample or turn mastery into match-level evidence. Region, queue, tiers, dates, short observation windows, patch changes, and small groups can all affect comparisons. An inferred role is not an observed lane, and the ranked-mastery share is an estimate rather than a measured percentage of ranked matches. Interpret dashboard results with their denominators, support counts, and snapshot dates.
+The tests check properties of the implementation; they do not make the tracked players a random sample or turn mastery into match-level evidence. Region, queue, tiers, dates, short observation windows, patch changes, and small groups can all affect comparisons. An inferred role is not an observed lane, and the ranked-mastery share is an estimate rather than a measured percentage of ranked matches. For players tracked under 30 days, the active-pool fallback can admit a one-off pick from another mode. Interpret dashboard results with their denominators, support counts, and snapshot dates.
+
+## Next work
+
+The next engineering goals are Airflow orchestration, containerized local setup, and smaller extraction and player-registry improvements. One concrete reliability fix is to gate local file cleanup on successful validation and upload, as described in the [engineering journey](docs/engineering_journey.md). A larger, regularly refreshed sample is needed for stronger temporal comparisons. These are planned steps, not features represented by the current dashboard snapshot.
 
 ## Documentation map
 
 - [dbt project README](league_pipeline/README.md): layers, main outputs, and recorded build validation.
 - [dbt model reference](league_pipeline/docs/model_reference.md): table-by-table grain, lineage, formulas, and edge cases.
 - [dashboard README](streamlit_app/README.md): run modes, page guide, chart conventions, and export process.
-- [dashboard editorial review](streamlit_app/docs/dashboard_review.md): design and wording decisions already made, plus proposed follow-ups.
-- [About the project page proposal](streamlit_app/docs/project_page_proposal.md): draft copy and scope for a possible future app page.
+- [engineering journey](docs/engineering_journey.md): chronology, design decisions, failures, and lessons from building the pipeline.
 
 ## License and attribution
 
-Released under the [MIT License](LICENSE). This is an independent project using Riot Games API services. League of Legends and Riot Games are trademarks of Riot Games, Inc.; the project is not affiliated with or endorsed by Riot Games.
+Designed and built by Pedro Iaki. Generative AI was used as a learning and implementation aid under review; the research direction, architecture, modeling choices, and final decisions are the author's. Released under the [MIT License](LICENSE).
+
+This is an independent project using Riot Games API services. League of Legends and Riot Games are trademarks of Riot Games, Inc.; the project is not affiliated with or endorsed by Riot Games.

@@ -1,0 +1,51 @@
+# Engineering journey
+
+This is the build story behind [League Specialization ETL](../README.md). It records why the architecture changed and what was learned while building it. For metric definitions and table grains, use the [dbt model reference](../league_pipeline/docs/model_reference.md).
+
+## Starting with the question
+
+The project began as a way to learn data engineering while investigating a familiar League of Legends claim: focusing on a small set of champions helps players climb. I came to it from mobile-game software development, so the goal was both an honest analysis and a portfolio project showing transferable engineering work. I wanted to compare champion pools by rank, role, and champion without trying to crawl an impractical number of match records with a personal Riot API key.
+
+The first extractor simply requested ranked-player entries and champion mastery and wrote JSON. It established that the source data were usable, but it had no durable task state, tests, integrity checks, safe concurrency, or historical question to answer. The original plan was a small local ETL that could grow in stages.
+
+## The temporal pivot
+
+A one-time snapshot could show a player's tier and accumulated mastery, but it could not relate *changes* in champion use to *changes* in rank. Exploratory Pandas work made that gap clear. I moved to repeated observations: differences in mastery estimate champion activity, and differences in ranked wins, losses, and LP describe rank movement. That decision turned a static profile project into a historical ELT pipeline.
+
+Seven-day rank buckets were a practical compromise. Weekly play patterns are easier to compare than isolated days, and a weekly refresh costs far fewer API requests than daily polling. Longer windows would support more tracked players for the same request budget but blur short changes in champion focus. The model retains actual endpoint dates and only creates a completed period when the snapshot pairing rules are met; a nominal seven-day bucket does not imply an exact seven-day observation span.
+
+This pivot expanded the work far beyond the first ETL plan. It introduced questions about stale players, aligned snapshots, counter resets, tier changes, and the difference between a ranked outcome and mastery earned in any game mode. Those distinctions remain visible in the models and dashboard instead of being hidden inside one performance score.
+
+## Collection and state
+
+The [extractor](../src/extract/) evolved to use partitioned Parquet, division pagination, retries, file and database checks, run/task logging, and concurrent workers. The [Riot API client](../src/extract/api_client.py) uses synchronized token buckets based on reported limits. Its effective rate is kept a little below the theoretical maximum because timing and floating-point edge cases caused bursts of 429 responses during development.
+
+The [local SQLite database](../src/extract/extraction_db_helper.py) is the operational ledger for collection: runs, tasks, file outputs, errors, and compaction state can be inspected together. Keeping it local makes it inexpensive to inspect or reset during development and avoids tying every temporary task record to the analytical warehouse. The current post-load reset clears raw and compacted files while retaining SQLite; database rotation is a separate operation. The [Postgres player registry](../src/load/player_registry.py) serves a different purpose: it keeps the durable list of tracked players, their freshness, and refresh claims across local resets and potentially across machines. Transactional claims matter when multiple workers might ask for stale players at once.
+
+Tests and awkward source records drove much of this design. Champion metadata contained IDs outside the expected playable roster. A mastery response with only one champion exposed assumptions that every player had a list of several entries. Concurrency tests showed that code which looked safe in a single worker was not yet safe with shared state. dbt tests exposed floating-point boundary problems and reconciliation mistakes. These cases were more useful than a generic test count because each forced a change in the model or extraction behavior.
+
+The state and checks help diagnose failures; they do not prove that all recovery paths are automatic. As currently written, the [local runner](../src/extract/run_pipeline.py) calls its file reset after a load attempt without checking the returned load result. The loader can also return a false result that the runner does not treat as failure. That path needs a fix before claiming that failed uploads always retain local files for retry. Logs, status values, and integrity reports should be read alongside any claim that a specific run succeeded.
+
+## Why Databricks and dbt
+
+After the local Pandas exploration, I chose to build the planned transformation layer in [dbt](../league_pipeline/README.md) on Databricks rather than formalize an intermediate local Silver layer. Databricks supplied table storage, compute, job orchestration, inspection, and logging in one environment, with room to change the project as the analytical questions evolved. It was also a tool I wanted to learn for data-engineering work. The deployed [job definition](../resources/ingest_clean_transform.job.yml) loads raw data and builds Bronze, Silver, then Gold.
+
+The source observations remain separate from the analytical interpretation. Bronze ingests landed records; Silver resolves current and historical player and mastery states; Gold derives rank periods, active pools, role estimates, playstyles, and champion summaries. dbt makes model dependencies and business-rule tests explicit. A configured heuristic classifies playstyles inside SQL because the early cluster exploration was enough to define useful, inspectable profiles, while a more elaborate predictive model would have diverted effort from the pipeline goal. The labels are analytical categories, not proof of distinct player behavior.
+
+The [dashboard](../streamlit_app/README.md) uses fixed, identifier-free Parquet exports by default. This lets a reader explore the snapshot without a warehouse account or live SQL warehouse and keeps player identifiers out of the public serving files. Its optional live mode is for a configured private environment.
+
+## Limits learned from the data
+
+The data source is economical but indirect. Mastery can be earned outside ranked solo queue, and cumulative wins and losses do not identify which champion was played in those matches. Attributing period LP and games to favoured champions by mastery gained is therefore a proxy. The default 1,000 mastery points per win and 300 per loss are rough assumptions used to estimate ranked-mastery share, not measured per-match values; [iTero's 2023 exploratory summary](https://www.itero.gg/articles/mastery-a-statistical-summary) motivated their scale. Player-first aggregation reduces the influence of a few people who play many games, at the cost of fewer effective observations.
+
+Current active pools have another limitation. Players tracked for at least 30 days need sufficient recent mastery gains as well as recent play. With less tracking history, the [activity model](../league_pipeline/models/gold/fct_players_champion_activity.sql) uses last-play recency alone. A one-off pick in another mode can enter that shorter-history pool. This matters especially for the included snapshot, whose history is short, and can distort playstyle and champion-population comparisons.
+
+The intended collection was roughly even across tiers, not proportional to the League population. A previous collection bug overrepresented some middle-to-high tiers, and the current Master group is small. The dashboard's role estimates describe broad associations with recently played champions; they cannot identify a lane in a given match or confidently resolve rare off-role picks. These are reasons to compare within tiers and inspect support counts, not just read an all-tier average.
+
+The short snapshot still offers leads for future collection. In its current player profiles, 34 of 59 Master players are classified as specialists or multispecialists. In the [tier mastery export](../streamlit_app/data/champion_tier_mastery.parquet), Teemo holders average about 38,700 mastery points in Iron and 24,200 in Diamond at the zero-point threshold. Those are sample descriptions, not evidence that either champion choice or specialization caused a rank outcome. The small Master group, tier sampling, and active-pool fallback make confirmation with later snapshots important.
+
+## What I would change and what comes next
+
+In retrospect, a simpler source dataset could have demonstrated many of the same engineering skills faster. This project took roughly three months because answering the original question with sparse game data required much more collection and modeling work than expected. The difficulty also produced the most valuable learning: working through state boundaries, request economics, historical grain, and honest analytical limits.
+
+The immediate plans are Airflow orchestration, containerized setup, and smaller improvements to extraction and the player registry. More regular collection is needed before the growth analysis can support firmer conclusions. The current result is an implemented pipeline and an exploratory dashboard, with a clear record of where the evidence remains thin.

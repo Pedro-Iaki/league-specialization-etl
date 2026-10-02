@@ -22,74 +22,53 @@ The final marts are intentionally separated by grain:
 | `mart_champion_playstyle_profile` | Champion and playstyle | Comparison of a champion's results across player archetypes |
 | `mart_champion_cooccurrence` | Unordered champion pair | Strength and frequency of active-pool overlap |
 
-## Lineage overview
+## Overview
 
 ```mermaid
-flowchart TD
-    RP[(raw.players)] --> BP[bronze_players]
-    RM[(raw.masteries)] --> BM[bronze_masteries]
-    RC[(raw.champions)] --> DC[dim_champions]
+    flowchart TD
+    Sources["Raw players, masteries, champions"]
+    State["Bronze and canonical history/current models"]
+    Roles["Player role distributions and champion role weights"]
+    Activity["Champion activity, active pools, lifetime mastery"]
+    Periods["Rank history and completed rank periods"]
+    PeriodPools["Champion activity and pool profiles by period"]
+    Growth["Champion growth attribution and player-level summaries"]
 
-    BP --> PH[dim_players_history]
-    BM --> PH
-    BM --> MH[fct_masteries_history]
-    PH --> MH
-    PH --> PC[dim_players_current]
-    MH --> MC[fct_masteries_current]
+    Sources --> State
+    State --> Roles
+    State --> Activity
+    State --> Periods
+    Roles --> Activity
+    Activity --> PeriodPools
+    Periods --> PeriodPools
 
-    PH --> RH[fct_players_rank_history]
-    PH --> RPeriods[fct_players_rank_periods]
-    RH --> RPeriods
+    Player["mart_player_profile"]
+    Delta["mart_player_delta_history"]
+    Champion["mart_champion_profile"]
+    Tier["mart_champion_tier_growth"]
+    Playstyle["mart_champion_playstyle_profile"]
+    Cooccurrence["mart_champion_cooccurrence"]
 
-    MC --> NR[dim_players_naive_role_distribution]
-    PC --> NR
-    DC --> NR
-    NR --> CR[dim_champion_role_weights]
-    DC --> CR
+    Roles --> Player
+    Activity --> Player
+    Periods --> Player
+    Periods --> Delta
+    PeriodPools --> Delta
+    PeriodPools --> Growth
+    Delta --> Growth
+    Player --> Champion
+    Player --> Playstyle
+    Growth --> Champion
+    Growth --> Tier
+    Growth --> Playstyle
+    Roles --> Champion
+    Activity --> Champion
+    Activity --> Cooccurrence
 
-    MH --> CD[fct_players_champion_delta_history]
-    DC --> CD
-    CD --> CA[fct_players_champion_activity]
-    MC --> CA
-    PC --> CA
-
-    CA --> AP[dim_players_active_pool]
-    CR --> AP
-    PC --> AP
-
-    CD --> MP[fct_players_mastery_profile]
-    MC --> MP
-    PH --> MP
-
-    RPeriods --> PCA[fct_players_period_champion_activity]
-    CD --> PCA
-    PCA --> PP[fct_players_period_pool_profile]
-
-    PC --> PProfile[mart_player_profile]
-    AP --> PProfile
-    MP --> PProfile
-    RPeriods --> PProfile
-    NR --> PProfile
-
-    RPeriods --> PDelta
-    PP --> PDelta
-    PCA --> PCGrowth[fct_players_period_champion_growth]
-    PDelta --> PCGrowth
-    PCGrowth --> PCSummary[fct_players_champion_growth_summary]
-
-    PProfile --> CProfile[mart_champion_profile]
-    PCSummary --> CProfile
-    PCSummary --> CTier[mart_champion_tier_growth]
-    DC --> CTier
-    CA --> CProfile
-    CR --> CProfile
-
-    PProfile --> CPStyle[mart_champion_playstyle_profile]
-    PCSummary --> CPStyle
-
-    CA --> Cooccur[mart_champion_cooccurrence]
-    DC --> Cooccur
+    classDef mart fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#172554
+    class Player,Delta,Champion,Tier,Playstyle,Cooccurrence mart
 ```
+
 
 ## Shared analytical concepts
 
@@ -148,6 +127,99 @@ Role inference is a two-stage, non-recursive process:
 
 `dim_players_active_pool` then weights those empirical champion roles by current pool activity. This helps resolve ambiguous metadata positions using observed player associations. It does not identify the lane played in a specific match, because match-level position data is not available.
 
+## Complete Lineage
+
+```mermaid
+    flowchart TD
+    subgraph Sources["Raw sources"]
+        RP[("raw.players")]
+        RM[("raw.masteries")]
+        RC[("raw.champions")]
+    end
+
+    subgraph Bronze["Bronze: deduplicated observations"]
+        BP["bronze_players"]
+        BM["bronze_masteries"]
+    end
+
+    subgraph Canonical["Silver: history and current state"]
+        DC["dim_champions"]
+        PH["dim_players_history"]
+        PC["dim_players_current"]
+        MH["fct_masteries_history"]
+        MC["fct_masteries_current"]
+    end
+
+    subgraph Current["Current activity, specialization, and roles"]
+        NR["dim_players_naive_role_distribution"]
+        CR["dim_champion_role_weights"]
+        CA["fct_players_champion_activity"]
+        AP["dim_players_active_pool"]
+        MP["fct_players_mastery_profile"]
+    end
+
+    subgraph Periods["Historical movement and period attribution"]
+        CD["fct_players_champion_delta_history"]
+        RH["fct_players_rank_history"]
+        RPeriods["fct_players_rank_periods"]
+        PCA["fct_players_period_champion_activity"]
+        PP["fct_players_period_pool_profile"]
+    end
+
+    subgraph PlayerMarts["Published player marts"]
+        PProfile["mart_player_profile"]
+        PDelta["mart_player_delta_history"]
+    end
+
+    subgraph Growth["Champion growth aggregation"]
+        PCGrowth["fct_players_period_champion_growth"]
+        PCSummary["fct_players_champion_growth_summary"]
+    end
+
+    subgraph ChampionMarts["Published champion marts"]
+        CProfile["mart_champion_profile"]
+        CTier["mart_champion_tier_growth"]
+        CPStyle["mart_champion_playstyle_profile"]
+        Cooccur["mart_champion_cooccurrence"]
+    end
+
+    RP --> BP
+    RM --> BM
+    RC --> DC
+
+    BP & BM --> PH
+    BM & PH --> MH
+    DC -. "standard champion filter" .-> MH
+    PH --> PC
+    MH --> MC
+
+    MC & PC & DC --> NR
+    NR & DC --> CR
+
+    MH & DC --> CD
+    PC & PH & MC & CD & DC --> CA
+    CA & CR & PC --> AP
+    PC & MC & DC & CD & PH --> MP
+
+    PH --> RH
+    PH & RH --> RPeriods
+    RPeriods & CD --> PCA
+    PCA --> PP
+
+    PC & AP & MP & RPeriods & NR --> PProfile
+    RPeriods & PP --> PDelta
+
+    PCA & PDelta --> PCGrowth
+    PCGrowth --> PCSummary
+
+    DC & CA & PProfile & PCSummary & MC & CR --> CProfile
+    PCSummary & DC --> CTier
+    PProfile & PCSummary & DC --> CPStyle
+    CA & DC --> Cooccur
+
+    classDef mart fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#172554
+    class PProfile,PDelta,CProfile,CTier,CPStyle,Cooccur mart
+```
 ## Bronze models
 
 ### `bronze_players`
@@ -319,7 +391,7 @@ Role inference is a two-stage, non-recursive process:
 | `days_since_last_play` | Days between `as_of_date` and the champion's last-play timestamp |
 | `is_active` | Whether the champion passes the mature or immature-player rule |
 
-**Technical notes and edge cases.** Mature players must pass recency plus the greater of an absolute, tracking-adjusted threshold and a relative-share threshold. Players tracked for less than half the activity window use a recency-only rule because insufficient delta history would otherwise exclude their pool. The model includes only champions present in mastery data and does not create a player-by-all-champions Cartesian product.
+**Technical notes and edge cases.** Mature players must pass recency plus the greater of an absolute, tracking-adjusted threshold and a relative-share threshold. Players tracked for less than half the activity window (under 30 days with current settings) use a recency-only rule because insufficient delta history would otherwise exclude their pool. This fallback bypasses the mastery-gain threshold: one game in another mode can mark a champion active, which can distort active-pool and champion-population summaries when many players have short tracking histories. The model includes only champions present in mastery data and does not create a player-by-all-champions Cartesian product.
 
 ### `dim_players_naive_role_distribution`
 
@@ -503,7 +575,7 @@ Role inference is a two-stage, non-recursive process:
 | Comparative rates | `is_lp_growth_eligible`, `tier_lp_per_game_baseline`, `lp_per_game`, `lp_per_day`, `period_win_rate`, `lp_per_game_lift_vs_tier` |
 | Estimated queue mix | `expected_ranked_mastery_points`, `estimated_ranked_mastery_share` |
 
-**Technical notes and edge cases.** The tier baseline is calculated inside the observed dataset by queue and starting tier; it is not an external population benchmark. Periods above the configurable absolute LP-per-game bound (50 by default) remain inspectable with raw rank movement, but do not contribute to tier baselines or champion growth, and their tier-adjusted lift is null. This heuristic can also exclude unusual genuine performance. `lp_per_game_lift_vs_tier` is descriptive, not causal. Periods without positive mastery movement retain their rank outcome but have null champion-pool fields. `estimated_ranked_mastery_share` divides assumed mastery earned from ranked wins and losses by all observed positive mastery gained in the period, then clamps the result to `[0, 1]`. The default assumptions are 1,000 mastery points per ranked win and 300 per loss in `dbt_project.yml`. It estimates a share of mastery points, not a share of games; it is null when the period has no positive mastery or ranked games.
+**Technical notes and edge cases.** The tier baseline is calculated inside the observed dataset by queue and starting tier; it is not an external population benchmark. Periods above the configurable absolute LP-per-game bound (50 by default) remain inspectable with raw rank movement, but do not contribute to tier baselines or champion growth, and their tier-adjusted lift is null. This heuristic can also exclude unusual genuine performance. `lp_per_game_lift_vs_tier` is descriptive, not causal. Periods without positive mastery movement retain their rank outcome but have null champion-pool fields. `estimated_ranked_mastery_share` divides assumed mastery earned from ranked wins and losses by all observed positive mastery gained in the period, then clamps the result to `[0, 1]`. The default assumptions are 1,000 mastery points per ranked win and 300 per loss in `dbt_project.yml`, roughly aligned with the range in [iTero's exploratory mastery summary](https://www.itero.gg/articles/mastery-a-statistical-summary); the numbers were not measured in this project's sample. The result estimates a share of mastery points, not a share of games; it is null when the period has no positive mastery or ranked games.
 
 ### `fct_players_period_champion_growth`
 

@@ -2,7 +2,7 @@
 
 A Streamlit dashboard built on the `league_pipeline.gold` dbt marts. It explores the association between champion-pool specialization and LP/game above a starting-tier baseline.
 
-The public app uses anonymized Parquet snapshots by default. Player identifiers and rank-interval identifiers are excluded from every exported dataset. An optional Databricks mode runs the same fixed, read-only queries against the live gold schema.
+The app uses identifier-free Parquet snapshots by default; a public deployment is planned. Player identifiers and rank-interval identifiers are excluded from every exported dataset. An optional Databricks mode runs the same fixed, read-only queries against the live gold schema.
 
 ## Run with the included snapshot
 
@@ -57,6 +57,7 @@ The dashboard displays tiers through Master in tier-specific views. Champion-wid
 Estimated ranked-mastery share uses players with completed ranked observation periods. Players who mainly play other modes are underrepresented, and Ranked Flex is not covered by the recorded queue. Treat this measure as a selected-cohort estimate rather than the population's ranked-play share.
 
 Current mastery views offer an **Active (60 days)** or **All-time** control next to the chart. Historical growth charts use completed rank periods and the starting-tier baseline.
+For players tracked less than 30 days, the active-pool model falls back to last-play recency without requiring the usual mastery-gain threshold. A one-off pick from another mode can therefore enter an active pool, especially in this short-history snapshot. See the [project README](../README.md) and [model reference](../league_pipeline/docs/model_reference.md) for the research design and exact rule.
 The Overview defaults to the **Active (60 days)** specialization window. Its observed-period view filters to at least **35% estimated ranked share**, an activity proxy calculated from expected ranked mastery divided by total mastery gained during each period. Current-profile comparisons use unadjusted recent LP/game. The champion comparison on Cross Champion View has its own support threshold.
 
 On Population Analysis, minimum tracked days applies only to the current-profile charts. The ranked-activity support threshold sits beside its section. Historical outcome rows on Overview are player–tier–playstyle summaries: an all-tier result is not a count of distinct players.
@@ -69,10 +70,6 @@ The dashboard uses a shared default minimum of **three players or player–tier 
 When a low-support result is available but hidden, the warning has a **Show omitted** button. It reveals that section's results with count labels or hovers; heatmaps additionally mark low-count cells with ⚠. **Hide omitted** restores the threshold. The button cannot recover records that were never exported or pairs excluded by the upstream co-occurrence model.
 
 The scatter plots retain the mean within concentration bands. Bands with fewer than three observations are omitted from that line and flagged. An optional **smoothed local median** trace uses overlapping neighborhoods containing about 30% of the plotted observations, then smooths adjacent medians. It resists isolated extreme outcomes and is hidden in Plotly's legend by default. Neither trend line is a prediction or a confidence interval.
-
-## Editorial review and proposed project page
-
-See [dashboard review](docs/dashboard_review.md) for the findings and changes, and [About the project — page proposal](docs/project_page_proposal.md) for a layout, publishable draft, pipeline scope, and optional components. The proposal is documentation only; it does not register a new Streamlit page.
 
 ## Test
 
