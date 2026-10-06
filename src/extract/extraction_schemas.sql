@@ -60,21 +60,6 @@ CREATE TABLE players_recorded (
     mastery_load_status TEXT NOT NULL DEFAULT 'pending_compaction' -- pending_compaction, pending_load, load_success, load_failed
 );
 
--- Every tier division combination, along with their corresponding pages and player counts.
--- If the last player count is ever higher than the player count found, it means we`ve reached the end and must reset back to 1.
-CREATE TABLE tier_division_pages (
-	region TEXT NOT NULL,
-	queue TEXT NOT NULL,
-	tier TEXT NOT NULL,
-	division TEXT NOT NULL,
-	patch TEXT NOT NULL,
-	current_page INTEGER NOT NULL,
-	last_player_count INTEGER NOT NULL,
-	last_updated_at TEXT NOT NULL,
-	loop_count INTEGER NOT NULL DEFAULT 0,
-	PRIMARY KEY (region, queue, tier, division, patch)
-);
-
 -- One row per compacted partition directory, tracking the small raw files that were merged into a single output file.
 CREATE TABLE compaction_tasks (
     task_id INTEGER PRIMARY KEY AUTOINCREMENT,

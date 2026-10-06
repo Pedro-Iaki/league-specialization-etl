@@ -436,43 +436,34 @@ def claim_players_missing_masteries(
     \n- AND the last logged player was added in the last 24 hours
     """
     own_conn = conn is None
-    status = "in_progress" if claim else "pending"
     if own_conn:
         conn = get_connection()
     try:
-        cur = conn.execute(
-            """
-		UPDATE players_recorded 
-		SET mastery_status=? 
-		WHERE player_id IN (
-			SELECT player_id 
-			FROM players_recorded 
-			WHERE mastery_status 
-			IN ('failed', 'pending') 
-			LIMIT ?) 
-		RETURNING player_id
-		""",
-            (status, limit if limit is not None else 1000000),
-        )
+        pending_select = "SELECT player_id FROM players_recorded WHERE mastery_status IN ('failed', 'pending') LIMIT ?"
+        if claim:
+            cur = conn.execute(
+                f"UPDATE players_recorded SET mastery_status='in_progress' WHERE player_id IN ({pending_select}) RETURNING player_id",
+                (limit if limit is not None else 1000000,),
+            )
+        else:
+            cur = conn.execute(pending_select, (limit if limit is not None else 1000000,))
         players_found = cur.fetchall()
         if include_stale_success:
-            cur_stale = conn.execute(
-                """
-				UPDATE players_recorded
-				SET mastery_status=?
-				WHERE player_id IN (
-					SELECT player_id
-					FROM players_recorded
-					WHERE json_array_length(paths_logged_at) > 0
-					AND datetime(json_extract(paths_logged_at, '$[' || (json_array_length(paths_logged_at) - 1) || ']')) > datetime('now', '-24 hours')
-					AND datetime(mastery_logged_at) < datetime('now', '-7 days')
-					AND mastery_status = 'success'
-					LIMIT ?
-				)
-				RETURNING player_id
-				""",
-                (status, limit if limit is not None else 1000000),
-            )
+            stale_select = """
+                SELECT player_id FROM players_recorded
+                WHERE json_array_length(paths_logged_at) > 0
+                  AND datetime(json_extract(paths_logged_at, '$[' || (json_array_length(paths_logged_at) - 1) || ']')) > datetime('now', '-24 hours')
+                  AND datetime(mastery_logged_at) < datetime('now', '-7 days')
+                  AND mastery_status = 'success'
+                LIMIT ?
+            """
+            if claim:
+                cur_stale = conn.execute(
+                    f"UPDATE players_recorded SET mastery_status='in_progress' WHERE player_id IN ({stale_select}) RETURNING player_id",
+                    (limit if limit is not None else 1000000,),
+                )
+            else:
+                cur_stale = conn.execute(stale_select, (limit if limit is not None else 1000000,))
             players_found += cur_stale.fetchall()
         players = [row["player_id"] for row in players_found]
         if own_conn:
@@ -621,166 +612,6 @@ def get_players_recorded(
     return players
 
 
-def get_page_info(
-    region: str,
-    queue: str,
-    patch: str,
-    tiers: list[str] | tuple[str, ...],
-    divisions: list[str] | tuple[str, ...],
-    conn: sqlite3.Connection | None = None,
-) -> dict[tuple[str, str], tuple[int, int]]:
-    """
-    Returns a dictionary of (tier, division) -> (loop_count, players_in_division) for the given region, queue, patch, tiers, and divisions.
-    \nMissing tiers or divisions will return an empty dictionary.
-    \nMissing rows are treated as zeroed defaults so the selector can still pick a candidate.
-    """
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        stats: dict[tuple[str, str], tuple[int, int]] = {}
-
-        if not tiers or not divisions:
-            return stats
-
-        for tier in tiers:
-            for division in divisions:
-                stats[(tier, division)] = (0, 0)
-
-        tier_placeholders = ",".join(["?"] * len(tiers))
-        division_placeholders = ",".join(["?"] * len(divisions))
-
-        loop_rows = conn.execute(
-            f"""
-			SELECT tier, division, loop_count
-			FROM tier_division_pages
-			WHERE region = ? AND queue = ? AND patch = ?
-			AND tier IN ({tier_placeholders}) AND division IN ({division_placeholders})
-			""",
-            (region, queue, patch, *tiers, *divisions),
-        ).fetchall()
-        loop_counts = {(row["tier"], row["division"]): int(row["loop_count"]) for row in loop_rows}
-
-        count_rows = conn.execute(
-            f"""
-			SELECT tier, division, COUNT(*) AS division_player_count
-			FROM players_recorded
-			WHERE region = ? AND queue = ? AND mastery_patch = ?
-			AND tier IN ({tier_placeholders}) AND division IN ({division_placeholders})
-			GROUP BY tier, division
-			""",
-            (region, queue, patch, *tiers, *divisions),
-        ).fetchall()
-        player_counts = {(row["tier"], row["division"]): int(row["division_player_count"]) for row in count_rows}
-
-        for key in stats:
-            stats[key] = (loop_counts.get(key, 0), player_counts.get(key, 0))
-
-        return stats
-    finally:
-        if own_conn:
-            conn.close()
-
-
-def get_page_and_loop(
-    region: str,
-    queue: str,
-    tier: str,
-    division: str,
-    patch: str,
-    conn: sqlite3.Connection | None = None,
-) -> tuple[int, int]:
-    """
-    Get the current page and loop for a given region, queue, tier, division, and patch.
-    \nIf no record exists, create one with page 1 and return it.
-    """
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        row = conn.execute(
-            """
-			INSERT INTO tier_division_pages (
-				region, queue, tier, division, patch, current_page,
-				loop_count, last_player_count, last_updated_at
-			) VALUES (?, ?, ?, ?, ?, 1, 0, 0, ?)
-			ON CONFLICT(region, queue, tier, division, patch) DO UPDATE SET
-				region = region
-			RETURNING current_page, loop_count
-			""",
-            (region, queue, tier, division, patch, now()),
-        ).fetchone()
-        if own_conn:
-            conn.commit()
-        return (int(row["current_page"]), int(row["loop_count"]))
-    finally:
-        if own_conn:
-            conn.close()
-
-
-def update_page_info(
-    region: str,
-    queue: str,
-    tier: str,
-    division: str,
-    patch: str,
-    player_count: int,
-    conn: sqlite3.Connection | None = None,
-) -> int:
-    """
-    Update the page tracking for a given region, queue, tier, division, and patch.
-
-    If the current player count is lower than the previous one, reset page to 1 and increment loop_count.
-    Otherwise increment page by 1.
-
-    Returns the updated current_page, or 0 if no record exists.
-    """
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        cursor = conn.execute(
-            """
-			UPDATE tier_division_pages
-			SET
-				loop_count = CASE
-					WHEN ? < last_player_count THEN loop_count + 1
-					ELSE loop_count
-				END,
-				current_page = CASE
-					WHEN ? < last_player_count THEN 1
-					ELSE current_page + 1
-				END,
-				last_player_count = ?,
-				last_updated_at = ?
-			WHERE region = ? AND queue = ? AND tier = ? AND division = ? AND patch = ?
-			RETURNING current_page
-			""",
-            (
-                player_count,
-                player_count,
-                player_count,
-                now(),
-                region,
-                queue,
-                tier,
-                division,
-                patch,
-            ),
-        )
-
-        row = cursor.fetchone()
-        if own_conn:
-            conn.commit()
-        if row is None:
-            logger.warning(f"No page info found for {region} {queue} {tier} {division} {patch}.")
-            return 0
-        return int(row["current_page"])
-    finally:
-        if own_conn:
-            conn.close()
-
-
 def add_compaction_task(
     dataset: str,
     output_path: str,
@@ -898,6 +729,23 @@ def update_compaction_records(
         if own_conn:
             conn.commit()
         return int(cur.rowcount or -1)
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def count_incomplete_loads(conn: sqlite3.Connection | None = None) -> int:
+    """Count tracked players whose rank or mastery has not completed loading."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        row = conn.execute(
+            """SELECT COUNT(*) FROM players_recorded
+               WHERE player_load_status != 'load_success'
+                  OR mastery_load_status != 'load_success'"""
+        ).fetchone()
+        return int(row[0])
     finally:
         if own_conn:
             conn.close()

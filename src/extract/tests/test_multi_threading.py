@@ -2,14 +2,12 @@ import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
-import pyarrow.parquet as pq
 
 import extract.tests.t_utilities as util
 
 util.set_path_for_extract_modules()
-import get_players
 import get_masteries
-import extract.extraction_db_helper as db
+import get_players
 
 TIERS = ["GOLD", "SILVER", "BRONZE", "PLATINUM", "DIAMOND"]
 
@@ -109,35 +107,35 @@ def test_concurrent_get_players_runs_do_not_corrupt_files_or_database(
     assert found_tiers == set(TIERS)
 
 
-def test_concurrent_fetch_players_same_division_keeps_page_consistent(
-    mock_db, db_factory
-):
+def test_concurrent_fetch_players_use_their_claimed_pages(mock_db):
     run_id = mock_db.start_run("multi_thread_paging_test")
     worker_count = 8
+    requested_pages = []
 
-    def _worker():
+    class PageClient(SteadyClient):
+        def get(self, url, **kwargs):
+            requested_pages.append(kwargs["params"]["page"])
+            return super().get(url, **kwargs)
+
+    def _worker(page):
         task_id = mock_db.add_player_task(run_id)
         return get_players.fetch_players(
             task_id,
-            SteadyClient(),
+            PageClient(),
             region="na1",
             queue="RANKED_SOLO_5x5",
             tier="GOLD",
             division="IV",
-            patch="15.1",
+            page_claim={"page": page, "claim_token": f"claim-{page}"},
         )
 
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        futures = [executor.submit(_worker) for _ in range(worker_count)]
+        futures = [executor.submit(_worker, page) for page in range(1, worker_count + 1)]
         results = [future.result() for future in as_completed(futures)]
 
     assert all(result is not None and len(result) == 2 for result in results)
 
-    page, loop = mock_db.get_page_and_loop(
-        "na1", "RANKED_SOLO_5x5", "GOLD", "IV", "15.1"
-    )
-    assert 2 <= page <= 1 + worker_count
-    assert loop == 0
+    assert sorted(requested_pages) == list(range(1, worker_count + 1))
 
 
 def _seed_pending_players(mock_db, db_factory, count: int) -> list[str]:

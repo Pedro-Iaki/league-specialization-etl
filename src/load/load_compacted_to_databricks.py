@@ -6,7 +6,6 @@ from loguru import logger
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 
 import extract.extraction_db_helper as db
-from extract import reset_extraction_state
 from load import player_registry
 from load.databricks_helper import upload_parquet
 
@@ -24,6 +23,7 @@ MAX_UPLOAD_ATTEMPTS = 3
     wait=wait_exponential(multiplier=1, min=2, max=30),
     stop=stop_after_attempt(MAX_UPLOAD_ATTEMPTS),
     before_sleep=before_sleep_log(logger, "WARNING"),  # type: ignore
+    reraise=True,
 )
 def _upload(dataset: str, compacted_path: Path) -> None:
     time = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S")
@@ -42,15 +42,18 @@ def load_dataset(dataset: str) -> dict:
         return {"dataset": dataset, "status": "skipped", "rows": 0, "players": 0}
 
     try:
-        players = table.select(["puuid", "region", "queueType"]).to_pylist()
-    except RuntimeError as e:
+        registry_columns = ["puuid", "region", "queueType"]
+        if dataset == "players":
+            registry_columns.extend(["wins", "losses"])
+        players = table.select(registry_columns).to_pylist()
+    except Exception as e:  # noqa: BLE001 - malformed Parquet must not be treated as loaded
         logger.error(f"Failed to extract players from {dataset}: {e}")
         return {"dataset": dataset, "status": "extract_failed", "rows": table.num_rows, "players": 0}
 
     try:
         _upload(dataset, compacted_path)
         status = "load_success"
-    except ConnectionError as e:
+    except Exception as e:  # noqa: BLE001 - external upload clients raise several error types
         logger.error(f"Failed to load {dataset} after {MAX_UPLOAD_ATTEMPTS} attempts, will retry on next run: {e}")
         status = "load_failed"
 
@@ -60,8 +63,9 @@ def load_dataset(dataset: str) -> dict:
     if status == "load_success" and dataset == "players":
         try:
             player_registry.upsert_players(players)
-        except ConnectionError as e:
-            logger.error("Failed to update Neon player registry")
+        except Exception as e:  # noqa: BLE001 - registry failure must prevent cleanup
+            logger.error(f"Failed to update Neon player registry after upload: {e}")
+            status = "registry_failed"
 
     return {"dataset": dataset, "status": status, "rows": table.num_rows, "players": len(players)}
 
@@ -71,7 +75,7 @@ def load_compacted() -> bool:
     success = all(r["status"] in ("load_success", "skipped") for r in results)
 
     if success:
-        logger.info("Load succeeded for all datasets, resetting extraction state.")
+        logger.info("Load succeeded for all available datasets.")
     else:
         logger.error("Load failed for one or more datasets, leaving extraction state untouched.")
 

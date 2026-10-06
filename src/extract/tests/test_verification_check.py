@@ -2,10 +2,25 @@ import json
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-import extract.tests.t_utilities as util
 import verify_integrity
 
+import extract.tests.t_utilities as util
+
 util.set_path_for_extract_modules()
+
+
+def test_fast_integrity_report_can_gate_loading(monkeypatch):
+    monkeypatch.setattr(
+        verify_integrity,
+        "verify_db_integrity",
+        lambda: {"faulty_records_count": 0, "total_player_records": 1},
+    )
+
+    report = verify_integrity.run_integrity_check(full=False)
+
+    assert verify_integrity.is_load_ready(report)
+    assert not verify_integrity.is_load_ready({"database": {"faulty_records_count": 1}})
+    assert not verify_integrity.is_load_ready({"database": {"faulty_records_count": 0}, "files": {"total_errors_or_missing": 1}})
 
 
 def test_verify_db_integrity_flags_expected_faulty_records(

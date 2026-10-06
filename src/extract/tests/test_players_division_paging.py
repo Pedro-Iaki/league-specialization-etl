@@ -1,235 +1,170 @@
 import get_players
+
 import extract.tests.t_utilities as util
+from load import player_registry
 
 util.set_path_for_extract_modules()
 
 
-def test_pick_least_populated_division_returns_given_tier_and_division_immediately(
-    monkeypatch,
-):
-    def fail_if_called(**kwargs):
-        raise AssertionError(
-            "get_page_info should not be called when tier and division are both given"
-        )
+def test_fresh_lookup_filters_in_postgres_by_fetched_ids():
+    class Connection:
+        def execute(self, query, params):
+            assert "puuid = ANY(%s::text[])" in query
+            assert params[-1] == ["p1", "p2"]
+            return self
 
-    monkeypatch.setattr(get_players.db, "get_page_info", fail_if_called)
+        def fetchall(self):
+            return [("p1", None, None)]
 
-    tier, division = get_players.pick_least_populated_division(
-        "na1", "RANKED_SOLO_5x5", "15.1", tier="GOLD", division="I"
-    )
-
-    assert (tier, division) == ("GOLD", "I")
+    fresh = player_registry.get_fresh_players(10080, conn=Connection(), region="na1", queue="RANKED_SOLO_5x5", puuids=["p1", "p2"])
+    assert [player["puuid"] for player in fresh] == ["p1"]
 
 
-def test_pick_least_populated_division_prefers_lowest_loop_then_lowest_count(
-    monkeypatch,
-):
-    stats = {
-        ("GOLD", "I"): (2, 5),
-        ("GOLD", "II"): (1, 100),
-        ("SILVER", "I"): (1, 3),
-        ("SILVER", "II"): (
-            0,
-            999,
-        ),  # lowest loop count wins, regardless of player count
-    }
-    captured = {}
+def test_page_lookup_passes_only_fetched_ids(mock_db, monkeypatch, tmp_path):
+    monkeypatch.setattr(get_players, "OUTPUT_PATH", tmp_path)
+    requested_ids = []
 
-    def fake_get_page_info(**kwargs):
-        captured.update(kwargs)
-        return stats
+    def fresh_players(*args, **kwargs):
+        requested_ids.extend(kwargs["puuids"])
+        return []
 
-    monkeypatch.setattr(get_players.db, "get_page_info", fake_get_page_info)
+    monkeypatch.setattr(get_players, "get_fresh_players", fresh_players)
 
-    tier, division = get_players.pick_least_populated_division(
-        "na1", "RANKED_SOLO_5x5", "15.1"
-    )
-
-    assert (tier, division) == ("SILVER", "II")
-    assert captured["region"] == "na1"
-    assert captured["queue"] == "RANKED_SOLO_5x5"
-    assert captured["patch"] == "15.1"
-
-
-def test_pick_least_populated_division_picks_lowest_count_when_loops_tie(monkeypatch):
-    stats = {
-        ("GOLD", "I"): (0, 50),
-        ("GOLD", "II"): (0, 4),
-        ("GOLD", "III"): (0, 200),
-    }
-    monkeypatch.setattr(get_players.db, "get_page_info", lambda **kwargs: stats)
-
-    tier, division = get_players.pick_least_populated_division(
-        "na1", "RANKED_SOLO_5x5", "15.1"
-    )
-
-    assert (tier, division) == ("GOLD", "II")
-
-
-def test_pick_least_populated_division_restricts_search_when_only_tier_given(
-    monkeypatch,
-):
-    captured = {}
-
-    def fake_get_page_info(**kwargs):
-        captured.update(kwargs)
-        return {(t, d): (0, 0) for t in kwargs["tiers"] for d in kwargs["divisions"]}
-
-    monkeypatch.setattr(get_players.db, "get_page_info", fake_get_page_info)
-
-    tier, division = get_players.pick_least_populated_division(
-        "na1", "RANKED_SOLO_5x5", "15.1", tier="GOLD"
-    )
-
-    assert captured["tiers"] == ["GOLD"]
-    assert captured["divisions"] == ["I", "II", "III", "IV"]
-    assert tier == "GOLD"
-
-
-def test_fetch_players_advances_page_and_re_fetches_on_empty_page(mock_db):
-    run_id = mock_db.start_run("paging_advance_test")
-    task_id = mock_db.add_player_task(run_id)
-
-    class PagedClient:
+    class Client:
         def get_patch(self):
             return "15.1"
 
         def get(self, url, **kwargs):
-            page = kwargs["params"]["page"]
-            if page == 1:
-                return util.FakeResponse(
-                    []
-                )  # forces fetch_players to advance and retry
-            return util.FakeResponse(
-                [util.create_player_payload("p2a"), util.create_player_payload("p2b")]
-            )
+            return util.FakeResponse([util.create_player_payload("p1"), util.create_player_payload("p2")])
 
-    result = get_players.fetch_players(
-        task_id,
-        PagedClient(),
-        region="na1",
-        queue="RANKED_SOLO_5x5",
-        tier="GOLD",
-        division="I",
-        patch="15.1",
-    )
+    get_players.run(mock_db.start_run("scoped_fresh_lookup"), Client(), "na1", "RANKED_SOLO_5x5")
 
-    assert result is not None
-    assert {p["puuid"] for p in result} == {"p2a", "p2b"}
-
-    page, loop = mock_db.get_page_and_loop(
-        "na1", "RANKED_SOLO_5x5", "GOLD", "I", "15.1"
-    )
-    assert (
-        page == 3
-    )  # page 1 (count 0) -> advance to 2; page 2 (count 2) -> advance to 3
-    assert loop == 0
-
-    conn = mock_db.get_connection()
-    task = conn.execute(
-        "SELECT attempts FROM player_tasks WHERE task_id = ?", (task_id,)
-    ).fetchone()
-    conn.close()
-    assert task["attempts"] == 2  # in_progress marked once per fetch_players invocation
+    assert set(requested_ids) == {"p1", "p2"}
 
 
-def test_fetch_players_resets_page_and_bumps_loop_when_count_drops(mock_db, db_factory):
-    conn = mock_db.get_connection()
-    factory = db_factory(conn)
-    factory.create_individual_tier_division_page(
-        {
-            "region": "na1",
-            "queue": "RANKED_SOLO_5x5",
-            "tier": "GOLD",
-            "division": "I",
-            "patch": "15.1",
-            "current_page": 5,
-            "last_player_count": 10,
-            "loop_count": 2,
-        }
-    )
-    conn.close()
+def test_explicit_pair_uses_shared_page_claim(mock_db, monkeypatch, tmp_path):
+    run_id = mock_db.start_run("explicit_shared_page")
+    monkeypatch.setattr(get_players, "OUTPUT_PATH", tmp_path)
+    claims = []
+    completed = []
 
-    run_id = mock_db.start_run("paging_reset_test")
-    task_id = mock_db.add_player_task(run_id)
-    requested_pages = []
+    def claim(region, queue, patch, tiers, divisions):
+        claims.append((region, queue, patch, tiers, divisions))
+        return {"tier": "GOLD", "division": "II", "page": 4, "claim_token": "claim-1"}
 
-    class SmallPageClient:
+    monkeypatch.setattr(get_players.player_registry, "claim_rank_page", claim)
+    monkeypatch.setattr(get_players.player_registry, "complete_rank_page", lambda token, count: completed.append((token, count)))
+
+    class Client:
         def get_patch(self):
             return "15.1"
 
         def get(self, url, **kwargs):
-            requested_pages.append(kwargs["params"]["page"])
-            return util.FakeResponse(
-                [
-                    util.create_player_payload("q1"),
-                    util.create_player_payload("q2"),
-                    util.create_player_payload("q3"),
-                ]
-            )
+            assert url.endswith("/GOLD/II")
+            assert kwargs["params"] == {"page": 4}
+            return util.FakeResponse([util.create_player_payload("p1")])
 
-    result = get_players.fetch_players(
-        task_id,
-        SmallPageClient(),
-        region="na1",
-        queue="RANKED_SOLO_5x5",
-        tier="GOLD",
-        division="I",
-        patch="15.1",
-    )
-    assert result is not None
-    assert len(result) == 3
-    assert requested_pages == [5]  # used the previously stored page
+    get_players.run(run_id, Client(), "na1", "RANKED_SOLO_5x5", tier="GOLD", division="II")
 
-    page, loop = mock_db.get_page_and_loop(
-        "na1", "RANKED_SOLO_5x5", "GOLD", "I", "15.1"
-    )
-    assert page == 1  # 3 < previous last_player_count of 10, so resets
-    assert loop == 3
+    assert claims == [("na1", "RANKED_SOLO_5x5", "15.1", ["GOLD"], ["II"])]
+    assert completed == [("claim-1", 1)]
+    assert len(list(tmp_path.rglob("*.parquet"))) == 1
 
 
-def test_fetch_players_marks_task_failed_on_error_response(mock_db):
-    run_id = mock_db.start_run("paging_error_test")
+def test_failed_page_releases_shared_claim(mock_db, monkeypatch):
+    run_id = mock_db.start_run("shared_page_failure")
     task_id = mock_db.add_player_task(run_id)
+    completed = []
+    released = []
+    monkeypatch.setattr(get_players.player_registry, "complete_rank_page", lambda token, count: completed.append((token, count)))
+    monkeypatch.setattr(get_players.player_registry, "release_rank_page", lambda token: released.append(token))
 
-    class ErrorClient:
-        def get_patch(self):
-            return "15.1"
-
+    class Client:
         def get(self, url, **kwargs):
             return util.FakeResponse([], status_code=500)
 
     result = get_players.fetch_players(
-        task_id,
-        ErrorClient(),
-        region="na1",
-        queue="RANKED_SOLO_5x5",
-        tier="GOLD",
-        division="I",
-        patch="15.1",
+        task_id, Client(), "na1", "RANKED_SOLO_5x5", "GOLD", "I",
+        page_claim={"page": 4, "claim_token": "claim-1"},
     )
 
     assert result is None
+    assert completed == []
+    assert released == ["claim-1"]
     conn = mock_db.get_connection()
-    task = conn.execute(
-        "SELECT status FROM player_tasks WHERE task_id = ?", (task_id,)
-    ).fetchone()
+    assert conn.execute("SELECT status FROM player_tasks WHERE task_id = ?", (task_id,)).fetchone()[0] == "failed"
     conn.close()
-    assert task["status"] == "failed"
 
 
-def test_fetch_players_returns_none_without_an_api_client(mock_db):
-    run_id = mock_db.start_run("paging_no_client_test")
+def test_empty_page_ends_pass_without_more_requests(mock_db, monkeypatch):
+    run_id = mock_db.start_run("shared_empty_page")
     task_id = mock_db.add_player_task(run_id)
+    completed = []
+    monkeypatch.setattr(get_players.player_registry, "complete_rank_page", lambda token, count: completed.append((token, count)))
+
+    class Client:
+        def __init__(self):
+            self.requests = 0
+
+        def get(self, url, **kwargs):
+            self.requests += 1
+            return util.FakeResponse([])
+
+    client = Client()
+    result = get_players.fetch_players(
+        task_id, client, "na1", "RANKED_SOLO_5x5", "GOLD", "I",
+        page_claim={"page": 4, "claim_token": "claim-1"},
+    )
+
+    assert result == []
+    assert client.requests == 1
+    assert completed == [("claim-1", 0)]
+
+
+def test_missing_api_client_releases_shared_claim(mock_db, monkeypatch):
+    run_id = mock_db.start_run("shared_no_client")
+    task_id = mock_db.add_player_task(run_id)
+    released = []
+    monkeypatch.setattr(get_players.player_registry, "release_rank_page", lambda token: released.append(token))
 
     result = get_players.fetch_players(
-        task_id,
-        None,
-        region="na1",
-        queue="RANKED_SOLO_5x5",
-        tier="GOLD",
-        division="I",
-        patch="15.1",
-    )  # type: ignore
+        task_id, None, "na1", "RANKED_SOLO_5x5", "GOLD", "I",
+        page_claim={"page": 1, "claim_token": "claim-1"},
+    )
 
     assert result is None
+    assert released == ["claim-1"]
+
+
+def test_general_crawl_claims_configured_tiers_and_divisions(mock_db, tmp_path, monkeypatch):
+    run_id = mock_db.start_run("shared_crawl")
+    monkeypatch.setattr(get_players, "OUTPUT_PATH", tmp_path)
+    claims = []
+    completed = []
+
+    def claim(region, queue, patch, tiers, divisions):
+        claims.append((region, queue, patch, tiers, divisions))
+        return {"tier": "DIAMOND", "division": "I", "page": 2, "claim_token": "claim-1"}
+
+    monkeypatch.setattr(get_players.player_registry, "claim_rank_page", claim)
+    monkeypatch.setattr(get_players.player_registry, "complete_rank_page", lambda token, count: completed.append((token, count)))
+
+    class Client:
+        def get_patch(self):
+            return "15.1"
+
+        def get(self, url, **kwargs):
+            assert url.endswith("/DIAMOND/I")
+            assert kwargs["params"] == {"page": 2}
+            return util.FakeResponse([util.create_player_payload("p1")])
+
+    get_players.run(
+        run_id, Client(), "na1", "RANKED_SOLO_5x5",
+        tiers=["DIAMOND", "EMERALD", "PLATINUM"], divisions=["I", "II"],
+    )
+
+    assert claims == [
+        ("na1", "RANKED_SOLO_5x5", "15.1", ["DIAMOND", "EMERALD", "PLATINUM"], ["I", "II"])
+    ]
+    assert completed == [("claim-1", 1)]
+    assert len(list(tmp_path.rglob("*.parquet"))) == 1

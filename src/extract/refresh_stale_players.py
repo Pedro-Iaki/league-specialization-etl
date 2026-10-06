@@ -8,15 +8,19 @@ access pattern than the bulk division scan.
 """
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from loguru import logger
 
 import extract.extraction_db_helper as db
-import extract.get_masteries as get_masteries
-import extract.get_players as get_players
 import pydantic_models as models
+from extract import get_masteries, get_players
 from extract.api_client_protocol import APIClient
 from load import player_registry
+
+
+class MissingQueueEntry(Exception):
+    """The API answered successfully but the player has no entry for this queue."""
 
 
 def run(
@@ -36,7 +40,7 @@ def run(
     if released_expired:
         logger.warning(f"Reaped {released_expired} expired refresh claim(s).")
 
-    worker = f"refresh_{run_id}"
+    worker = f"refresh_{run_id}_{uuid4().hex}"
     players = player_registry.claim_stale_players(limit, run_id=worker, threshold_minutes=freshness_minutes)
     if not players or len(players) == 0:
         logger.info("No stale players to refresh.")
@@ -55,24 +59,37 @@ def run(
         for player in players:
             players_attempted += 1
             logger.info(f"Refreshing player {players_attempted}/{len(players)}.")
-            player_entry = handle_player_extraction(
-                info={
-                    "puuid": player["puuid"],
-                    "region": player["region"],
-                    "queue": player["queue"],
-                    "date": date,
-                    "time": time,
-                    "patch": patch,
-                },
-                task_id=db.add_player_task(run_id, is_refresh=True),
-                api_client=api_client,
-            )
+            try:
+                player_entry = handle_player_extraction(
+                    info={
+                        "puuid": player["puuid"],
+                        "region": player["region"],
+                        "queue": player["queue"],
+                        "date": date,
+                        "time": time,
+                        "patch": patch,
+                    },
+                    task_id=db.add_player_task(run_id, is_refresh=True),
+                    api_client=api_client,
+                )
+            except MissingQueueEntry:
+                player_registry.record_refresh_result(
+                    player["puuid"], player["region"], player["queue"], None, worker
+                )
+                continue
             if not player_entry:
                 logger.warning(
                     f"Failed to refresh player, Failures: {players_attempted - players_refreshed}. Skipping."
                 )
                 continue
             players_refreshed += 1
+            player_registry.record_refresh_result(
+                player["puuid"],
+                player["region"],
+                player["queue"],
+                int(player_entry["wins"]) + int(player_entry["losses"]),
+                worker,
+            )
 
             logger.info("Refreshing mastery for player...")
             if handle_mastery_extraction(
@@ -96,7 +113,7 @@ def run(
 
     finally:
         logger.info("Releasing player claims...")
-        player_registry.release_claims([player["puuid"] for player in players])
+        player_registry.release_claims([player["puuid"] for player in players], claimed_by=worker)
 
     logger.info(
         f"Stale refresh complete: {players_refreshed} player rank(s) and {masteries_refreshed} "
@@ -142,7 +159,7 @@ def fetch_player_rank(
     if not matching:
         logger.warning(f"No {queue} entry found for player {puuid}; may be unranked or removed.")
         db.update_player_task(task_id, "success", file_path=None)
-        return None
+        raise MissingQueueEntry
 
     try:
         return models.RiotPlayerEntry.model_validate(matching[0]).model_dump()

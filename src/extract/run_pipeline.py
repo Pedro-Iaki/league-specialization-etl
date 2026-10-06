@@ -6,11 +6,10 @@ After running for the designated amount of loops, the pipeline will verify the i
 """
 
 import json
-from math import e
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from dataclasses import dataclass
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -24,9 +23,9 @@ import extract.verify_integrity as verify
 import pydantic_models as models
 from extract.get_masteries import run as extract_masteries
 from extract.get_players import run as extract_players
+from extract.reset_extraction_state import reset_local_data
 from load.load_champions_to_databricks import load_champions
 from load.load_compacted_to_databricks import load_compacted
-from extract.reset_extraction_state import reset_local_data
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = BASE_DIR / "config" / "EXTRACTION_CONFIG.env"
@@ -97,10 +96,17 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
             if run_n % runs_per_load == 0 and run_n != 0:
                 # Run integrity check before compacting and loading data, ensuring the database is in a consistent state
                 integrity_result = verify.run_integrity_check(config_manifest["full_check"])
+                if not verify.is_load_ready(integrity_result):
+                    logger.error("Integrity check did not pass; retaining local data for inspection.")
+                    return False
                 # Compact all parquets then load
                 compact.run()
                 load_result = run_load()
-                # Delete all local data and database after compact and load
+                # Handle load failures
+                if not load_result["status"] or db.count_incomplete_loads():
+                    logger.error("Load incomplete; retaining local data for retry.")
+                    return False
+                # Clear local files only after every recorded player and mastery load succeeds.
                 reset_local_data()
 
             job_results.append(
@@ -139,6 +145,8 @@ def run_snapshot_fetchers(config_manifest: dict, run_n, date, api_client) -> boo
             region=config_manifest["region"],
             queue=config_manifest["queue"],
             freshness_minutes=int(config_manifest["freshness_threshold_minutes"]),
+            tiers=[str(getattr(tier, "value", tier)) for tier in config_manifest["tiers"]],
+            divisions=[str(getattr(division, "value", division)) for division in config_manifest["divisions"]],
         )
         extract_masteries(
             run_id,
@@ -148,8 +156,8 @@ def run_snapshot_fetchers(config_manifest: dict, run_n, date, api_client) -> boo
         )  # set a higher than the limit riot gives us (205 at the time of writing) but thats so we can find some extra masteries if we missed some players in the last run, while not freezing the application searching through potentially thousands of players for masteries
         db.finish_run(run_id, "success")
         return True
-    except RuntimeError:
-        logger.exception(f"An error occurred during the pipeline run: {e}")
+    except RuntimeError as err:
+        logger.exception(f"An error occurred during the pipeline run: {err}")
         db.finish_run(run_id, "failed")
         db.cleanup_failed_run(run_id)
         return False
@@ -182,11 +190,11 @@ def run_load() -> dict:
         compacted_load_result = load_compacted()
         logger.info(f"Compacted load result: {compacted_load_result}")
         return {
-            "status": True,
+            "status": compacted_load_result,
             "champion_load_result": champion_load_result,
             "compacted_load_result": compacted_load_result,
         }
-    except RuntimeError as e:
+    except Exception as e:  # noqa: BLE001 - preserve local files after any load-stage failure
         logger.exception(f"Compaction and load failed: {e}")
         return {
             "status": False,

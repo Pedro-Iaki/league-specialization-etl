@@ -364,7 +364,7 @@ else:
 
 left, right = st.columns(2, gap="large")
 with left:
-    section("Role context", "Inferred role mix")
+    section("Role context", "Estimated roles of this champion's players")
     over_under_roles = st.toggle("Difference from equal role shares (20%)", key="role_over_under")
     role_sample = champion.get("role_sample_player_count")
     if pd.isna(role_sample) or role_sample < minimum_support:
@@ -381,7 +381,7 @@ with left:
     st.caption(
         f"Role sample: {format_compact(champion.get('role_sample_player_count'))} players. "
         "The 20% line is an equal-share reference across five roles, not the population role mix. "
-        "These are inferred player roles, not match lanes."
+        "The chart averages inferred roles of players who recently used this champion, not the lanes where they played it."
     )
 with right:
     section("Mastery context", "How deep is mastery on this champion?")

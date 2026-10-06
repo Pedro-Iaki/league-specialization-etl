@@ -1,10 +1,11 @@
-import json
-from datetime import datetime, timezone
 import re
-import pyarrow.parquet as pq
+from datetime import datetime, timezone
+
 import get_masteries
 import get_players
 import output_helper
+import pyarrow.parquet as pq
+
 import extract.tests.t_utilities as util
 
 util.set_path_for_extract_modules()
@@ -45,13 +46,15 @@ def test_save_players_creates_file_at_expected_partitioned_path(tmp_path):
     output_path = get_players.save_players(
         players,
         output_path=tmp_path,
-        region="na1",
-        queue="RANKED_SOLO_5x5",
-        tier="GOLD",
-        division="I",
         patch="15.1",
-        date="250101",
-        time="153000",
+        player_info={
+            "region": "na1",
+            "queue": "RANKED_SOLO_5x5",
+            "tier": "GOLD",
+            "division": "I",
+            "date": "250101",
+            "time": "153000",
+        },
     )
 
     expected_path = tmp_path

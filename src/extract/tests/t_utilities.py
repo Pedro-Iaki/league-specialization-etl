@@ -199,30 +199,6 @@ class DBFactory:
         self._insert("players_recorded", data, commit=commit)
         return data["player_id"]
 
-    def create_individual_tier_division_page(
-        self, overrides: dict | None = None, commit: bool = True
-    ) -> tuple:
-        defaults = {
-            "region": "na1",
-            "queue": "RANKED_SOLO_5x5",
-            "tier": "GOLD",
-            "division": "I",
-            "patch": "vtest",
-            "current_page": 1,
-            "last_player_count": 0,
-            "last_updated_at": datetime.now(timezone.utc).isoformat(),
-            "loop_count": 0,
-        }
-        data = self._override_dict(defaults, overrides or {})
-        self._insert("tier_division_pages", data, commit=commit, or_replace=True)
-        return (
-            data["region"],
-            data["queue"],
-            data["tier"],
-            data["division"],
-            data["patch"],
-        )
-
     def create_mock_run(
         self,
         run_override: dict | None = None,
@@ -394,20 +370,6 @@ class DBFactory:
                 {**record_values, **record_override}, commit=False
             )
             player_ids.append(player_id)
-
-        # page
-        page_values = {
-            "region": region,
-            "queue": queue,
-            "tier": self._vary_choice(tier_variation, "GOLD"),
-            "division": self._vary_choice(division_variation, "I"),
-            "patch": patch,
-            "current_page": 1,
-            "last_player_count": len(player_ids),
-            "last_updated_at": datetime.now(timezone.utc).isoformat(),
-            "loop_count": 0,
-        }
-        self.create_individual_tier_division_page(page_values, commit=False)
 
         self.conn.commit()
 

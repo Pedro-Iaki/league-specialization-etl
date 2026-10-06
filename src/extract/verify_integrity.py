@@ -19,6 +19,7 @@ def run_integrity_check(full: bool = False):
     """Run a full integrity check on the files and database.\n
     Fast mode skips the file integrity check, which can be lengthy."""
     results = {}
+    compaction_log = {}
     logger.info(f"Starting integrity check. Full mode: {full}")
     if full:
         files_log = verify_files_integrity()
@@ -31,6 +32,22 @@ def run_integrity_check(full: bool = False):
         f"\nIntegrity check completed, check ./data/logs for in-depth results. Summary: \nTotal players in database: {database_log.get('total_player_records', 0)}\nFaulty or incomplete records: {database_log.get('faulty_records_count', 0)}\nDuplicated player rate: {database_log.get('duplicated_players', 0)}\nDiscarded duplicated snapshots: {database_log.get('discarded_player_tasks', 0)}\nPlayer task error rate: {database_log.get('player_task_error_rate', 0)}\nMastery task error rate: {database_log.get('mastery_task_error_rate', 0)}\nUncompacted files: {compaction_log.get('unaccounted_raw_files_count', 0)}"
     )
     return results
+
+
+def is_load_ready(results: dict) -> bool:
+    database = results.get("database") or {}
+
+    has_faulty_records_key = "faulty_records_count" in database
+    faulty_count = database.get("faulty_records_count", 0)
+    if not has_faulty_records_key or faulty_count > 0:
+        return False
+
+    files = results.get("files")
+    if files:
+        total_errors = files.get("total_errors_or_missing", 0)
+        if total_errors > 0:
+            return False
+    return True
 
 
 def verify_files_integrity() -> dict:
@@ -63,9 +80,7 @@ def verify_files_integrity() -> dict:
 
     # get all masteries
     mastery_files = set(MASTERIES_PATH.rglob("*.parquet"))
-    for mastery_file in tqdm(
-        mastery_files, desc="Verifying mastery files", unit="file"
-    ):
+    for mastery_file in tqdm(mastery_files, desc="Verifying mastery files", unit="file"):
         try:
             table = pq.read_table(mastery_file)
             if table.num_rows == 0 or "puuid" not in table.column_names:
@@ -80,27 +95,19 @@ def verify_files_integrity() -> dict:
             logger.error(f"Failed to read mastery file {mastery_file}: {e}")
             continue
 
-    for puuid, mastery_file in tqdm(
-        all_puuids_masteries.items(), desc="Verifying mastery records", unit="record"
-    ):
+    for puuid, mastery_file in tqdm(all_puuids_masteries.items(), desc="Verifying mastery records", unit="record"):
         # if a puuid not present in players but present in masteries, add to missing_player_puuids
         if puuid not in all_puuids_players:
             missing_player_puuids[puuid] = str(mastery_file)
 
         # if a puuid is present twice in masteries, add to duplicated_puuids
-        uniques = sum(
-            1 for player, file in all_puuids_masteries.items() if player == puuid
-        )
+        uniques = sum(1 for player, file in all_puuids_masteries.items() if player == puuid)
         if uniques > 1 and puuid not in duplicated_masteries_puuids:
             duplicated_masteries_puuids[puuid] = [
-                str(file)
-                for player, file in all_puuids_masteries.items()
-                if player == puuid
+                str(file) for player, file in all_puuids_masteries.items() if player == puuid
             ]
 
-    for puuid, paths in tqdm(
-        all_puuids_players.items(), desc="Verifying player records", unit="record"
-    ):
+    for puuid, paths in tqdm(all_puuids_players.items(), desc="Verifying player records", unit="record"):
         # if a puuid is present in players but not present in masteries, add to missing_masteries_puuids
         if puuid not in all_puuids_masteries:
             missing_masteries_puuids[puuid] = ", ".join(str(p) for p in paths)
@@ -110,32 +117,23 @@ def verify_files_integrity() -> dict:
             duplicated_player_puuids.append(puuid)
 
     total_evaluated = len(all_puuids_players) + len(all_puuids_masteries)
-    total_errors = (
-        len(missing_masteries_puuids) + len(missing_player_puuids) + len(broken_files)
+    total_errors = len(missing_masteries_puuids) + len(missing_player_puuids) + len(broken_files)
+    error_rate = f"{(total_errors / total_evaluated if total_evaluated > 0 else 1) * 100:.2f}%"
+    duplicated_mastery_rate = (
+        f"{(len(duplicated_masteries_puuids) / len(all_puuids_masteries) if all_puuids_masteries else 0) * 100:.2f}%"
     )
-    error_rate = (
-        f"{(total_errors / total_evaluated if total_evaluated > 0 else 1) * 100:.2f}%"
+    duplicated_player_rate = (
+        f"{(len(duplicated_player_puuids) / len(all_puuids_players) if all_puuids_players else 0) * 100:.2f}%"
     )
-    duplicated_mastery_rate = f"{(len(duplicated_masteries_puuids) / len(all_puuids_masteries) if all_puuids_masteries else 0) * 100:.2f}%"
-    duplicated_player_rate = f"{(len(duplicated_player_puuids) / len(all_puuids_players) if all_puuids_players else 0) * 100:.2f}%"
     average_duplicity_per_player_file = (
-        sum(len(v) for v in all_puuids_players.values()) / len(all_puuids_players)
-        if len(all_puuids_players)
-        else 0
+        sum(len(v) for v in all_puuids_players.values()) / len(all_puuids_players) if len(all_puuids_players) else 0
     )  # sum all puuid paths and divide by number of files
 
     conn = db.get_connection()
-    db_players = [
-        row["player_id"]
-        for row in conn.execute("SELECT player_id FROM players_recorded")
-    ]
+    db_players = [row["player_id"] for row in conn.execute("SELECT player_id FROM players_recorded")]
     conn.close()
-    unregistered_players = [
-        puuid for puuid in all_puuids_players if puuid not in db_players
-    ]
-    wrongfully_registered_players = [
-        puuid for puuid in db_players if puuid not in all_puuids_players
-    ]
+    unregistered_players = [puuid for puuid in all_puuids_players if puuid not in db_players]
+    wrongfully_registered_players = [puuid for puuid in db_players if puuid not in all_puuids_players]
 
     log_data = {
         "total_evaluated": total_evaluated,
@@ -150,21 +148,17 @@ def verify_files_integrity() -> dict:
         "duplicated_masteries": duplicated_masteries_puuids,
         "players_missing_masteries_count": len(missing_masteries_puuids),
         "players_missing_masteries": [
-            {"puuid": puuid, "source_file": source_file}
-            for puuid, source_file in missing_masteries_puuids.items()
+            {"puuid": puuid, "source_file": source_file} for puuid, source_file in missing_masteries_puuids.items()
         ],
         "masteries_missing_players_count": len(missing_player_puuids),
         "masteries_missing_players": [
-            {"puuid": puuid, "source_file": source_file}
-            for puuid, source_file in missing_player_puuids.items()
+            {"puuid": puuid, "source_file": source_file} for puuid, source_file in missing_player_puuids.items()
         ],
         "unregistered_players_count": len(unregistered_players),
         "unregistered_players": unregistered_players,
         "wrongfully_registered_players_count": len(wrongfully_registered_players),
         "wrongfully_registered_players": wrongfully_registered_players,
-        "faulty_files": [
-            {"source_file": str(broken_file)} for broken_file in broken_files
-        ],
+        "faulty_files": [{"source_file": str(broken_file)} for broken_file in broken_files],
     }
 
     log_file = LOGS_PATH / "integrity_check.json"
@@ -195,13 +189,7 @@ def verify_db_integrity(conn: sqlite3.Connection | None = None) -> dict[any]:  #
     mastery_task_errors = [t for t in mastery_tasks.values() if t["status"] == "failed"]
     player_task_error_rate = f"{(len(player_task_errors) / len(player_tasks) if player_tasks else 0) * 100:.2f}%"
     mastery_task_error_rate = f"{(len(mastery_task_errors) / len(mastery_tasks) if mastery_tasks else 0) * 100:.2f}%"
-    no_path_tasks = len(
-        [
-            t
-            for t in player_tasks.values()
-            if not t["file_path"] or t["file_path"].strip() == ""
-        ]
-    )
+    no_path_tasks = len([t for t in player_tasks.values() if not t["file_path"] or t["file_path"].strip() == ""])
 
     player_error_messages = {}
     for task in player_task_errors:
@@ -216,9 +204,7 @@ def verify_db_integrity(conn: sqlite3.Connection | None = None) -> dict[any]:  #
     faulty_records = []
     paths_counts = []
 
-    for record in tqdm(
-        player_records.values(), desc="Verifying database records", unit="record"
-    ):
+    for record in tqdm(player_records.values(), desc="Verifying database records", unit="record"):
         issues = []
 
         mastery_status = record.get("mastery_status")
@@ -244,19 +230,12 @@ def verify_db_integrity(conn: sqlite3.Connection | None = None) -> dict[any]:  #
             issues.append("no_player_task_ids")
         else:
             try:
-                task_ids = (
-                    json.loads(player_task_ids)
-                    if isinstance(player_task_ids, str)
-                    else player_task_ids
-                )
+                task_ids = json.loads(player_task_ids) if isinstance(player_task_ids, str) else player_task_ids
                 if not task_ids:
                     issues.append("empty_player_task_ids")
                 else:
                     for task_id in task_ids:
-                        if (
-                            task_id in player_tasks
-                            and player_tasks[task_id]["status"] != "success"
-                        ):
+                        if task_id in player_tasks and player_tasks[task_id]["status"] != "success":
                             issues.append(f"player_task_{task_id}_not_success")
             except RuntimeError:
                 issues.append("invalid_player_task_ids")
@@ -268,17 +247,11 @@ def verify_db_integrity(conn: sqlite3.Connection | None = None) -> dict[any]:  #
             if mastery_status == "success" and not mastery_task_id:
                 issues.append("success_but_no_mastery_task_id")
             elif mastery_task_id and (
-                mastery_task_id in mastery_tasks
-                and mastery_tasks[mastery_task_id]["status"] != "success"
+                mastery_task_id in mastery_tasks and mastery_tasks[mastery_task_id]["status"] != "success"
             ):
                 issues.append(f"mastery_task_{mastery_task_id}_not_success")
 
-        if (
-            not record.get("region")
-            or not record.get("queue")
-            or not record.get("tier")
-            or not record.get("division")
-        ):
+        if not record.get("region") or not record.get("queue") or not record.get("tier") or not record.get("division"):
             issues.append("missing_rank_info")
 
         if issues:
@@ -404,9 +377,7 @@ def verify_compaction_integrity() -> dict:
         "task_level_issues": task_level_issues,
         "task_level_issues_count": len(task_level_issues),
         "unaccounted_raw_files": unaccounted_files,
-        "unaccounted_raw_files_count": {
-            k: len(v) for k, v in unaccounted_files.items()
-        },
+        "unaccounted_raw_files_count": {k: len(v) for k, v in unaccounted_files.items()},
     }
 
     log_file = LOGS_PATH / "compaction_integrity_check.json"

@@ -9,6 +9,9 @@ from loguru import logger
 import extract.tests.t_utilities as util
 
 util.set_path_for_extract_modules()
+import get_players
+
+import extract.get_players as package_get_players
 import extract.run_pipeline as pl
 
 
@@ -30,6 +33,25 @@ def pipeline_stub(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(pl.client, "RiotAPIClient", DummyClient)
     monkeypatch.setattr(pl, "extraction_loop", fake_extraction_loop)
     return captured
+
+
+@pytest.fixture(autouse=True)
+def no_live_player_registry(monkeypatch: pytest.MonkeyPatch):
+    """Extraction unit tests use local fixtures, never the configured remote registry."""
+    monkeypatch.setattr(get_players, "get_fresh_players", lambda *args, **kwargs: [])
+    monkeypatch.setattr(package_get_players, "get_fresh_players", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        get_players.player_registry,
+        "claim_rank_page",
+        lambda region, queue, patch, tiers, divisions: {
+            "tier": tiers[0],
+            "division": divisions[0],
+            "page": 1,
+            "claim_token": "test-claim",
+        },
+    )
+    monkeypatch.setattr(get_players.player_registry, "complete_rank_page", lambda token, count: 2)
+    monkeypatch.setattr(get_players.player_registry, "release_rank_page", lambda token: 1)
 
 
 @pytest.fixture

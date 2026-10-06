@@ -5,11 +5,8 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-import extract.compact_parquets as compact_parquets
-import extract.extraction_db_helper as db
-import extract.get_masteries as get_masteries
-import extract.get_players as get_players
 import extract.tests.t_utilities as util
+from extract import compact_parquets, get_masteries, get_players
 
 util.set_path_for_extract_modules()
 
@@ -58,6 +55,7 @@ def test_get_players_run_skips_writing_file_when_no_new_players(tmp_path, mock_d
             "tier": "GOLD",
             "division": "I",
             "mastery_patch": "15.1",
+            "mastery_status": "success",
         }
     )
     conn.close()

@@ -305,7 +305,7 @@ def champion_role_chart(champion: pd.Series, over_under: bool = False) -> go.Fig
         fig.add_trace(
             go.Bar(
                 x=[value],
-                y=["Empirical role mix"],
+                y=["Estimated player-role mix"],
                 name=role,
                 orientation="h",
                 marker_color=ROLE_COLORS[role],
