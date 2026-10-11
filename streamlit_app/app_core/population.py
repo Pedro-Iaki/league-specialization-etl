@@ -1,7 +1,8 @@
 """Frozen tier post-stratification shared by plots and analyst exports.
 
 Weights belong to the unfiltered calibration cohort. Keep them when taking
-subsets; recalibrating a champion, role or classified subset changes the estimand.
+subsets for conditional estimates. Direct standardization instead compares
+selected cohorts at a common tier mix; it does not recover missing outcomes.
 """
 
 from __future__ import annotations
@@ -135,6 +136,78 @@ def row_weights(frame: pd.DataFrame) -> pd.Series:
         return pd.Series(1.0, index=frame.index)
     values = pd.to_numeric(frame[WEIGHT], errors="coerce")
     return values.where(np.isfinite(values) & values.gt(0))
+
+
+def direct_standardized_means(
+    players: pd.DataFrame,
+    metrics: list[str],
+    reference: pd.DataFrame | None = None,
+    *,
+    tier_column: str = "tier",
+    scope_columns: tuple[str, ...] = ("region", "queue"),
+    minimum_tier_players: int = 5,
+    minimum_coverage: float = 0.99,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Standardize a selected cohort's means, with metric-specific tier support.
+
+    Use after selection. Ignore inherited weights: each valid tier mean receives
+    its reference share, normalized over supported tiers. Return separate scope
+    estimates because relative region/queue population sizes are unknown.
+    All reference tiers appear in diagnostics, including zero-observation tiers.
+    This targets a common tier mix, not the population prevalence of a subgroup.
+    """
+    if minimum_tier_players < 1 or not 0 < minimum_coverage <= 1:
+        raise ValueError("Minimum tier support must be positive and coverage must be in (0, 1]")
+    reference = load_reference() if reference is None else validate_reference(reference)
+    scopes = [column for column in scope_columns if column in players]
+    grouped = players.groupby(scopes, dropna=False, observed=True).indices if scopes else {(): np.arange(len(players))}
+    summaries, reports = [], []
+    for scope, positions in grouped.items():
+        selected = players.iloc[positions]
+        scope_values = scope if isinstance(scope, tuple) else (scope,)
+        scope_info = dict(zip(scopes, scope_values, strict=True))
+        for metric in metrics:
+            values = pd.to_numeric(selected[metric], errors="coerce")
+            valid = selected.assign(_value=values.where(np.isfinite(values)))
+            by_tier = valid.groupby(tier_column, observed=True).agg(
+                selected_players=("_value", "size"), metric_players=("_value", "count"), tier_mean=("_value", "mean")
+            )
+            report = reference.merge(by_tier, how="left", left_on="tier", right_index=True, validate="one_to_one")
+            for column in ("selected_players", "metric_players"):
+                report[column] = report[column].fillna(0).astype(int)
+            supported = report["metric_players"].ge(minimum_tier_players)
+            coverage = float(report.loc[supported, "population_share"].sum())
+            target = (report["population_share"] / coverage).where(supported) if coverage else np.nan
+            report["supported_target_share"] = target
+            estimate = float((report["supported_target_share"] * report["tier_mean"]).sum()) if coverage else np.nan
+            status = "no_supported_tiers" if not coverage else (
+                "low_coverage" if coverage < minimum_coverage else "adequate_coverage"
+            )
+            info = {
+                **scope_info, "metric": metric, "minimum_tier_players": minimum_tier_players,
+                "covered_population_share": coverage, "standardized_mean": estimate, "coverage_status": status,
+                "reference_version": reference["reference_version"].iloc[0],
+            }
+            report = report.assign(**info, tier_supported=supported)
+            summaries.append({
+                **info,
+                "metric_players": int(report["metric_players"].sum()),
+                "supported_players": int(report.loc[supported, "metric_players"].sum()),
+                "unsupported_tier_players": int((np.isfinite(values) & ~selected[tier_column].isin(reference["tier"])).sum()),
+            })
+            reports.append(report)
+    summary_columns = scopes + [
+        "metric", "minimum_tier_players", "covered_population_share", "standardized_mean", "coverage_status",
+        "reference_version", "metric_players", "supported_players", "unsupported_tier_players",
+    ]
+    diagnostic_columns = list(reference.columns) + scopes + [
+        "metric", "selected_players", "metric_players", "tier_mean", "tier_supported", "minimum_tier_players",
+        "supported_target_share", "covered_population_share", "standardized_mean", "coverage_status",
+    ]
+    return (
+        pd.DataFrame(summaries, columns=summary_columns),
+        pd.concat(reports, ignore_index=True) if reports else pd.DataFrame(columns=diagnostic_columns),
+    )
 
 
 def population_weights(players: pd.DataFrame, reference: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:

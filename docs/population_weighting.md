@@ -27,6 +27,13 @@ Within-tier box plots remain descriptive; in the current single-scope sample,
 equal weights within a tier cancel. Mixing region/queue scopes can change a
 tier's result because scope-specific weights can differ within that tier.
 
+The **Common tier mix** section provides a separate direct-standardization
+comparison after the selected filters, including classified-only selections.
+It shows a mean per region/queue/metric and all ten tiers' valid observation
+counts. **Population Analysis** also shows direct-standardized ranked-observed
+means for the selected window using starting tier. Neither comparison estimates
+outcomes for players without completed ranked observations.
+
 The ranked-activity view calibrates starting tier separately for the selected
 observation window before champion filters or exploded champion membership.
 Its denominator remains the selected cohort with completed ranked observations,
@@ -69,10 +76,13 @@ The gameplay Population Analysis view still displays Iron through Master; its
 coverage diagnostics show excluded apex tiers. Population Estimates and the
 analyst bundle preserve every tier available in the profile snapshot.
 
-Calculate weights on the original calibration cohort, then filter by role,
-champion, classification, mastery or tracked days. Recalibrating each filtered
-subset would force its tier composition to match the full ladder and change the
-meaning of the estimate. Side-by-side sample/weighted comparisons in estimate
+For conditional subgroup estimates, calculate weights on the original calibration
+cohort, then filter by role, champion, classification, mastery or tracked days.
+The subgroup's weighted tier mix need not match the full ladder: its retention
+or prevalence can differ by tier. Recalibrating each filtered subset forces its
+tier composition to match the full ladder and changes the question being answered.
+Use direct standardization when that common-tier comparison is intended.
+Side-by-side sample/weighted comparisons in estimate
 mode use the same supported observations. Collected-sample mode can include
 otherwise eligible unsupported-tier rows with equal weights. Player counts and
 minimum support thresholds remain observed counts over eligible rows;
@@ -85,6 +95,63 @@ composition and weighted centers in estimate mode. The median-mastery
 normalization remains a descriptive adjustment rather than full standardization.
 The adjustment does not remove selection differences within tiers, establish
 causality or make synthetic spending data real.
+
+### Direct standardization for selected and observed cohorts
+
+Within one region/queue, select the cohort first. For each metric independently,
+calculate valid count `n_t` and mean `m_t` in every tier. A tier is supported only
+when it has at least five valid values by default. Missing or nonfinite values
+do not enter either the count or mean. Over the supported tiers `S`, calculate:
+
+```text
+C_metric = sum(p_t for t in S)
+standardized_mean = sum(p_t * m_t for t in S) / C_metric
+```
+
+This is equivalent to recalibrating the metric-valid selected rows to supported
+target shares, but it exposes each tier's support and exclusions. Coverage is
+metric-specific, not inherited from the 37K full-profile cohort. An estimate
+with missing or thin tiers is conditional on its supported tiers; no supported
+tiers yields a null mean and zero coverage. Below 99% coverage is explicitly
+flagged. Five players and 99% are configurable reporting rules, not statistical
+guarantees. Effective sample size is not a replacement for tier support.
+
+The new `gold.mart_player_population_standardization` view reports one row per
+region/queue/cohort/metric/reference tier, including empty tiers. Its cohorts are
+`all_profiles`, `active_classified` and `alltime_classified`; classified means a
+recognized specialist, multispecialist, versatile or generalist label. Metrics
+are mastery points, rank score, active/all-time HHI, recent LP/game and recent
+win rate. Each metric's nonmissing count identifies its observed subset. Recent
+profile outcomes use **current tier**; they are distinct from the dashboard's
+completed-period ranked-mastery cohort, which uses **starting tier**.
+
+`standardized_mean` and `covered_population_share` repeat across the ten tier
+rows. Select distinct scope/cohort/metric summaries; never sum those repeated
+estimates. Keep tier-level `metric_players`, `tier_supported`, `tier_mean`,
+`supported_target_share`, coverage, reference version and dates in reports.
+The dbt variables `population_min_tier_players` (5) and `population_min_coverage`
+(0.99) control warehouse support and status. Dashboard metric comparisons offer
+a support input; ranked-observed comparisons and CLI exports use the defaults.
+Separate region/queue estimates avoid inventing relative scope populations.
+
+In the bundled 2026-09-29 snapshot, there are 37,172 profiles, 24,990 active
+classified profiles and 1,074 profiles with recent LP/game observations. For the
+latter metric, the original full-profile conditional mean is 4.153522 LP/game;
+the common-current-tier standardized mean is 1.999126 LP/game. Both remain
+conditional on observed profiles. Current-tier metric coverage is 99.94%.
+The separate completed-period ranked-mastery cohort also has 1,074 rows; its
+starting-tier coverage is 99.21%, with no Master/Grandmaster/Challenger
+observations. Its standardized mean of player median ranked-mastery shares is
+45.68%. The difference in coverage illustrates why current and starting tier
+must be kept distinct.
+
+For arbitrary subsets or metrics, use
+`direct_standardized_means(selected_rows, ["metric"], tier_column="tier")` in
+`streamlit_app/app_core/population.py`; the result includes summaries and tier
+diagnostics. For completed-period outcomes, pass `tier_column="starting_tier"`.
+The frozen full-cohort weights and common-tier comparisons are both available
+because they answer different questions. Standardized subgroup means do not
+estimate the subgroup's real population tier composition or prevalence.
 
 Overview, Champion Explorer and Cross Champion View now share the denominator
 selector. Pooled trends, local medians, outcome summaries, correlations,
@@ -123,8 +190,8 @@ configured dbt environment (from `league_pipeline`):
 ```powershell
 dbt seed --select rank_population_reference
 dbt test --select rank_population_reference
-dbt run --select mart_player_population_weights
-dbt test --select mart_player_population_weights
+dbt run --select mart_player_population_weights mart_player_population_standardization
+dbt test --select mart_player_population_weights mart_player_population_standardization
 ```
 
 Analysts can join the view to `mart_player_profile` on `player_id`, `region` and
@@ -231,6 +298,22 @@ version and shares; the dashboard does not automatically deploy the seed.
 | A version label alone cannot identify changed shares | The offline manifest now fingerprints canonical reference content and the input snapshot, and carries the exact artifact list |
 | ZIP could sweep unrelated output-folder files into the handoff | Only explicitly generated artifacts enter the archive; a regression leaves an unrelated file outside the bundle |
 | Documentation described five pages and raw-count intervals in all modes | README/page guides, model catalog/lineage, engineering journey and analyst handoff now document six pages, weighting modes, unsupported rows and omitted weighted intervals |
+
+### Follow-up review of the five reported concerns
+
+| Concern | Assessment and implementation |
+|---|---|
+| Always calculate weights before filters | Too broad as an instruction. Retain weights for conditional subgroup estimates; the new mart/helper/dashboard path standardizes selected metric-valid cohorts for comparisons at a common tier mix. Unequal retention, metric-specific support and missing-tier fixtures verify the distinction. |
+| Join reference on tier only | Safe for the current deliberately global ten-row seed: `unique`/`not_null` tier tests and a single-version/provenance assertion already existed. Keep them. Added a test that weighted tier mass equals supported target share, alongside the existing exact profile-cardinality test. Future scoped/versioned references must change both the key and join. |
+| No division correction | Correct limitation. The reference supplies no division shares; do not invent an equal-division target. A future validated tier/division reference must use joint shares and matching strata, with a complete scoped key, uniqueness and coverage checks. Collector changes require separate sampling-design work. |
+| Null weights and missing coverage checks | Explicit positive-weight filtering already exists in downstream helpers and the SQL example. Added a configurable warning when full-profile reference coverage is below 99%; standardization exposes metric-specific coverage and low/no-support status. |
+| Only tier imbalance is corrected | Correct. Dropped profiles, classification eligibility, completed-period observation and the active-pool definition remain selection assumptions. Standardization makes the comparison explicit; it does not fix within-tier selection. |
+
+Direct standardization follows the same principle as the
+[CDC's direct age-standardization method](https://www.cdc.gov/nchs/hus/sources-definitions/age-adjustment.htm):
+combine stratum-specific metrics with an explicit standard distribution. These
+opportunistically collected profiles do not have validated probability-sample
+weights or measured nonresponse propensities.
 
 The remaining limitations are scientific and operational: the reference's
 original date/region/queue are unknown; division/page order and refresh policies

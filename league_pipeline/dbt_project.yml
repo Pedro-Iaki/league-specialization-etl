@@ -24,6 +24,8 @@ models:
       +schema: gold
 
 vars:
+  population_min_tier_players: 5
+  population_min_coverage: 0.99
   late_arrival_lookback_days: 5
   mastery_freshness_days: 2
   rank_period_days: 7

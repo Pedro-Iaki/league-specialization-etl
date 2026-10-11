@@ -685,6 +685,37 @@ parity; dbt parsing checks the model graph. Databricks execution remains a separ
 warehouse check. See [population method and design review](../../docs/population_weighting.md)
 for SQL examples, activation commands, exports and the implementation review.
 
+### `mart_player_population_standardization`
+
+**Purpose.** Compare selected cohorts' metric means at a common tier mix,
+separately from conditional subgroup estimates using original profile weights.
+
+**Grain and materialization.** Live view with one row per region, queue, cohort,
+metric and reference tier. All ten tiers appear, including tiers with no valid
+observations. Upstream: `mart_player_profile`, `rank_population_reference`.
+
+**Cohorts and metrics.** All profiles, active-classified and all-time-classified
+players; mastery points, rank score, active/all-time HHI, recent LP/game and
+recent win rate. Recent outcomes use current tier and only observed profiles.
+The dashboard's ranked-mastery comparison separately uses starting tier within
+the selected completed-period window.
+
+**Calculation.** Calculate each tier's valid metric count and mean after cohort
+selection. Require `population_min_tier_players` (default 5), then compute
+`sum(reference_share * tier_mean) / sum(reference_share)` over supported tiers.
+The result and coverage repeat over tier rows; select distinct summaries rather
+than summing them. No supported tiers gives a null mean. Coverage below
+`population_min_coverage` (default 0.99) is flagged; incomplete coverage always
+means a result conditional on supported tiers. Null/nonfinite metric values and
+unsupported tiers do not enter the estimate. Original player weights are unused.
+
+**Validation and limitations.** Composite uniqueness, ten-row tier grids,
+supported target normalization and arithmetic are checked. Local SQL/Python
+parity covers unequal retention, multiple scopes, missing values and low support.
+This comparison does not recover missing profiles/outcomes or correct division,
+within-tier selection or active-pool definitions. Relative population sizes of
+regions/queues are unknown, so their standardized means are reported separately.
+
 ### `mart_player_delta_history`
 
 **Purpose.** Provide the main longitudinal dataset for studying how champion choice and playstyle relate to rank growth.

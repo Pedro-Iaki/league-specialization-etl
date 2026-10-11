@@ -212,7 +212,7 @@ def test_analyst_page_renders_weighted_and_sample_modes():
 
     app = AppTest.from_file(str(APP_ROOT / "pages/4_Population_Estimates.py"), default_timeout=60).run()
     assert not app.exception
-    assert len(app.get("download_button")) == 5
+    assert len(app.get("download_button")) == 7
     next(widget for widget in app.radio if widget.label == "Analysis denominator").set_value("Collected sample").run()
     assert not app.exception
     assert app.session_state["population_estimate_mode"] == "Collected sample"

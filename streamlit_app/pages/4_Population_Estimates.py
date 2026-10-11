@@ -5,7 +5,14 @@ import plotly.express as px
 from app_core.config import PLAYSTYLE_ORDER
 from app_core.data import DashboardDataError, data_freshness, load_dataset
 from app_core.i18n import st, t
-from app_core.population import category_summary, effective_sample_size, row_weights, weighted_mean, weighted_quantile
+from app_core.population import (
+    category_summary,
+    direct_standardized_means,
+    effective_sample_size,
+    row_weights,
+    weighted_mean,
+    weighted_quantile,
+)
 from app_core.population_ui import population_controls
 from app_core.ui import data_source_caption, hero, render_load_error, section, setup_page
 
@@ -131,6 +138,35 @@ st.dataframe(summary, hide_index=True, width="stretch")
 st.download_button(
     "Download metric estimates", summary.to_csv(index=False), "population_metric_estimates.csv", "text/csv"
 )
+
+section("Common tier mix", "Direct-standardized means for the selected cohort")
+st.caption(
+    "This comparison applies the frozen tier shares to each tier's mean after the filters above. "
+    "It answers how this selected cohort would compare at a common tier mix. It does not estimate "
+    "the cohort's population prevalence or correct selection within tiers. Each region and queue is reported separately. "
+    "Missing metric values and tiers below minimum support are excluded, with coverage shown for each metric."
+)
+minimum_tier_players = st.number_input("Minimum valid players per tier", min_value=1, value=5, step=1)
+standardized, tier_metrics = direct_standardized_means(
+    cohort, [metric for metric in metrics if metric in cohort], minimum_tier_players=int(minimum_tier_players),
+)
+if standardized.empty:
+    st.info("No players match the selection for standardization.")
+elif standardized["coverage_status"].ne("adequate_coverage").any():
+    st.warning(
+        "Some standardized metrics cover less than 99% of the reference or have no supported tiers. "
+        "Read them as conditional on the supported tiers; inspect the tier counts below."
+    )
+st.dataframe(standardized, hide_index=True, width="stretch")
+st.download_button(
+    "Download standardized means", standardized.to_csv(index=False), "population_standardized_means.csv", "text/csv"
+)
+with st.expander("Standardization tier counts and coverage"):
+    st.dataframe(tier_metrics, hide_index=True, width="stretch")
+    st.download_button(
+        "Download standardization tier diagnostics", tier_metrics.to_csv(index=False),
+        "population_standardization_tiers.csv", "text/csv",
+    )
 
 with st.expander("Analyst export and method"):
     st.caption(

@@ -1,6 +1,7 @@
 {{ config(materialized='view', tags=['population_weighting']) }}
 
--- One weight per player and queue. Calculate before any analyst filters.
+-- Full-profile weights for population totals and conditional subgroup estimates.
+-- For comparisons at a common tier mix, use mart_player_population_standardization.
 -- Normalize within each region/queue; their relative population sizes are unknown.
 with counts as (
     select region, queue, tier, count(*) as sample_players

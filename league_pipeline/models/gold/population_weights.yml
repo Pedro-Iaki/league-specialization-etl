@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: mart_player_population_weights
-    description: Relative tier post-stratification weights calibrated on the current unfiltered profile cohort within region/queue. Apply before analyst filters; population scope is an assumption and missing tiers are not imputed.
+    description: Relative tier post-stratification weights calibrated on current unfiltered profiles within region/queue. Retain for conditional subgroup estimates; use mart_player_population_standardization for comparisons at a common tier mix. Population scope is an assumption and missing tiers are not imputed.
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

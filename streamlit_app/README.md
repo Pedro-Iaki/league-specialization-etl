@@ -149,6 +149,15 @@ Profile weights are calibrated before tracked-days/mastery/role/champion/style
 filters. Unsupported or invalid weights are excluded before both statistics and
 support counts; collected-sample mode uses all otherwise eligible rows equally.
 
+For comparisons at a common tier mix, **Population Estimates** also shows
+direct-standardized means after the selected filters, with valid counts per
+tier and metric-specific reference coverage. Minimum support defaults to five
+players per tier, and coverage below 99% is flagged. **Population Analysis**
+provides the same comparison for its ranked-observed window using starting tier.
+These comparisons remain conditional on observed players and supported tiers;
+they do not estimate subgroup prevalence. The CLI bundle includes standardized
+means and tier diagnostics for all and active/all-time classified profiles.
+
 The archive contains only explicitly generated files, with an exact file list
 and both snapshot and canonical reference hashes in its manifest. The warehouse
 mart is a live view; source refreshes change weights under the same reference.

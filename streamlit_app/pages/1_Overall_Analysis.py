@@ -25,7 +25,7 @@ from app_core.data import DashboardDataError, data_freshness, load_dataset, load
 from app_core.experience import experience_bands, experience_cells, experience_chart, experience_display
 from app_core.i18n import st
 from app_core.metrics import active_alltime_transition
-from app_core.population import calibrate_population
+from app_core.population import calibrate_population, direct_standardized_means
 from app_core.population_ui import population_controls
 from app_core.ui import (
     data_source_caption,
@@ -302,6 +302,20 @@ else:
         st.caption("Ranked-activity weights use starting-tier shares in this observed window. They estimate the represented observed cohort under the frozen tier distribution; they do not correct the selection of players with completed periods.")
         with st.expander("Ranked-activity weighting diagnostics"):
             st.dataframe(ranked_diagnostics, hide_index=True, width="stretch")
+    with st.expander("Ranked-observed means at a common starting-tier mix"):
+        standardized_ranked, standardized_tiers = direct_standardized_means(
+            ranked_cohort, ["median_ranked_mastery_share"], tier_column="starting_tier",
+        )
+        st.caption(
+            "Direct standardization uses each starting tier's mean among players observed in this window, "
+            "then combines supported tier means using the frozen reference. Minimum support is five valid players "
+            "per tier. This comparison remains conditional on completed observations; it does not recover "
+            "outcomes for unobserved players. Champion selections below control the displayed cells."
+        )
+        if not standardized_ranked.empty and standardized_ranked["coverage_status"].ne("adequate_coverage").any():
+            st.warning("Ranked-observed standardization covers less than 99% of the reference in at least one scope.")
+        st.dataframe(standardized_ranked, hide_index=True, width="stretch")
+        st.dataframe(standardized_tiers, hide_index=True, width="stretch")
     champion_selection = None
     if "Champion" in (x_dimension, y_dimension):
         champion_counts = ranked_cohort["favoured_champions"].explode().value_counts()

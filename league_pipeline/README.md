@@ -31,6 +31,15 @@ target shares, covered reference share, profile dates and the relative weight
 `(p_t / C) / (n_t / N)`. Weights average one within supported region/queue scopes.
 Use all three keys when joining to profiles, and keep weights when filtering.
 
+For comparisons at a common tier mix, use the new view
+`mart_player_population_standardization`: it computes tier means after cohort
+selection, requires five valid values per tier by default, and divides the
+reference-weighted mean by supported reference coverage. Every reference tier
+appears; coverage below 99% is flagged. Scope/cohort/metric summaries repeat over
+tier rows, so select distinct summaries. Original profile weights remain valid
+for conditional subgroup estimates. See [population weighting](../docs/population_weighting.md)
+for interpretation, configuration and arbitrary filtered-cohort comparisons.
+
 The current reference is `2026-10-10-v1`, received on 2026-10-10 with review due
 2027-04-10. Observation date and region/queue were not supplied. It is an assumed
 distribution, not an API observation or a guarantee of fixed ladder shares.
@@ -42,8 +51,8 @@ With the existing profile mart built, activate only the new resources:
 ```powershell
 dbt seed --select rank_population_reference
 dbt test --select rank_population_reference
-dbt run --select mart_player_population_weights
-dbt test --select mart_player_population_weights
+dbt run --select mart_player_population_weights mart_player_population_standardization
+dbt test --select mart_player_population_weights mart_player_population_standardization
 ```
 
 The profile-grain test reads the existing profile mart for comparison but does

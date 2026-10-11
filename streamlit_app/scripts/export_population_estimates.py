@@ -15,11 +15,12 @@ APP_ROOT = Path(__file__).resolve().parents[1]
 if str(APP_ROOT) not in sys.path:
     sys.path.insert(0, str(APP_ROOT))
 
-from app_core.config import REPO_ROOT
+from app_core.config import PLAYSTYLE_ORDER, REPO_ROOT
 from app_core.population import (
     WEIGHT,
     calibrate_population,
     category_summary,
+    direct_standardized_means,
     effective_sample_size,
     load_reference,
     reference_fingerprint,
@@ -73,6 +74,19 @@ def export_bundle(snapshot: Path, output_dir: Path) -> dict:
             }
         )
     pd.DataFrame(metrics).to_csv(output_dir / "metric_estimates.csv", index=False)
+    standardization_metrics = [entry["metric"] for entry in metrics]
+    standardized_tables, tier_tables = [], []
+    for cohort_name, cohort in {
+        "all_profiles": players,
+        "active_classified": players.loc[players["active_playstyle"].isin(PLAYSTYLE_ORDER)],
+        "alltime_classified": players.loc[players["alltime_playstyle"].isin(PLAYSTYLE_ORDER)],
+    }.items():
+        standardized, tiers = direct_standardized_means(cohort, standardization_metrics, reference)
+        standardized_tables.append(standardized.assign(cohort=cohort_name))
+        tier_tables.append(tiers.assign(cohort=cohort_name))
+    pd.concat(standardized_tables, ignore_index=True).to_csv(output_dir / "standardized_means.csv", index=False)
+    pd.concat(tier_tables, ignore_index=True).to_csv(output_dir / "standardization_tiers.csv", index=False)
+    exported_names.extend(["standardized_means.csv", "standardization_tiers.csv"])
     exported_names.extend(["metric_estimates.csv", "manifest.json", "ANALYST_HANDOFF.md"])
     metadata = {
         "reference_version": str(reference["reference_version"].iloc[0]),
@@ -88,6 +102,8 @@ def export_bundle(snapshot: Path, output_dir: Path) -> dict:
         "covered_share_min": float(diagnostics["covered_population_share"].min()),
         "covered_share_max": float(diagnostics["covered_population_share"].max()),
         "calibration": "Current tier within each available region/queue before filters",
+        "standardization": "Selected cohort tier means; separate region/queue estimates; minimum 5 valid players per tier",
+        "standardization_minimum_coverage": 0.99,
         "regional_queue_mix": "Sample proportions; relative population sizes unknown",
         "export_files": sorted(exported_names),
     }
@@ -108,6 +124,7 @@ Open **Population Estimates** in the Streamlit dashboard to compare sample and w
 - `rank_population_reference.csv`: the exact frozen tier shares.
 - `weighting_diagnostics.csv`: scope/tier counts, raw and supported target shares, coverage and relative weights.
 - `*_estimates.csv`: sample versus weighted category shares and player metrics.
+- `standardized_means.csv` and `standardization_tiers.csv`: common-tier mean comparisons for all profiles and active/all-time classified cohorts, with metric-specific support and coverage.
 - `manifest.json`: input snapshot hash, canonical reference hash, reference version, coverage and explicit bundle file list for reproducibility.
 
 ## Use the weights
@@ -115,6 +132,8 @@ Open **Population Estimates** in the Streamlit dashboard to compare sample and w
 For a mean: `sum(population_weight * value) / sum(population_weight)` over nonmissing values with valid weights. For a share: sum the weights of matching players and divide by the weights of eligible players. Keep the original weights when applying filters. Weighted mass is not a population count. Current tier is the calibration variable; recent outcomes remain conditional on observed players.
 
 Tier composition is adjusted under the supplied frozen estimate. Within-tier selection bias remains possible. Region and queue proportions remain those of the sample. This reference is an assumed distribution for each scope, not a verified regional estimate. Effective sample size reports weight dispersion, not reference uncertainty; no confidence intervals are claimed.
+
+For a comparison at a common tier mix, use the separate direct-standardization files: `sum(reference_share * tier_mean) / sum(reference_share)` over tiers with at least five valid metric observations. Coverage below 99% is flagged. This answers a different question from a conditional subgroup estimate using original weights. Do not force subgroup composition to the full ladder when estimating subgroup prevalence. Division shares are unavailable; neither method corrects division bias, missing profiles or selection into ranked observation.
 
 ## Manual reference maintenance
 
