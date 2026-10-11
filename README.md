@@ -81,7 +81,7 @@ This took roughly three months of self-directed work. The main lesson was that t
     class F,G,R,T,Q,W supporting
 ```
 
-The extractor scans configured ranked tiers and divisions, fetches mastery for discovered players, and revisits stale players. It records runs, tasks, files, and failures in local SQLite. Postgres is the sole source of rank-page cursors; the two databases do not synchronize pagination state. Postgres also keeps the durable player registry and refresh claims across collection cycles and machines. Before upload, raw Parquet files are compacted. The Databricks ingestion notebook loads landed player and mastery files into raw tables; champion names and reference positions are loaded separately. The current extractor does not yet delay every registry and cursor update until after downstream loading; that commit boundary is part of the [Airflow roadmap](TODO.md#airflow-orchestration-and-load-commit).
+The extractor scans configured ranked tiers and divisions, fetches mastery for discovered players, and revisits stale players. It records runs, tasks, files, and failures in local SQLite. Postgres keeps rank-page cursors, the durable player registry, and refresh claims across collection cycles and machines. SQLite player tasks retain the page claim details until ingestion succeeds; Postgres remains the source of the cursor. Before upload, raw Parquet files are compacted. Python waits for the Databricks ingestion job to load landed player and mastery files into raw tables, applies collection-state updates, then runs the separate dbt build job. Champion names and reference positions are loaded separately.
 
 dbt preserves useful history and produces current records, rank periods, champion activity, player profiles, and champion marts. Fixed export queries create the public dashboard datasets and exclude player and interval identifiers. The optional live dashboard mode reads the Gold schema directly. See the [model reference](league_pipeline/docs/model_reference.md) for model grains, lineage, metric definitions, and interpretation edge cases.
 
@@ -181,14 +181,15 @@ python -m load.migrate_player_registry
 python -m extract.run_pipeline
 ```
 
-That command runs the **legacy local orchestrator**: collection, stale-player refresh, periodic compaction, and upload as configured. It is an environment-dependent data collection run, not a small demo command. It now retains local files when integrity or recorded landing-zone upload status fails; this check does not confirm downstream raw-table ingestion. Rank-page and refresh state can still advance before that load. The planned Airflow path will replace this runner and own the full post-load commit and retry boundary. The repository also contains the [ingestion notebook](src/load/ingest_players.ipynb) and a [Databricks job definition](resources/ingest_clean_transform.job.yml) for loading raw tables and building dbt layers.
+That command runs the Python orchestrator: collection, stale-player refresh, periodic compaction, upload, confirmed raw ingestion, and dbt build. It is an environment-dependent data collection run, not a small demo command. Integrity, upload, ingestion, registry-update, or dbt failures retain local files and stop the runner. The repository contains the [ingestion notebook](src/load/ingest_players.ipynb), [ingestion-only job](resources/ingest_players.job.yml), and [dbt build job](resources/build_dbt.job.yml).
 
 ### Confirm ingestion before marking a load complete
 
 The loader uploads both available compacted inputs, starts an ingestion-only
 Databricks job, and waits for its result. Auto Loader and its existing checkpoints
-remain in use. Only a successful job permits the loader's Neon freshness upsert
-and SQLite `load_success` updates. Failed uploads or ingestion retain local files
+remain in use. Only a successful job permits Neon freshness and inactivity updates,
+SQLite `load_success` updates, and completion of saved discovery page claims.
+Failed uploads or ingestion retain local files
 and mark the affected loads `load_failed`; the existing runner then stops.
 
 To activate this change:
@@ -219,9 +220,23 @@ To activate this change:
 No ready markers, batch framework, completion receipts or submission-deduplication
 system are added. Ingestion and dbt are separate jobs, sequenced by Python rather
 than a file-arrival timer. Dashboard export remains manual. These changes cover
-the loader's writes only; deferring the existing
-fetchers' cursor/inactivity updates is a separate follow-up. Neither job deployment
+the existing fetchers' updates as well as the loader's writes. Neither job deployment
 nor a live ingestion run is performed by the local tests.
+
+Discovery stores the page claim token and player count on its existing SQLite task.
+The nullable task column is added automatically to older local databases when first
+used, preserving their records. After ingestion, a page advances only when all of
+its tracked player rows have `load_success`; the saved claim details are then cleared.
+Claims retain their existing expiry behavior. An expired or already-completed claim
+is logged and skipped without rejecting ingested data.
+
+Refresh observations use their SQLite task completion time for Neon freshness.
+Loading the same observation again does not increase inactivity or replace a newer
+observation. Changed game totals reset inactivity; an ingested refresh with unchanged
+totals increases it once. Empty discovery pages, pages containing only fresh players,
+and refreshes finding no ranked queue entry have no new files to ingest and can update
+their collection state immediately. No additional Databricks deployment or Neon
+schema migration is needed for this follow-up.
 
 For a configured `league_pipeline` dbt profile, run from the project directory:
 

@@ -60,7 +60,7 @@ def test_dbt_configuration_error_preserves_confirmed_load_result(monkeypatch):
     assert result["compacted_load_result"] is True
 
 
-def test_upload_alone_does_not_update_neon_or_mark_sqlite_complete(tmp_path, monkeypatch):
+def test_upload_alone_does_not_update_neon_or_mark_sqlite_complete(tmp_path, mock_db, monkeypatch):
     monkeypatch.setattr(loader, "COMPACTED_DIR", tmp_path)
     pq.write_table(
         pa.Table.from_pylist(
@@ -111,38 +111,91 @@ def test_load_updates_are_gated_by_ingestion_success(monkeypatch, failure):
     monkeypatch.setattr(loader, "run_ingestion", ingest)
     monkeypatch.setattr(loader.player_registry, "upsert_players", registry)
     monkeypatch.setattr(loader, "mark_load_status", lambda results, status: events.append(status))
+    monkeypatch.setattr(loader, "complete_loaded_rank_pages", lambda: events.append("cursor"))
     assert loader.load_compacted() is (failure is None)
     assert events[:2] == ["players", "masteries"]
     if failure == "upload":
         assert "ingestion" not in events
     if failure in ("upload", "ingestion"):
         assert "neon" not in events
-    assert events[-1] == ("load_success" if failure is None else "load_failed")
+    if failure is None:
+        assert events[-2:] == ["load_success", "cursor"]
+    else:
+        assert events[-1] == "load_failed"
+        assert "cursor" not in events
 
 
-def test_failed_ingestion_preserves_files_and_sqlite_can_retry(tmp_path, mock_db, monkeypatch):
+@pytest.mark.parametrize("is_refresh", [False, True])
+def test_failed_ingestion_preserves_files_and_sqlite_can_retry(tmp_path, mock_db, monkeypatch, is_refresh):
     from pydantic_models import IngestionConfigManifest
 
     monkeypatch.setattr(loader, "COMPACTED_DIR", tmp_path)
     monkeypatch.setattr(loader, "get_ingestion_config", lambda: IngestionConfigManifest(ingest_job_id=123))
     run_id = mock_db.start_run("ingestion_confirmation")
-    task_id = mock_db.add_player_task(run_id)
+    task_id = mock_db.add_player_task(run_id, is_refresh=is_refresh)
     mock_db.add_player_records("p1", "players.parquet", task_id, "na1", "solo", "GOLD", "I", "15.1")
+    mock_db.update_player_task(task_id, "success", file_path="players.parquet")
+    if not is_refresh:
+        mock_db.set_rank_page_claim(task_id, {"claim_token": "discovery", "player_count": 1})
     player = {"puuid": "p1", "region": "na1", "queueType": "solo", "wins": 3, "losses": 2}
     for dataset in loader.COMPACTED_FILENAMES:
         pq.write_table(pa.Table.from_pylist([player]), tmp_path / loader.COMPACTED_FILENAMES[dataset])
     monkeypatch.setattr(loader, "_upload", lambda *args: None)
     commits = []
-    monkeypatch.setattr(loader.player_registry, "upsert_players", lambda players: commits.append(players))
+    monkeypatch.setattr(
+        loader.player_registry,
+        "upsert_players",
+        lambda players, **kwargs: commits.append((players, kwargs.get("is_refresh", False))),
+    )
+    cursors = []
+    monkeypatch.setattr(loader.player_registry, "complete_rank_page", lambda *args: cursors.append(args) or 2)
     monkeypatch.setattr(loader, "run_ingestion", lambda *args: False)
     assert loader.load_compacted() is False
     assert commits == []
+    assert cursors == []
     assert mock_db.count_incomplete_loads() == 1
     assert len(list(tmp_path.glob("*.parquet"))) == 2
     monkeypatch.setattr(loader, "run_ingestion", lambda *args: True)
     assert loader.load_compacted() is True
     assert len(commits) == 1
+    assert commits[0][1] is is_refresh
+    assert commits[0][0][0]["observed_at"]
+    assert cursors == ([] if is_refresh else [("discovery", 1)])
     assert mock_db.count_incomplete_loads() == 0
+    loader.complete_loaded_rank_pages()
+    assert len(cursors) == (0 if is_refresh else 1)
+
+
+@pytest.mark.parametrize("next_page", [0, 2])
+def test_cursor_waits_for_every_player_and_tolerates_expired_claim(mock_db, monkeypatch, next_page):
+    run_id = mock_db.start_run("partial_page_load")
+    task_id = mock_db.add_player_task(run_id)
+    mock_db.set_rank_page_claim(task_id, {"claim_token": "partial", "player_count": 2})
+    mock_db.update_player_task(task_id, "success", file_path="players.parquet")
+    for puuid in ("p1", "p2"):
+        mock_db.add_player_records(puuid, "players.parquet", task_id, "na1", "solo", "GOLD", "I", "15.1")
+    players = [{"puuid": puuid, "region": "na1", "queueType": "solo"} for puuid in ("p1", "p2")]
+    cursors = []
+    monkeypatch.setattr(loader.player_registry, "complete_rank_page", lambda *args: cursors.append(args) or next_page)
+    mock_db.update_load_status("players", players[:1], "load_success")
+    loader.complete_loaded_rank_pages()
+    assert cursors == []
+    mock_db.update_load_status("players", players[1:], "load_success")
+    loader.complete_loaded_rank_pages()
+    assert cursors == [("partial", 2)]
+    with mock_db.get_connection() as conn:
+        assert conn.execute(
+            "SELECT rank_page_claim FROM player_tasks WHERE task_id = ?", (task_id,)
+        ).fetchone()[0] is None
+
+
+def test_old_local_schema_adds_task_details_without_reset(mock_conn):
+    mock_conn.execute("ALTER TABLE player_tasks DROP COLUMN rank_page_claim")
+    run_id = loader.db.start_run("old_schema", conn=mock_conn)
+    task_id = loader.db.add_player_task(run_id, conn=mock_conn)
+    loader.db.set_rank_page_claim(task_id, {"claim_token": "old", "player_count": 1}, conn=mock_conn)
+    assert mock_conn.execute("SELECT status FROM runs WHERE run_id = ?", (run_id,)).fetchone()[0] == "running"
+    assert mock_conn.execute("SELECT rank_page_claim FROM player_tasks WHERE task_id = ?", (task_id,)).fetchone()[0]
 
 
 def test_empty_load_does_not_submit_an_ingestion_job(monkeypatch):

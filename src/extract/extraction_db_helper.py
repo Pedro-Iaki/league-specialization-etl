@@ -149,6 +149,72 @@ def update_player_task(
             conn.close()
 
 
+def set_rank_page_claim(task_id: int, claim: dict | None, conn: sqlite3.Connection | None = None):
+    """Keep discovery details on the existing task until its players are ingested."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        # Older local databases receive this nullable task column without a reset.
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(player_tasks)")}
+        if "rank_page_claim" not in columns:
+            conn.execute("ALTER TABLE player_tasks ADD COLUMN rank_page_claim TEXT")
+        conn.execute(
+            "UPDATE player_tasks SET rank_page_claim = ? WHERE task_id = ?",
+            (json.dumps(claim) if claim is not None else None, task_id),
+        )
+        if own_conn:
+            conn.commit()
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def get_loaded_rank_pages(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Find saved page claims whose tracked player records have all loaded."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(player_tasks)")}
+    if "rank_page_claim" not in columns:
+        return []
+    return conn.execute(
+        """
+        SELECT task_id, rank_page_claim FROM player_tasks AS task
+        WHERE task.status = 'success' AND task.rank_page_claim IS NOT NULL
+          AND EXISTS (
+              SELECT 1 FROM players_recorded, json_each(player_task_ids) AS ids
+              WHERE ids.value = task.task_id
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM players_recorded, json_each(player_task_ids) AS ids
+              WHERE ids.value = task.task_id AND player_load_status != 'load_success'
+          )
+        ORDER BY task_id
+        """
+    ).fetchall()
+
+
+def get_player_observations(
+    players: list[dict], conn: sqlite3.Connection | None = None
+) -> dict[tuple[str, str, str], dict]:
+    """Return collection times and refresh flags from each player's latest task."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT player_id, region, queue, task.finished_at, task.is_refresh
+            FROM players_recorded AS player
+            JOIN player_tasks AS task ON task.task_id = json_extract(player.player_task_ids, '$[#-1]')
+            WHERE player_id IN (SELECT value FROM json_each(?)) AND task.status = 'success'
+            """,
+            (json.dumps([player["puuid"] for player in players]),),
+        ).fetchall()
+        return {(row["player_id"], row["region"], row["queue"]): dict(row) for row in rows}
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def add_player_records(
     player_id: str,
     file_path: str,

@@ -37,8 +37,8 @@ def ensure_schema(conn: psycopg.Connection) -> None:
     conn.execute(_SCHEMA_PATH.read_text())  # type: ignore
 
 
-def upsert_players(players: list[dict], conn: psycopg.Connection | None = None) -> int:
-    """Register ingested player snapshots without counting a repeated load as inactivity."""
+def upsert_players(players: list[dict], conn: psycopg.Connection | None = None, *, is_refresh: bool = False) -> int:
+    """Register ingested observations; repeated or older observations change nothing."""
     if not players:
         return 0
 
@@ -55,22 +55,28 @@ def upsert_players(players: list[dict], conn: psycopg.Connection | None = None) 
             else None
             for player in players
         ]
+        observed_at = [player.get("observed_at") for player in players]
         cur = conn.execute(
             """
-            INSERT INTO player_state_registry (puuid, region, queue, queue_games_total)
-            SELECT * FROM unnest(%s::text[], %s::text[], %s::text[], %s::integer[])
+            INSERT INTO player_state_registry (puuid, region, queue, queue_games_total, last_updated_at)
+            SELECT puuid, region, queue, games_total, COALESCE(observed_at, now())
+            FROM unnest(%s::text[], %s::text[], %s::text[], %s::integer[], %s::timestamptz[])
+                AS observations(puuid, region, queue, games_total, observed_at)
             WHERE true
             ON CONFLICT (puuid, region, queue) DO UPDATE SET
                 inactive_streak = CASE
                     WHEN EXCLUDED.queue_games_total IS NOT NULL
                      AND player_state_registry.queue_games_total IS DISTINCT FROM EXCLUDED.queue_games_total
                     THEN 0
+                    WHEN %s AND EXCLUDED.queue_games_total IS NOT NULL
+                    THEN player_state_registry.inactive_streak + 1
                     ELSE player_state_registry.inactive_streak
                 END,
                 queue_games_total = COALESCE(EXCLUDED.queue_games_total, player_state_registry.queue_games_total),
-                last_updated_at = now()
+                last_updated_at = EXCLUDED.last_updated_at
+            WHERE EXCLUDED.last_updated_at > player_state_registry.last_updated_at
             """,
-            (puuids, regions, queues, games_totals),
+            (puuids, regions, queues, games_totals, observed_at, is_refresh),
         )
         if own_conn:
             conn.commit()
@@ -88,7 +94,7 @@ def record_refresh_result(
     claimed_by: str,
     conn: psycopg.Connection | None = None,
 ) -> int:
-    """Record a completed refresh; None means the tracked queue had no entry."""
+    """Record a no-file refresh result while its claim is still held."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -392,7 +398,7 @@ def complete_rank_page(
     player_count: int,
     conn: psycopg.Connection | None = None,
 ) -> int:
-    """Advance a reserved cursor after a validated API page."""
+    """Advance after ingestion, or immediately for a page with nothing to load."""
     if player_count < 0:
         raise ValueError("player_count must be nonnegative")
     own_conn = conn is None
@@ -415,11 +421,10 @@ def complete_rank_page(
             """,
             (player_count, player_count, player_count, player_count, claim_token),
         ).fetchone()
-        if row is None:
-            raise RuntimeError("Rank page claim expired or was already completed")
         if own_conn:
             conn.commit()
-        return int(row[0])
+        # Another worker may have completed or reclaimed this cursor meanwhile.
+        return int(row[0]) if row is not None else 0
     finally:
         if own_conn:
             conn.close()

@@ -61,64 +61,67 @@ def run(
         player_registry.release_rank_page(str(page_claim["claim_token"]))
         raise
 
-    players = fetch_players(
-        task_id=task_id,
-        api_client=api_client,
-        region=region,
-        queue=queue,
-        tier=tier,
-        division=division,
-        page_claim=page_claim,
-    )
-    if players is None:
-        return
+    saved = False
+    claim_pending = False
+    try:
+        players = fetch_players(
+            task_id=task_id,
+            api_client=api_client,
+            region=region,
+            queue=queue,
+            tier=tier,
+            division=division,
+            page_claim=page_claim,
+        )
+        if players is None:
+            return
+        claim_pending = bool(players)
 
-    # Remove players that are fresh in our player registry
-    snapshot_player_ids = {player["puuid"] for player in players if player.get("puuid")}
-    fresh_players = get_fresh_players(
-        freshness_minutes,
-        region=region,
-        queue=queue,
-        puuids=list(snapshot_player_ids),
-    )
-    fresh_player_ids = {player["puuid"] for player in fresh_players if player.get("puuid")}
-    snapshot_fresh_ids = snapshot_player_ids.intersection(fresh_player_ids)
-    snapshot_viable_players = [p for p in players if p.get("puuid") not in snapshot_fresh_ids]
+        # Remove players that are fresh in our player registry.
+        snapshot_player_ids = {player["puuid"] for player in players if player.get("puuid")}
+        fresh_players = get_fresh_players(
+            freshness_minutes,
+            region=region,
+            queue=queue,
+            puuids=list(snapshot_player_ids),
+        )
+        fresh_player_ids = {player["puuid"] for player in fresh_players if player.get("puuid")}
+        snapshot_viable_players = [p for p in players if p.get("puuid") not in fresh_player_ids]
+        if not snapshot_viable_players:
+            # Empty pages reset in fetch_players; already-ingested players need no new load.
+            if players:
+                player_registry.complete_rank_page(str(page_claim["claim_token"]), len(players))
+                claim_pending = False
+            db.update_player_task(task_id, "success", file_path=None)
+            return
 
-    # Then discard the snapshot if the remaining players are all already recorded in the database
-    recorded_players_ids = set(
-        db.get_players_recorded(patch=patch, region=region, queue=queue, tier=tier, division=division)
-    )
-    all_recorded = {p["puuid"] for p in snapshot_viable_players if p.get("puuid")}.issubset(recorded_players_ids)
-    if all_recorded or len(snapshot_viable_players) == 0:
-        logger.info(f"No new or stale players found for {region} {queue} {tier} {division}.")
-        db.update_player_task(task_id, "success", file_path=None)
-        return
+        recorded_players_ids = set(
+            db.get_players_recorded(patch=patch, region=region, queue=queue, tier=tier, division=division)
+        )
+        if {p["puuid"] for p in snapshot_viable_players}.issubset(recorded_players_ids):
+            logger.info(f"Players already recorded locally for {region} {queue} {tier} {division}; awaiting load.")
+            db.update_player_task(task_id, "success", file_path=None)
+            return
 
-    logger.info(
-        f"Fetched {len(snapshot_viable_players)}/{len(players)} (unique/total) players for {region} {queue} {tier} {division}."
-    )
-
-    output_path = save_players(
-        snapshot_viable_players,
-        output_path=OUTPUT_PATH,
-        player_info={
-            "region": region,
-            "queue": queue,
-            "tier": tier,
-            "division": division,
-            "date": date,
-            "time": time,
-        },
-        patch=patch,
-    )
-
-    db.update_player_task(task_id, "success", file_path=str(output_path))
-    for player in snapshot_viable_players:
-        puuid = player.get("puuid")
-        if puuid:
+        logger.info(
+            f"Fetched {len(snapshot_viable_players)}/{len(players)} (unique/total) players for {region} {queue} {tier} {division}."
+        )
+        output_path = save_players(
+            snapshot_viable_players,
+            output_path=OUTPUT_PATH,
+            player_info={
+                "region": region,
+                "queue": queue,
+                "tier": tier,
+                "division": division,
+                "date": date,
+                "time": time,
+            },
+            patch=patch,
+        )
+        for player in snapshot_viable_players:
             db.add_player_records(
-                puuid,
+                player["puuid"],
                 str(output_path),
                 region=region,
                 queue=queue,
@@ -127,6 +130,12 @@ def run(
                 player_task_id=task_id,
                 patch=patch,
             )
+        db.set_rank_page_claim(task_id, {"claim_token": str(page_claim["claim_token"]), "player_count": len(players)})
+        db.update_player_task(task_id, "success", file_path=str(output_path))
+        saved = True
+    finally:
+        if not saved and claim_pending:
+            player_registry.release_rank_page(str(page_claim["claim_token"]))
 
 
 def fetch_players(
@@ -146,7 +155,7 @@ def fetch_players(
         return None
     page = int(page_claim["page"])
     url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}"
-    page_completed = False
+    page_received = False
     try:
         db.update_player_task(task_id, "in_progress")
         try:
@@ -169,19 +178,17 @@ def fetch_players(
 
         raw_payload = response.json()
         validated_players = [models.RiotPlayerEntry.model_validate(p).model_dump() for p in raw_payload]
-        player_registry.complete_rank_page(str(page_claim["claim_token"]), len(validated_players))
-        page_completed = True
         if len(validated_players) == 0:
+            player_registry.complete_rank_page(str(page_claim["claim_token"]), 0)
             logger.info("No players found for {} {} {} {}; page cursor reset.", region, queue, tier, division)
-            return []
-        else:
-            return validated_players
+        page_received = True
+        return validated_players
     except (RuntimeError, ValueError) as e:
         logger.error(f"Error validating player data for {region} {queue} {tier} {division}: {e}")
         db.update_player_task(task_id, "failed", error_message=f"Validation error: {e}")
         return None
     finally:
-        if not page_completed:
+        if not page_received:
             player_registry.release_rank_page(str(page_claim["claim_token"]))
 
 

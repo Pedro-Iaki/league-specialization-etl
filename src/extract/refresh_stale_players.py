@@ -83,13 +83,6 @@ def run(
                 )
                 continue
             players_refreshed += 1
-            player_registry.record_refresh_result(
-                player["puuid"],
-                player["region"],
-                player["queue"],
-                int(player_entry["wins"]) + int(player_entry["losses"]),
-                worker,
-            )
 
             logger.info("Refreshing mastery for player...")
             if handle_mastery_extraction(

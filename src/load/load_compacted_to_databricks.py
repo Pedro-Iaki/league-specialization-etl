@@ -1,3 +1,4 @@
+import json
 import sys
 from contextlib import closing
 from datetime import datetime, timezone
@@ -50,6 +51,13 @@ def load_dataset(dataset: str) -> dict:
             registry_columns.extend(["wins", "losses"])
         rows = table.select(registry_columns).to_pylist()
         players = list({(row["puuid"], row["region"], row["queueType"]): row for row in rows}.values())
+        if dataset == "players":
+            observations = db.get_player_observations(players)
+            for player in players:
+                observation = observations.get((player["puuid"], player["region"], player["queueType"]))
+                if observation:
+                    player["observed_at"] = observation["finished_at"]
+                    player["is_refresh"] = bool(observation["is_refresh"])
     except Exception as e:  # noqa: BLE001 - malformed Parquet must not be treated as loaded
         logger.error(f"Failed to extract players from {dataset}: {e}")
         return {"dataset": dataset, "status": "extract_failed", "rows": table.num_rows, "players": 0}
@@ -74,6 +82,19 @@ def mark_load_status(results: list[dict], status: str) -> None:
                 db.update_load_status(result["dataset"], result["records"], status, conn=conn)
 
 
+def complete_loaded_rank_pages() -> None:
+    """Advance only discovery tasks whose players have confirmed SQLite load flags."""
+    with closing(db.get_connection()) as conn, conn:
+        for task in db.get_loaded_rank_pages(conn):
+            claim = json.loads(task["rank_page_claim"])
+            next_page = player_registry.complete_rank_page(claim["claim_token"], claim["player_count"])
+            if not next_page:
+                logger.info(
+                    "Page claim for task {} expired or was already completed; keeping ingested data.", task["task_id"]
+                )
+            db.set_rank_page_claim(task["task_id"], None, conn=conn)
+
+
 def load_compacted() -> bool:
     config = get_ingestion_config()
     results = [load_dataset(dataset) for dataset in ("players", "masteries")]
@@ -91,8 +112,14 @@ def load_compacted() -> bool:
     try:
         for result in results:
             if result["dataset"] == "players" and result.get("records"):
-                player_registry.upsert_players(result["records"])
+                discovered = [player for player in result["records"] if not player.get("is_refresh")]
+                refreshed = [player for player in result["records"] if player.get("is_refresh")]
+                if discovered:
+                    player_registry.upsert_players(discovered)
+                if refreshed:
+                    player_registry.upsert_players(refreshed, is_refresh=True)
         mark_load_status(results, "load_success")
+        complete_loaded_rank_pages()
     except Exception as error:  # noqa: BLE001 - registry/ledger failures must prevent local cleanup
         mark_load_status(results, "load_failed")
         logger.error(f"Ingestion succeeded but registry/ledger updates failed: {error}. Retaining local files.")

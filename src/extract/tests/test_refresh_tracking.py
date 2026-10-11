@@ -28,7 +28,7 @@ def _stub_claims(monkeypatch):
     return recorded, released
 
 
-def test_rank_result_updates_tracking_even_if_mastery_fails(monkeypatch):
+def test_rank_fetch_leaves_tracking_unchanged_even_if_mastery_fails(monkeypatch):
     recorded, released = _stub_claims(monkeypatch)
     monkeypatch.setattr(
         refresh,
@@ -41,9 +41,9 @@ def test_rank_result_updates_tracking_even_if_mastery_fails(monkeypatch):
 
     assert result["players_refreshed"] == 1
     assert result["masteries_refreshed"] == 0
-    assert len(recorded) == 1
-    assert recorded[0][:4] == ("p1", "na1", "RANKED_SOLO_5x5", 20)
-    assert released == [(["p1"], recorded[0][4])]
+    assert recorded == []
+    assert len(released) == 1
+    assert released[0][0] == ["p1"]
 
 
 def test_absent_queue_counts_as_inactive_rank_result(monkeypatch):

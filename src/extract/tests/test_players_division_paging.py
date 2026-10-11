@@ -1,3 +1,5 @@
+import json
+
 import get_players
 
 import extract.tests.t_utilities as util
@@ -67,7 +69,10 @@ def test_explicit_pair_uses_shared_page_claim(mock_db, monkeypatch, tmp_path):
     get_players.run(run_id, Client(), "na1", "RANKED_SOLO_5x5", tier="GOLD", division="II")
 
     assert claims == [("na1", "RANKED_SOLO_5x5", "15.1", ["GOLD"], ["II"])]
-    assert completed == [("claim-1", 1)]
+    assert completed == []
+    with mock_db.get_connection() as conn:
+        claim = conn.execute("SELECT rank_page_claim FROM player_tasks WHERE run_id = ?", (run_id,)).fetchone()[0]
+    assert json.loads(claim) == {"claim_token": "claim-1", "player_count": 1}
     assert len(list(tmp_path.rglob("*.parquet"))) == 1
 
 
@@ -166,5 +171,51 @@ def test_general_crawl_claims_configured_tiers_and_divisions(mock_db, tmp_path, 
     assert claims == [
         ("na1", "RANKED_SOLO_5x5", "15.1", ["DIAMOND", "EMERALD", "PLATINUM"], ["I", "II"])
     ]
-    assert completed == [("claim-1", 1)]
+    assert completed == []
     assert len(list(tmp_path.rglob("*.parquet"))) == 1
+
+
+def test_failed_file_write_releases_claim_without_advancing(mock_db, tmp_path, monkeypatch):
+    import pytest
+
+    run_id = mock_db.start_run("save_failure")
+    released = []
+    completed = []
+    monkeypatch.setattr(get_players.player_registry, "release_rank_page", lambda token: released.append(token))
+    monkeypatch.setattr(get_players.player_registry, "complete_rank_page", lambda *args: completed.append(args))
+
+    class Client:
+        def get_patch(self):
+            return "15.1"
+
+        def get(self, url, **kwargs):
+            return util.FakeResponse([util.create_player_payload("p1")])
+
+    def failed_save(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(get_players, "save_players", failed_save)
+    with pytest.raises(OSError, match="disk full"):
+        get_players.run(run_id, Client(), "na1", "RANKED_SOLO_5x5")
+    assert released == ["test-claim"]
+    assert completed == []
+
+
+def test_already_ingested_page_advances_without_writing(mock_db, monkeypatch):
+    completed = []
+    monkeypatch.setattr(get_players.player_registry, "complete_rank_page", lambda *args: completed.append(args))
+    monkeypatch.setattr(get_players, "get_fresh_players", lambda *args, **kwargs: [{"puuid": "p1"}])
+
+    class Client:
+        def get_patch(self):
+            return "15.1"
+
+        def get(self, url, **kwargs):
+            return util.FakeResponse([util.create_player_payload("p1")])
+
+    def unexpected_save(*args, **kwargs):
+        raise AssertionError("Fresh players need no file")
+
+    monkeypatch.setattr(get_players, "save_players", unexpected_save)
+    get_players.run(mock_db.start_run("fresh_page"), Client(), "na1", "RANKED_SOLO_5x5")
+    assert completed == [("test-claim", 1)]
