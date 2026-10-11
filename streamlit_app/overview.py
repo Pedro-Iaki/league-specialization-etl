@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import streamlit as st
 from app_core import config as dashboard_config
 from app_core.analysis import AXIS_LABELS, binned_relationship, growth_scatter_data
 from app_core.charts import playstyle_outcome_chart, specialization_relationship_chart
 from app_core.config import PLAYSTYLE_ORDER, ROLE_ORDER, TIER_ORDER
 from app_core.data import DashboardDataError, data_freshness, load_dataset, load_optional_dataset
+from app_core.i18n import st
+from app_core.population import apply_tier_weights, calibrate_population, weighted_summary
+from app_core.population_ui import population_controls
 from app_core.ui import (
     data_source_caption,
     format_compact,
@@ -20,7 +22,7 @@ setup_page("Overview")
 minimum_support = getattr(dashboard_config, "MIN_SUPPORT_PLAYERS", 3)
 
 try:
-    players = load_dataset("players")
+    players = load_dataset("players", include_all_tiers=True)
     growth_players = load_optional_dataset("growth_players")
     growth_styles = load_optional_dataset("growth_player_styles")
 except DashboardDataError as error:
@@ -33,6 +35,17 @@ hero(
     "Compare mastery concentration with ranked progression in the tracked sample. "
     "These observational comparisons describe associations; they do not establish that specialization improves rank.",
 )
+try:
+    players, diagnostics, use_population_weights = population_controls(players)
+    if use_population_weights and growth_players is not None:
+        growth_players, growth_diagnostics = calibrate_population(growth_players, tier_column="starting_tier")
+        if growth_styles is not None:
+            growth_styles = apply_tier_weights(growth_styles, growth_diagnostics, "starting_tier")
+    elif use_population_weights and growth_styles is not None:
+        growth_styles, _ = calibrate_population(growth_styles, tier_column="starting_tier")
+except ValueError as error:
+    render_load_error(error)
+st.caption("Population mode weights pooled summaries before filters; individual points and support counts remain observations. Historical estimates describe represented player–tier observations with completed periods, not all ranked players.")
 
 section("Player comparison", "Pool concentration and rank growth")
 available_bases = ["Observed rank periods", "Active (60 days)", "All-time"] if growth_players is not None else [
@@ -125,12 +138,10 @@ else:
         st.info("No player groups match the selected tier and role.")
     else:
         st.caption("The chart compares observed playstyles by starting tier; the tier selector narrows the observations.")
-        summary = growth.groupby("playstyle", observed=True).agg(
-            observed_player_count=("climbing_efficiency", "count"),
-            observed_period_count=("period_count", "sum"),
-            climbing_efficiency=("climbing_efficiency", "mean"),
-            observed_win_rate=("win_rate", "mean"),
-        ).reset_index()
+        summary = weighted_summary(growth, "playstyle", {
+            "climbing_efficiency": "climbing_efficiency", "observed_win_rate": "win_rate",
+        }).rename(columns={"players": "observed_player_count"})
+        summary["observed_period_count"] = summary["playstyle"].map(growth.groupby("playstyle")["period_count"].sum())
         hidden_styles = int(summary["observed_player_count"].lt(minimum_players).sum())
         if hidden_styles:
             show_thin_outcomes = support_warning(

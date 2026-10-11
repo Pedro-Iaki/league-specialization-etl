@@ -23,6 +23,7 @@ from app_core.config import (
     TEXT,
     TIER_ORDER,
 )
+from app_core.population import eligible_weighted_rows, row_weights, weighted_quantile
 
 
 def style_figure(fig: go.Figure, *, height: int = 440, legend_title: str = "") -> go.Figure:
@@ -45,6 +46,34 @@ def style_figure(fig: go.Figure, *, height: int = 440, legend_title: str = "") -
     fig.update_xaxes(gridcolor=GRID, zerolinecolor=GRID, title_font_color=MUTED)
     fig.update_yaxes(gridcolor=GRID, zerolinecolor=GRID, title_font_color=MUTED)
     return fig
+
+
+def population_box_chart(frame: pd.DataFrame, value: str, group: str = "tier", *, horizontal: bool = False) -> go.Figure:
+    """Weighted quartiles and Tukey whiskers; hover counts remain observed."""
+    frame = eligible_weighted_rows(frame)
+    frame = frame.loc[frame[value].notna() & frame[group].notna()]
+    rows = []
+    for label, data in frame.groupby(group, observed=True):
+        weights = row_weights(data)
+        q1, median, q3 = [weighted_quantile(data[value], weights, q) for q in (0.25, 0.5, 0.75)]
+        in_fences = data[value].between(q1 - 1.5 * (q3 - q1), q3 + 1.5 * (q3 - q1))
+        rows.append({"group": label, "q1": q1, "median": median, "q3": q3,
+                     "lower": min(q1, data.loc[in_fences, value].min()),
+                     "upper": max(q3, data.loc[in_fences, value].max()), "n": len(data)})
+    data = pd.DataFrame(rows, columns=["group", "q1", "median", "q3", "lower", "upper", "n"])
+    fig = go.Figure(go.Box(
+        **{"y" if horizontal else "x": data["group"]},
+        q1=data["q1"], median=data["median"], q3=data["q3"],
+        lowerfence=data["lower"], upperfence=data["upper"], boxpoints=False,
+        orientation="h" if horizontal else "v", marker_color=GOLD,
+        customdata=data[["n"]].to_numpy(), name="Player distribution",
+        hovertemplate="Median: %{median}<br>Players: %{customdata[0]:,}<extra></extra>",
+    ))
+    if horizontal:
+        fig.update_yaxes(categoryorder="array", categoryarray=TIER_ORDER, title="Current tier")
+    else:
+        fig.update_xaxes(categoryorder="array", categoryarray=TIER_ORDER, title="Current tier")
+    return style_figure(fig, height=490)
 
 
 def annotate_sparse_cells(
@@ -515,26 +544,34 @@ def specialization_relationship_chart(
     return style_figure(fig, height=580, legend_title=tier_label)
 
 
-def composition_view_chart(frame: pd.DataFrame, group: str) -> go.Figure:
+def composition_view_chart(frame: pd.DataFrame, group: str, *, normalized: bool = False) -> go.Figure:
     plot = frame.copy()
     plot["Playstyle"] = plot["playstyle"].map(PLAYSTYLE_LABELS)
     fig = px.bar(
         plot,
         x=group,
-        y="share",
+        y="relative_share" if normalized else "share",
         color="Playstyle",
         color_discrete_map={PLAYSTYLE_LABELS[key]: color for key, color in PLAYSTYLE_COLORS.items()},
         category_orders={
             group: TIER_ORDER if group == "tier" else ROLE_ORDER if group == "main_role" else sorted(plot[group].dropna().unique()),
             "Playstyle": [PLAYSTYLE_LABELS[key] for key in PLAYSTYLE_ORDER],
         },
-        custom_data=["players"],
+        custom_data=["players", "share", "baseline_share", "median_mastery"] if normalized else ["players"],
     )
-    fig.update_layout(barmode="stack")
+    fig.update_layout(barmode="group" if normalized else "stack")
     fig.update_traces(
         hovertemplate="%{x}<br>%{fullData.name}: %{y:.1%}<br>Players: %{customdata[0]:,}<extra></extra>"
     )
     fig.update_yaxes(title="Share within group", tickformat=".0%")
+    if normalized:
+        fig.update_traces(hovertemplate=(
+            "%{x}<br>%{fullData.name}: %{y:.2f}× baseline"
+            "<br>Players: %{customdata[0]:,}<br>Observed share: %{customdata[1]:.1%}"
+            "<br>Expected share: %{customdata[2]:.1%}<br>Median mastery: %{customdata[3]:,.0f}<extra></extra>"
+        ))
+        fig.update_yaxes(title="Observed / mastery-expected share", tickformat=".2f")
+        fig.add_hline(y=1, line_dash="dot", line_color=MUTED)
     fig.update_xaxes(title="Current tier" if group == "tier" else "Current inferred role" if group == "main_role" else "Rank-score band")
     return style_figure(fig, height=460)
 

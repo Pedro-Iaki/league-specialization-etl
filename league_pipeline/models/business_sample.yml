@@ -1,0 +1,46 @@
+version: 2
+models:
+  - name: bronze_transactions
+    description: Complete generated historical events from the hypothetical endpoint; one row per transaction_id.
+    columns:
+      - name: transaction_id
+        data_tests: [unique, not_null]
+  - name: fct_transactions
+    description: Synthetic purchase events with fictional SKU category and currency kind. Only fiat amount_usd is cash revenue.
+    columns:
+      - name: transaction_id
+        data_tests: [unique, not_null]
+      - name: product_id
+        data_tests:
+          - relationships:
+              arguments: {to: "ref('sample_products')", field: product_id}
+      - name: currency_id
+        data_tests:
+          - relationships:
+              arguments: {to: "ref('sample_currencies')", field: currency_id}
+  - name: mart_player_spending
+    description: One row per frozen real player, including non-cash buyers. All purchases, ownership and customer types are simulated; relationships were imposed by the generator. Full history means generated history, not observed lifetime spending.
+    columns:
+      - name: player_id
+        data_tests: [unique, not_null]
+      - name: first_purchase_at
+        description: Earliest event in complete simulated history; a tenure proxy, never real account creation.
+        data_tests: [not_null]
+      - name: payment_consistency_alltime
+        description: 1 / (1 + population CV of gaps between distinct fiat purchase dates); null with fewer than three distinct purchase dates.
+      - name: payment_frequency_alltime
+        description: Active fiat calendar months divided by inclusive calendar months since first generated purchase.
+      - name: payment_intensity_alltime
+        description: Source-provided USD cash sum divided by active cash months; null with no cash purchasing months.
+      - name: cosmetic_bias_alltime
+        description: Cosmetic event count / content event count (champion unlocks and cosmetics), excluding cash top-ups.
+      - name: ranked_mastery_share
+        description: Optional frozen median of valid observed period estimates; null when unobserved, not measured ranked-game share.
+      - name: cash_discounted_purchase_count_60d
+        description: Number of discounted fiat events in the inclusive recent window; zero for nonpayers. Game-currency discounts are excluded.
+      - name: cash_discount_share_60d
+        description: Discounted recent fiat events / all recent fiat events; null without recent cash purchases.
+      - name: cash_discount_mean_60d
+        description: Mean of 1 - amount_spent / original_price among discounted recent fiat events; null without discounted cash purchases.
+      - name: simulated_owned_champions
+        description: Fictional inventory of at least 20; distinct from BE purchases and real champions with mastery.

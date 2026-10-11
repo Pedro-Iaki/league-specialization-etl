@@ -1,0 +1,43 @@
+version: 2
+
+models:
+  - name: mart_player_population_weights
+    description: Relative tier post-stratification weights calibrated on the current unfiltered profile cohort within region/queue. Apply before analyst filters; population scope is an assumption and missing tiers are not imputed.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [player_id, region, queue]
+    columns:
+      - name: player_id
+        description: Private warehouse join key inherited from the current profile; excluded from analyst snapshot exports.
+        tests: [not_null]
+      - name: region
+        description: Profile platform region; one calibration partition with queue.
+      - name: queue
+        description: Profile ranked queue; one calibration partition with region.
+      - name: tier
+        description: Current tier used for calibration, inherited from the profile.
+      - name: profile_as_of_date
+        description: Analytical date of the profile joined to this live view.
+      - name: profile_snapshot_date
+        description: Rank snapshot date of the profile joined to this live view.
+      - name: scope_sample_players
+        description: Unfiltered profile count across supported tiers in this region/queue.
+      - name: tier_sample_players
+        description: Unfiltered profile count for this current tier in this region/queue.
+      - name: sample_tier_share
+        description: Actual sample share n_t/N; never assumes extraction produced exactly equal tier counts.
+      - name: estimated_population_share
+        description: Full-ladder tier estimate p_t from the frozen reference.
+      - name: supported_target_share
+        description: Tier estimate p_t/C normalized over represented tiers in this scope.
+      - name: population_weight
+        description: Mean-one relative weight over supported players in each region/queue; undefined for tiers outside the manual reference. This is not a population count.
+      - name: covered_population_share
+        description: Sum of full-reference tier shares with sampled players in this scope. Estimates are conditional on those represented tiers.
+      - name: reference_version
+        description: Version of the manually maintained distribution used in the calculation.
+      - name: reference_recorded_on
+        description: Receipt date of the supplied estimate, not its unknown observation date.
+      - name: reference_review_after
+        description: Manual maintenance reminder copied from the active seed; it does not expire or replace the estimate.

@@ -1,0 +1,142 @@
+"""Build an anonymous analyst bundle from the existing snapshot, without warehouse access."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import sys
+from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
+
+import pandas as pd
+
+APP_ROOT = Path(__file__).resolve().parents[1]
+if str(APP_ROOT) not in sys.path:
+    sys.path.insert(0, str(APP_ROOT))
+
+from app_core.config import REPO_ROOT
+from app_core.population import (
+    WEIGHT,
+    calibrate_population,
+    category_summary,
+    effective_sample_size,
+    load_reference,
+    reference_fingerprint,
+    weighted_mean,
+    weighted_quantile,
+)
+
+
+def export_bundle(snapshot: Path, output_dir: Path) -> dict:
+    players = pd.read_parquet(snapshot)
+    forbidden = {"player_id", "puuid", "summoner_id", "account_id", "game_name", "tag_line", "riot_id"}
+    if forbidden.intersection(players.columns):
+        raise ValueError("Analyst bundle requires the anonymous dashboard snapshot")
+    reference = load_reference()
+    weighted, diagnostics = calibrate_population(players, reference)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    weighted["reference_version"] = reference["reference_version"].iloc[0]
+    exported_names = [
+        "anonymous_weighted_profiles.parquet",
+        "rank_population_reference.csv",
+        "weighting_diagnostics.csv",
+    ]
+    weighted.to_parquet(output_dir / "anonymous_weighted_profiles.parquet", index=False)
+    reference.to_csv(output_dir / "rank_population_reference.csv", index=False)
+    diagnostics.to_csv(output_dir / "weighting_diagnostics.csv", index=False)
+    for column in ("tier", "main_role", "active_playstyle", "alltime_playstyle", "active_primary_champion_name"):
+        frame = weighted.copy()
+        frame[column] = frame[column].fillna("Unclassified")
+        category_summary(frame, column).to_csv(output_dir / f"{column}_estimates.csv", index=False)
+        exported_names.append(f"{column}_estimates.csv")
+    metrics = []
+    for column in (
+        "total_mastery_points",
+        "rank_score",
+        "active_hhi",
+        "active_top1_share",
+        "lp_per_game_recent",
+        "win_rate_recent",
+    ):
+        values = pd.to_numeric(weighted[column], errors="coerce")
+        valid = values.notna() & weighted[WEIGHT].notna()
+        metrics.append(
+            {
+                "metric": column,
+                "observed_players": int(valid.sum()),
+                "effective_players": effective_sample_size(weighted.loc[valid, WEIGHT]),
+                "sample_mean": values[valid].mean(),
+                "estimated_mean": weighted_mean(values, weighted[WEIGHT]),
+                "sample_median": values[valid].median(),
+                "estimated_median": weighted_quantile(values, weighted[WEIGHT]),
+            }
+        )
+    pd.DataFrame(metrics).to_csv(output_dir / "metric_estimates.csv", index=False)
+    exported_names.extend(["metric_estimates.csv", "manifest.json", "ANALYST_HANDOFF.md"])
+    metadata = {
+        "reference_version": str(reference["reference_version"].iloc[0]),
+        "reference_recorded_on": str(reference["recorded_on"].iloc[0]),
+        "reference_observation_date": None,
+        "reference_scope": str(reference["reference_scope"].iloc[0]),
+        "reference_sha256": reference_fingerprint(reference),
+        "source_snapshot": snapshot.name,
+        "source_snapshot_sha256": hashlib.sha256(snapshot.read_bytes()).hexdigest(),
+        "observed_players": len(weighted),
+        "eligible_players": int(weighted[WEIGHT].notna().sum()),
+        "effective_players": effective_sample_size(weighted[WEIGHT]),
+        "covered_share_min": float(diagnostics["covered_population_share"].min()),
+        "covered_share_max": float(diagnostics["covered_population_share"].max()),
+        "calibration": "Current tier within each available region/queue before filters",
+        "regional_queue_mix": "Sample proportions; relative population sizes unknown",
+        "export_files": sorted(exported_names),
+    }
+    if "as_of_date" in players:
+        metadata["latest_profile_date"] = str(pd.to_datetime(players["as_of_date"]).max().date())
+    (output_dir / "manifest.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    report = f"""# Population estimates — analyst handoff
+
+Reference: **{metadata["reference_version"]}**. Received on {metadata["reference_recorded_on"]}; observation date and region/queue are unspecified.
+
+This bundle uses {metadata["observed_players"]:,} anonymous player profiles ({metadata["eligible_players"]:,} eligible for weighting). Effective sample size is {metadata["effective_players"]:,.1f}. Reference coverage across scopes ranges from {metadata["covered_share_min"]:.2%} to {metadata["covered_share_max"]:.2%}. Missing tiers are not imputed; results describe represented tiers only.
+
+Open **Population Estimates** in the Streamlit dashboard to compare sample and weighted estimates, filter the cohort and download tables. **Population Analysis** also offers the denominator selector for its player-based analyses. Other dashboard pages retain their documented sample aggregates.
+
+## Bundle contents
+
+- `anonymous_weighted_profiles.parquet`: anonymous profiles with `population_weight` and `reference_version`.
+- `rank_population_reference.csv`: the exact frozen tier shares.
+- `weighting_diagnostics.csv`: scope/tier counts, raw and supported target shares, coverage and relative weights.
+- `*_estimates.csv`: sample versus weighted category shares and player metrics.
+- `manifest.json`: input snapshot hash, canonical reference hash, reference version, coverage and explicit bundle file list for reproducibility.
+
+## Use the weights
+
+For a mean: `sum(population_weight * value) / sum(population_weight)` over nonmissing values with valid weights. For a share: sum the weights of matching players and divide by the weights of eligible players. Keep the original weights when applying filters. Weighted mass is not a population count. Current tier is the calibration variable; recent outcomes remain conditional on observed players.
+
+Tier composition is adjusted under the supplied frozen estimate. Within-tier selection bias remains possible. Region and queue proportions remain those of the sample. This reference is an assumed distribution for each scope, not a verified regional estimate. Effective sample size reports weight dispersion, not reference uncertainty; no confidence intervals are claimed.
+
+## Manual reference maintenance
+
+Edit `league_pipeline/seeds/rank_population_reference.csv`, keep all ten positive shares summing to 1, and update version, recorded/review dates and provenance together. The dashboard flags review after {reference["review_after"].iloc[0]}; it does not fetch external data or silently replace the reference. New ranks require updating supported tier lists and reviewing chart/model coverage. Regenerate this bundle after a seed or snapshot change.
+
+Warehouse analysts can join `gold.mart_player_population_weights` to `gold.mart_player_profile` on player_id, region and queue after seeding/building the new resources. See `docs/population_weighting.md` for commands and scope details.
+
+The weight mart is a live view: source profile refreshes change sample counts and weights even with the same frozen reference version. Freeze the joined dataset together for a historical report. This bundle freezes the current input snapshot and its exact reference; it includes only the files explicitly listed in the manifest.
+"""
+    (output_dir / "ANALYST_HANDOFF.md").write_text(report, encoding="utf-8")
+    with ZipFile(output_dir / "population_estimates.zip", "w", ZIP_DEFLATED) as archive:
+        for name in sorted(exported_names):
+            path = output_dir / name
+            archive.write(path, path.name)
+    return metadata
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--snapshot", type=Path, default=APP_ROOT / "data" / "player_profiles.parquet")
+    parser.add_argument("--output-dir", type=Path, default=REPO_ROOT / "data" / "population_estimates")
+    args = parser.parse_args()
+    result = export_bundle(args.snapshot, args.output_dir)
+    print(json.dumps(result, indent=2))
+    print(f"Analyst bundle: {args.output_dir.resolve() / 'population_estimates.zip'}")

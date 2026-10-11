@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from app_core.config import PLAYSTYLE_ORDER, ROLE_ORDER, TIER_ORDER
+from app_core.population import eligible_weighted_rows, row_weights
 
 
 def classified_players(players: pd.DataFrame) -> pd.DataFrame:
@@ -39,13 +40,17 @@ def playstyle_tier_composition(players: pd.DataFrame) -> pd.DataFrame:
 
 
 def active_alltime_transition(players: pd.DataFrame, normalize: bool = True) -> pd.DataFrame:
+    players = eligible_weighted_rows(players)
     frame = players.loc[
         players["active_playstyle"].isin(PLAYSTYLE_ORDER) & players["alltime_playstyle"].isin(PLAYSTYLE_ORDER),
-        ["active_playstyle", "alltime_playstyle"],
-    ]
+    ].copy()
     matrix = pd.crosstab(frame["active_playstyle"], frame["alltime_playstyle"])
     matrix = matrix.reindex(index=PLAYSTYLE_ORDER, columns=PLAYSTYLE_ORDER, fill_value=0)
     if normalize:
+        frame["_weight"] = row_weights(frame)
+        matrix = frame.pivot_table(
+            index="active_playstyle", columns="alltime_playstyle", values="_weight", aggfunc="sum", observed=True,
+        ).reindex(index=PLAYSTYLE_ORDER, columns=PLAYSTYLE_ORDER, fill_value=0).fillna(0)
         denominator = matrix.sum(axis=1).replace(0, np.nan)
         matrix = matrix.div(denominator, axis=0)
     return matrix

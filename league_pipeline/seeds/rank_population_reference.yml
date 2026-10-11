@@ -1,0 +1,32 @@
+version: 2
+
+seeds:
+  - name: rank_population_reference
+    description: Manually reviewed estimated ladder shares; recorded_on is the receipt date, not the observation date. Region and queue of the supplied estimate are unspecified.
+    config:
+      schema: reference
+      tags: [population_weighting]
+      column_types:
+        population_share: double
+        recorded_on: date
+        review_after: date
+    columns:
+      - name: tier
+        tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [IRON, BRONZE, SILVER, GOLD, PLATINUM, EMERALD, DIAMOND, MASTER, GRANDMASTER, CHALLENGER]
+      - name: population_share
+        tests: [not_null]
+      - name: reference_version
+        tests: [not_null]
+      - name: recorded_on
+        tests: [not_null]
+      - name: review_after
+        tests: [not_null]
+      - name: source
+        tests: [not_null]
+      - name: reference_scope
+        tests: [not_null]

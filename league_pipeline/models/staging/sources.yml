@@ -5,6 +5,10 @@ sources:
     description: Raw Delta tables populated from the Riot API extraction and Databricks ingestion jobs.
     schema: raw
     tables:
+      - name: transactions
+        description: Complete synthetic purchase history loaded only by load_business_sample; never real Riot transactions.
+      - name: business_sample_players
+        description: Private frozen real ranked-player context plus fictional scenario attributes. Written last as the sample completion marker.
       - name: players
         description: Ranked player snapshots loaded from Riot league entries, before dbt deduplication and normalization.
         columns:

@@ -3,10 +3,10 @@ from __future__ import annotations
 import math
 
 import pandas as pd
-import streamlit as st
 
 from app_core.config import PLAYSTYLE_LABELS
 from app_core.data import configured_data_mode
+from app_core.i18n import st
 
 GLOBAL_CSS = """
 <style>
@@ -214,12 +214,13 @@ h1, h2, h3 {
 
 
 def setup_page(title: str, icon: str = "◈") -> None:
-    st.set_page_config(
-        page_title=f"{title} · League Specialization",
-        page_icon=icon,
-        layout="wide",
-        initial_sidebar_state="expanded",
-    )
+    if not st.session_state.get("_dashboard_app_shell"):
+        st.set_page_config(
+            page_title=f"{title} · League Specialization",
+            page_icon=icon,
+            layout="wide",
+            initial_sidebar_state="expanded",
+        )
     st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
 
@@ -329,6 +330,9 @@ def architecture_flow() -> None:
           <div class="flow-step"><strong>Gold</strong><span>analytical marts</span></div>
           <div class="flow-step"><strong>Streamlit</strong><span>public-safe data product</span></div>
         </div>
+        <p class="section-copy"><strong>Synthetic business branch:</strong>
+          freeze real Gold profiles → seeded fictional purchases → dedicated sample raw tables
+          → transaction models + player spending mart → anonymous business export.</p>
         """,
         unsafe_allow_html=True,
     )

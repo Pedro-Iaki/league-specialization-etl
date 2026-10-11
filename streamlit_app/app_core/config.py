@@ -54,6 +54,9 @@ BLUE = "#4EA5D9"
 GRID = "rgba(154,171,192,0.14)"
 
 DATASET_FILES = {
+    "champion_population_pairs": "champion_population_pairs.parquet",
+    "champion_population_activity": "champion_population_activity.parquet",
+    "business_players": "business_players.parquet",
     "players": "player_profiles.parquet",
     "champions": "champion_profiles.parquet",
     "champion_playstyles": "champion_playstyle_profiles.parquet",
@@ -69,6 +72,9 @@ DATASET_FILES = {
 }
 
 DATASET_LABELS = {
+    "champion_population_pairs": "Champion overlap by population tier",
+    "champion_population_activity": "Champion activity by population tier",
+    "business_players": "Business sample: synthetic purchases + real profiles",
     "players": "Player profiles",
     "champions": "Champion profiles",
     "champion_playstyles": "Champion × playstyle profiles",

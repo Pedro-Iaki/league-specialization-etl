@@ -4,6 +4,8 @@ How does concentrating play on a smaller set of champions relate to ranked progr
 
 I built this project as a software developer moving from mobile games into data engineering. Its main portfolio goal is to show end-to-end engineering: API collection under rate limits, durable collection state, historical data modeling, checks across pipeline stages, and an interactive dashboard. The research question gives that system a useful purpose. The data can reveal associations in the **tracked sample**; they cannot show that specializing causes a player to climb.
 
+The dashboard opens with a **business sample: synthetic purchases joined to frozen real player profiles**. Spending, inventory, customer types and their relationships are generated scenario inputs. The existing gameplay pages continue to analyze real Riot API observations. This separate branch demonstrates a purchase data model without claiming access to Riot customer transactions.
+
 In League of Legends, a player chooses a champion for each match. Ranked players occupy tiers and divisions and gain or lose League Points (LP). Champion mastery is a cumulative measure of experience with each champion. This project observes rank and mastery at intervals rather than collecting each match, then estimates how champion-pool choices relate to rank movement.
 
 ## What the project answers
@@ -26,7 +28,7 @@ The repository contains an end-to-end **extract, load, transform, and serve** pa
 | Collection | Riot API player and mastery extraction, local state and integrity checks, stale-player refresh | [Extraction code](src/extract/) |
 | Loading | Parquet compaction, Databricks landing-volume uploads, champion metadata load, and a Databricks ingestion notebook | [Loading code](src/load/) |
 | Transformation | dbt Bronze, Silver, and Gold models, schema tests, and business-rule tests | [dbt project README](league_pipeline/README.md) |
-| Presentation | Streamlit Overview, Population Analysis, Cross Champion View, and Champion Explorer, using included Parquet exports by default | [Dashboard README](streamlit_app/README.md) |
+| Presentation | Business Sample opening page, plus Overview, Population Analysis, Population Estimates, Cross Champion View, and Champion Explorer; anonymous Parquet exports and analyst bundles | [Dashboard README](streamlit_app/README.md) |
 | Orchestration | A deployed Databricks job for ingestion and layer-by-layer dbt builds, with its definition versioned here | [Job definition](resources/ingest_clean_transform.job.yml) |
 
 The included dashboard files are a **snapshot**, not a live feed. Their export timestamp and coverage are recorded in the [snapshot manifest](streamlit_app/data/manifest.json). The dbt README records the most recent documented full and incremental build; those results describe that validation run, not every future run. A public dashboard deployment is still planned.
@@ -59,10 +61,24 @@ This took roughly three months of self-directed work. The main lesson was that t
     A <--> P
     M --> C
 
+    F["Freeze real Gold player cohort"]
+    G["Generate synthetic purchase history"]
+    R["Sample-only raw tables + SKU/currency seeds"]
+    T["Bronze/Silver transactions → Gold player spending"]
+    Q["Manual tier population reference"]
+    W["Gold player population weights (live view)"]
+    D -. "read existing player + rank-period marts" .-> F
+    F --> G --> R --> T --> E
+    D --> W
+    Q --> W
+    Q -. "Python calibration over serving profiles" .-> E
+    W -. "optional warehouse analyst join" .-> E
+
     classDef stage fill:#dbeafe,stroke:#2563eb,color:#172554
     classDef supporting fill:#f3f4f6,stroke:#9ca3af,color:#374151
     class A,B,C,D,E stage
     class S,P,M supporting
+    class F,G,R,T,Q,W supporting
 ```
 
 The extractor scans configured ranked tiers and divisions, fetches mastery for discovered players, and revisits stale players. It records runs, tasks, files, and failures in local SQLite. Postgres is the sole source of rank-page cursors; the two databases do not synchronize pagination state. Postgres also keeps the durable player registry and refresh claims across collection cycles and machines. Before upload, raw Parquet files are compacted. The Databricks ingestion notebook loads landed player and mastery files into raw tables; champion names and reference positions are loaded separately. The current extractor does not yet delay every registry and cursor update until after downstream loading; that commit boundary is part of the [Airflow roadmap](TODO.md#airflow-orchestration-and-load-commit).
@@ -77,6 +93,7 @@ dbt preserves useful history and produces current records, rank periods, champio
 4. **Describe specialization.** The models calculate leading-champion share, concentration, entropy, and a favoured-champion subset for active, lifetime, or period pools. Exploratory clustering and game knowledge informed four profiles; a weighted, configurable dbt heuristic assigns specialist, multispecialist, versatile, or generalist. These are descriptions of measured pool shape, not validated behavioral types or skill grades.
 5. **Associate champions with outcomes.** Mastery gained during a period supplies weights for allocating that period's rank movement and games to favoured champions. The resulting champion figures are associations, not observed wins or LP earned while playing that champion. Champion summaries first aggregate within players so those with many periods do not automatically dominate the final average.
 6. **Compare and inspect.** Gold marts summarize players, champions, tiers, playstyles, and champion-pair overlap. The dashboard exposes support counts and controls for sparse groups. Co-occurrence measures shared player preference, not team synergy.
+7. **Estimate under a frozen tier mix.** A versioned manual seed supplies ten estimated tier shares. Player-based population views can weight actual sample counts within region/queue before analyst filters. Other pages' aggregate statistics retain sample definitions. Coverage and effective sample size expose the adjustment's limits; it cannot correct selection within tiers.
 
 The precise formulas, thresholds, model grains, and edge cases live in the [dbt model reference](league_pipeline/docs/model_reference.md) and [dbt configuration](league_pipeline/dbt_project.yml). Dashboard-specific reading guidance is in the [dashboard README](streamlit_app/README.md).
 
@@ -113,13 +130,40 @@ cd streamlit_app
 ..\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-See the [dashboard README](streamlit_app/README.md) for the four current pages, snapshot refresh, optional Databricks mode, and dashboard tests.
+See the [dashboard README](streamlit_app/README.md) for the business opening and five real gameplay/analyst pages, snapshot refresh, optional Databricks mode, and dashboard tests.
+
+The dashboard includes an **EN / PT** selector at the top. All six pages share centralized [English](streamlit_app/locales/en.json) and [Brazilian Portuguese](streamlit_app/locales/pt.json) dictionaries. Language selection persists across navigation and changes displayed copy without changing filters, stored data or USD amounts. See the [localization guide](streamlit_app/README.md#language-selection-and-translation-catalogs) for maintenance and verification.
+
+## Frozen population estimates
+
+The manual [tier-share seed](league_pipeline/seeds/rank_population_reference.csv)
+contains one active estimate version, received on 2026-10-10. Bronze and silver
+jointly account for 37.97%. Its observation date, region and queue are unspecified;
+using it for the tracked North America solo-queue sample is an explicit assumption.
+
+Open **Population Estimates** for sample/weighted comparisons, coverage,
+effective sample size, filters and analyst downloads. **Population Analysis**
+also has the denominator selector. The current 37,172-player snapshot covers
+99.94% of the reference; Grandmaster and Challenger are absent. Weights use the
+actual tier counts and remain attached when filtering.
+
+Generate the reproducible offline handoff with
+`python streamlit_app/scripts/export_population_estimates.py`. It writes a ZIP,
+anonymous weighted profiles, CSV comparisons, input/reference fingerprints and
+an analyst guide under `data/population_estimates/`. The optional warehouse
+weight view is implemented and locally parsed; this does not claim warehouse
+activation. See the [model catalog](league_pipeline/docs/model_reference.md#mart_player_population_weights)
+and [method, maintenance and design review](docs/population_weighting.md).
+
+## About the business sample
+
+    !!missing!!
 
 ### Reviewer walkthrough
 
 Use this route for a 60–90 second demo:
 
-1. Start at the [data-flow diagram](#data-flow). Explain the local collection ledger, shared player registry, and Databricks models.
+1. Start on **Business Sample**: explain the synthetic spending/real profile split, the purchaser denominator and USD cash-only view. The plots show imposed scenario shapes. Follow **Explore the real gameplay analysis** into the existing project, then show the separate branches in the [data-flow diagram](#data-flow).
 2. In **Overview** and **Population Analysis**, compare active and all-time playstyles by tier. The Master active-pool contrast is a finding; lower-tier specialization, 59 Master profiles, and the short observation window are its immediate caveats.
 3. Open one champion in **Champion Explorer**, then compare it with the champion universe in **Cross Champion View**. The separate pages keep the individual profile and the cross-champion baseline readable. Explain that role mix describes inferred player roles and that mastery-weighted rank outcomes are estimates.
 
@@ -129,7 +173,7 @@ A recording and public app link are planned in [TODO.md](TODO.md#dashboard-publi
 
 The full collection and warehouse path needs a Riot API key, a Databricks workspace and SQL warehouse, and Postgres connection URLs for the player registry. Set `DATABASE_URL_UNPOOLED` for the one-time schema setup; routine registry queries use `DATABASE_URL` when available. The code reads local configuration from `config/EXTRACTION_CONFIG.env`, `config/DATABRICKS_CONFIG.env`, and `.env.local`; the first two have [extraction](config/EXTRACTION_CONFIG.env.example) and [Databricks](config/DATABRICKS_CONFIG.env.example) examples. Keep credentials out of Git.
 
-The current `requirements.txt` is a record of the development environment, not a verified clean-install lockfile: it contains an editable Git dependency, while the champion metadata loader imports `lupa` without listing it there. After preparing the required dependencies and configuration, apply the idempotent registry schema for a new Neon database or an existing database that has not received this migration. A database already migrated does not need this step on every run. Then run the extractor with `src` on the Python path:
+Install the pipeline and development dependencies with `python -m pip install -r requirements.txt`. This file lists direct dependencies for extraction, loading, shared data analysis, dbt, tests, and linting; pip resolves their transitive dependencies. Install `streamlit_app/requirements.txt` as well to run the dashboard and its tests. The exploratory `sandbox/transform_and_plot.py` script additionally uses Matplotlib, Seaborn, SciPy, scikit-learn, Statsmodels, and Plotly. After preparing the dependencies and configuration, apply the idempotent registry schema for a new Neon database or an existing database that has not received this migration. A database already migrated does not need this step on every run. Then run the extractor with `src` on the Python path:
 
 ```powershell
 $env:PYTHONPATH = "src"
@@ -155,21 +199,21 @@ Extraction tests cover configuration, file output, state operations, pagination,
 
 The tests check properties of the implementation; they do not make the tracked players a random sample or turn mastery into match-level evidence. Region, queue, tiers, dates, short observation windows, patch changes, and small groups can all affect comparisons. An inferred role is not an observed lane, and the ranked-mastery share is an estimate rather than a measured percentage of ranked matches. For players tracked under 30 days, the active-pool fallback can admit a one-off pick from another mode. Interpret dashboard results with their denominators, support counts, and snapshot dates.
 
-## Next work
+## About Orchestration
 
-The next engineering goal is Airflow orchestration, including adaptive discovery versus refresh scheduling, a post-load state commit, and an automatically published dashboard snapshot. The target is roughly **200,000 tracked players**, up from about 40,000, followed by regular observation. At a hypothetical 72,000-request daily budget, refreshing all 200,000 players once a week would use about 400,000 of 504,000 weekly requests before discovery, retries, and other work; actual sustainable coverage still needs measurement. Containerized setup is also planned. These are [roadmap items](TODO.md), not features represented by the current dashboard snapshot.
+Orchestration with common alternatives such as Airflow and DAGSter have been judged as too much for the scope of this project. There are only a couple of endpoints and a relatively simple extraction flow that can be preserved as a singular python script. A lot of the orchestration benefits of using these tools would come from easier lineage, logging, tracking, and data quality; however, these have been manually implemented through the local SQLite database + remote Neon Postgres.
 
 ## Documentation map
 
-- [Airflow implementation plan](AIRFLOW_PLAN.md): task boundaries, adaptive scheduling, load commit, dashboard publication, and recovery checks for the next build.
 - [dbt project README](league_pipeline/README.md): layers, main outputs, and recorded build validation.
 - [dbt model reference](league_pipeline/docs/model_reference.md): table-by-table grain, lineage, formulas, and edge cases.
 - [dashboard README](streamlit_app/README.md): run modes, page guide, chart conventions, and export process.
 - [engineering journey](docs/engineering_journey.md): chronology, design decisions, failures, and lessons from building the pipeline.
-- [project roadmap](TODO.md): the next Airflow, extraction, and dashboard publication work.
+- [population weighting and design review](docs/population_weighting.md): frozen reference, weight formula, affected views, analyst access, manual updates and reviewed limitations.
 
 ## License and attribution
 
 Designed and built by Pedro Iaki. Generative AI was used as a learning and implementation aid under review; the research direction, architecture, modeling choices, and final decisions are the author's. Released under the [MIT License](LICENSE).
 
 This is an independent project using Riot Games API services. League of Legends and Riot Games are trademarks of Riot Games, Inc.; the project is not affiliated with or endorsed by Riot Games.
+

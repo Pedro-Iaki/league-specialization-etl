@@ -1,0 +1,12 @@
+product_id,name,description,category,purchase_currency_id,sample_original_price,sample_amount_usd
+sample_cash_usd_small,Small RP package USD,Fictional cash top-up SKU,rp_package,USD,5.00,5.00
+sample_cash_usd_medium,Medium RP package USD,Fictional cash top-up SKU,rp_package,USD,15.00,15.00
+sample_cash_usd_large,Large RP package USD,Fictional cash top-up SKU,rp_package,USD,40.00,40.00
+sample_cash_brl_small,Small RP package BRL,Fictional endpoint supplies both BRL and USD amounts,rp_package,BRL,29.00,5.00
+sample_cash_brl_medium,Medium RP package BRL,Fictional endpoint supplies both BRL and USD amounts,rp_package,BRL,79.00,15.00
+sample_cash_brl_large,Large RP package BRL,Fictional endpoint supplies both BRL and USD amounts,rp_package,BRL,199.00,40.00
+sample_champion_low,Champion unlock basic,Fictional generic champion acquisition SKU,champion,L_BE,450.00,
+sample_champion_mid,Champion unlock standard,Fictional generic champion acquisition SKU,champion,L_BE,1350.00,
+sample_champion_high,Champion unlock premium,Fictional generic champion acquisition SKU,champion,L_BE,3150.00,
+sample_cosmetic_skin,Scenario skin,Fictional cosmetic SKU with no cash valuation,cosmetic,L_RP,1350.00,
+sample_cosmetic_emote,Scenario emote,Fictional cosmetic SKU with no cash valuation,cosmetic,L_RP,350.00,

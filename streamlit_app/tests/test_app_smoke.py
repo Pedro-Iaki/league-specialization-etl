@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,9 +15,11 @@ APP_ROOT = Path(__file__).resolve().parents[1]
     "relative_path",
     [
         "app.py",
+        "overview.py",
         "pages/1_Overall_Analysis.py",
         "pages/2_Champion_Explorer.py",
         "pages/3_Notable_Champions.py",
+        "pages/4_Population_Estimates.py",
     ],
 )
 def test_page_renders_without_exception(relative_path: str) -> None:
@@ -94,10 +97,10 @@ def test_refreshed_growth_views_render() -> None:
         "ranked_mastery_cohorts": ranked_cohorts,
     }
     with patch("app_core.data.load_optional_dataset", side_effect=optional.get):
-        for relative_path in ("app.py", "pages/1_Overall_Analysis.py", "pages/2_Champion_Explorer.py"):
+        for relative_path in ("overview.py", "pages/1_Overall_Analysis.py", "pages/2_Champion_Explorer.py"):
             app = AppTest.from_file(str(APP_ROOT / relative_path), default_timeout=30).run()
             assert not app.exception, relative_path
-            if relative_path == "app.py":
+            if relative_path == "overview.py":
                 next(widget for widget in app.selectbox if widget.label == "Specialization window").set_value("Observed rank periods").run()
                 assert any("concentration band" in warning.value for warning in app.warning)
 
@@ -125,7 +128,7 @@ def test_optional_tier_mastery_views_render() -> None:
             assert not app.exception, path
 
 
-@pytest.mark.parametrize("relative_path", ["app.py", "pages/1_Overall_Analysis.py", "pages/2_Champion_Explorer.py"])
+@pytest.mark.parametrize("relative_path", ["overview.py", "pages/1_Overall_Analysis.py", "pages/2_Champion_Explorer.py"])
 def test_player_support_controls_default_to_three(relative_path: str) -> None:
     app = AppTest.from_file(str(APP_ROOT / relative_path), default_timeout=30).run()
     support_sliders = [slider for slider in app.slider if slider.label.startswith("Minimum players")
@@ -190,7 +193,7 @@ def test_rank_score_player_mix_renders() -> None:
     app = AppTest.from_file(str(APP_ROOT / "pages/2_Champion_Explorer.py"), default_timeout=30).run()
     next(widget for widget in app.selectbox if widget.label == "Compare by").set_value("Rank score").run()
     assert not app.exception
-    next(widget for widget in app.toggle if widget.label == "Difference from sample").set_value(True).run()
+    next(widget for widget in app.toggle if widget.key == "mix_over_under").set_value(True).run()
     assert not app.exception
 
 
@@ -216,7 +219,7 @@ def test_champion_mastery_threshold_updates_cards() -> None:
         assert any(button.key == f"toggle_{key}_comparison" for button in app.button)
     assert not any(metric.label == "Players ≥100K mastery" for metric in app.metric)
     next(button for button in app.button if button.key == "toggle_mastery_mean_comparison").click().run()
-    assert "%" in next(metric for metric in app.metric if metric.label == "Mean mastery vs sample").value
+    assert "%" in next(metric for metric in app.metric if metric.label == "Mean mastery vs champion average").value
     next(button for button in app.button if button.key == "toggle_mastery_mean_comparison").click().run()
     next(slider for slider in app.slider if slider.label == "Minimum champion mastery points").set_value(50_000).run()
     assert not app.exception
@@ -266,13 +269,80 @@ def test_cross_champion_player_mastery_boxes_render_when_extract_exists() -> Non
 def test_mastery_controls_render_without_exception() -> None:
     app = AppTest.from_file(str(APP_ROOT / "pages/1_Overall_Analysis.py"), default_timeout=30).run()
     next(widget for widget in app.selectbox if widget.label == "Mastery tier").set_value("GOLD").run()
-    next(widget for widget in app.toggle if widget.label == "Log mean mastery on horizontal axis").set_value(True).run()
+    assert not any(widget.label == "Log mean mastery on horizontal axis" for widget in app.toggle)
+    next(widget for widget in app.toggle if widget.label == "Normalize by mastery baseline").set_value(True).run()
     assert not app.exception
+    assert any("mastery-expected share" in chart.proto.spec for chart in app.get("plotly_chart"))
+    next(widget for widget in app.selectbox if widget.label == "Compare by").set_value("Role").run()
+    next(widget for widget in app.selectbox if widget.label == "Compare climbers by").set_value("Role").run()
+    next(widget for widget in app.segmented_control if widget.label == "Climber mastery window").set_value("All-time").run()
+    assert not app.exception
+
+
+def test_climber_normalization_toggle_renders_for_tier_role_and_mastery_windows():
+    app = AppTest.from_file(str(APP_ROOT / "pages/1_Overall_Analysis.py"), default_timeout=30).run()
+    assert not app.toggle(key="normalize_climbers").value
+    app.toggle(key="normalize_climbers").set_value(True).run()
+    assert not app.exception
+    assert any("baseline uses all selected classified players" in caption.value for caption in app.caption)
+    assert any(json.loads(chart.proto.spec)["layout"].get("yaxis", {}).get("title", {}).get("text")
+               == "Observed / mastery-expected share" for chart in app.get("plotly_chart"))
+    next(widget for widget in app.selectbox if widget.label == "Compare climbers by").set_value("Role").run()
+    next(widget for widget in app.segmented_control if widget.label == "Climber mastery window").set_value("All-time").run()
+    assert not app.exception
+    app.toggle(key="normalize_climbers").set_value(False).run()
+    assert not app.exception
+
+
+def test_active_and_observed_population_option_renders():
+    app = AppTest.from_file(str(APP_ROOT / "pages/1_Overall_Analysis.py"), default_timeout=30).run()
+    next(widget for widget in app.segmented_control if widget.label == "Mastery window").set_value("Active and observed").run()
+    assert not app.exception
+    assert any("Positive, zero, and negative deltas are included" in caption.value for caption in app.caption)
+    next(widget for widget in app.toggle if widget.label == "Normalize by mastery baseline").set_value(True).run()
+    next(widget for widget in app.selectbox if widget.label == "Compare by").set_value("Role").run()
+    assert not app.exception
+
+
+def test_active_and_observed_works_with_cached_legacy_profile_helper():
+    from app_core.analysis import profile_basis as current_profile_basis
+    from app_core.data import load_dataset as original_load
+
+    # This fixture creates a new synthetic calibration cohort, so weights from
+    # the original full snapshot do not belong to it.
+    players = original_load("players").head(12).drop(columns="population_weight", errors="ignore").copy()
+    players["tier"] = "GOLD"
+    players["days_tracked"] = 60
+    players["total_mastery_points"] = 300_000
+    players["active_playstyle"] = "specialist"
+    players["alltime_playstyle"] = "generalist"
+    players["lp_delta_recent"] = [10, 0, -10] * 2 + [float("nan")] * 6
+
+    def legacy_profile(frame, basis):
+        # Mimic the helper retained by a server launched before the third option.
+        return current_profile_basis(frame, "Active (60 days)" if basis == "Active (60 days)" else "All-time")
+
+    with patch("app_core.data.load_dataset", side_effect=lambda name, **kwargs: players if name == "players" else original_load(name, **kwargs)), \
+            patch("app_core.analysis.profile_basis", side_effect=legacy_profile):
+        app = AppTest.from_file(str(APP_ROOT / "pages/1_Overall_Analysis.py"), default_timeout=30).run()
+        next(widget for widget in app.segmented_control if widget.label == "Mastery window").set_value("All-time").run()
+        lifetime_chart = app.get("plotly_chart")[0].proto.spec
+        next(widget for widget in app.segmented_control if widget.label == "Mastery window").set_value("Active and observed").run()
+        assert not app.exception
+        support = next(table.value for table in app.dataframe if {"Players", "Playstyle"}.issubset(table.value.columns))
+        assert support["Players"].sum() == 6
+        assert support["Playstyle"].eq("specialist").all()
+        assert app.get("plotly_chart")[0].proto.spec != lifetime_chart
+        next(widget for widget in app.toggle if widget.label == "Normalize by mastery baseline").set_value(True).run()
+        assert not app.exception
+        support = next(table.value for table in app.dataframe if {"Players", "relative_share"}.issubset(table.value.columns))
+        assert support["Players"].sum() == 6
+        assert support["relative_share"].eq(1).all()
 
 
 @pytest.mark.parametrize("basis", ["Active (60 days)", "All-time"])
 def test_current_profile_windows_use_current_tier_without_historical_period_filter(basis: str) -> None:
-    app = AppTest.from_file(str(APP_ROOT / "app.py"), default_timeout=30).run()
+    app = AppTest.from_file(str(APP_ROOT / "overview.py"), default_timeout=30).run()
     next(widget for widget in app.selectbox if widget.label == "Specialization window").set_value(basis).run()
     assert not app.exception
     assert not any(widget.label == "Current tier" for widget in app.selectbox)
@@ -281,7 +351,7 @@ def test_current_profile_windows_use_current_tier_without_historical_period_filt
 
 
 def test_overview_historical_controls_and_playstyle_outcomes() -> None:
-    app = AppTest.from_file(str(APP_ROOT / "app.py"), default_timeout=30).run()
+    app = AppTest.from_file(str(APP_ROOT / "overview.py"), default_timeout=30).run()
     assert next(widget for widget in app.selectbox if widget.label == "Specialization window").value == "Active (60 days)"
     assert not any(widget.label == "Minimum estimated ranked share" for widget in app.slider)
     assert not any(widget.label == "Role-purity tier" for widget in app.selectbox)
@@ -300,3 +370,17 @@ def test_overall_pool_shape_is_one_measure() -> None:
     app = AppTest.from_file(str(APP_ROOT / "pages/1_Overall_Analysis.py"), default_timeout=30).run()
     assert any(widget.label == "Pool measure" for widget in app.selectbox)
     assert not any(widget.label == "Pool display" for widget in app.segmented_control)
+
+
+def test_one_trick_controls_and_baseline_view_render():
+    app = AppTest.from_file(str(APP_ROOT / "pages/3_Notable_Champions.py"), default_timeout=30).run()
+    selector = next(widget for widget in app.multiselect if widget.label == "Champions for one-trick comparison")
+    ladder = next(widget for widget in app.multiselect if widget.label == "Champions on chart")
+    assert selector.value == ladder.value
+    assert next(widget for widget in app.number_input if widget.label == "Minimum total mastery for one-tricks").value == 300_000
+    next(widget for widget in app.segmented_control if widget.label == "One-trick tier view").set_value("Relative representation").run()
+    assert not app.exception
+    assert any(json.loads(chart.proto.spec)["layout"].get("yaxis", {}).get("title", {}).get("text")
+               == "One-trick share / champion baseline share" for chart in app.get("plotly_chart"))
+    next(widget for widget in app.selectbox if widget.label == "One-trick concentration rule").set_value("HHI").run()
+    assert not app.exception

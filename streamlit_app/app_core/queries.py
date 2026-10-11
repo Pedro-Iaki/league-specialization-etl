@@ -1,9 +1,76 @@
 from __future__ import annotations
 
+from app_core.business import BUSINESS_PUBLIC_COLUMNS, CASH_DISCOUNT_COLUMNS
+
 DATASET_QUERIES = {
+    "champion_population_pairs": """
+        with pool as (
+            select distinct a.player_id, a.champion_key, p.region, p.queue, p.tier
+            from league_pipeline.gold.fct_players_champion_activity a
+            join league_pipeline.gold.mart_player_profile p on a.player_id = p.player_id
+            where a.is_active
+        ), population as (
+            select region, queue, tier, count(distinct player_id) as pool_player_count
+            from pool group by region, queue, tier
+        ), totals as (
+            select region, queue, tier, champion_key, count(*) as player_count
+            from pool group by region, queue, tier, champion_key
+        ), pairs as (
+            select a.region, a.queue, a.tier, a.champion_key as champion_key_a,
+                   b.champion_key as champion_key_b, count(*) as pair_player_count
+            from pool a join pool b on a.player_id = b.player_id and a.champion_key < b.champion_key
+                and a.region <=> b.region and a.queue <=> b.queue and a.tier <=> b.tier
+            group by a.region, a.queue, a.tier, a.champion_key, b.champion_key
+        )
+        select r.champion_key_a, r.champion_name_a, r.champion_key_b, r.champion_name_b,
+               p.region, p.queue, p.tier, p.pool_player_count,
+               coalesce(a.player_count, 0) as player_count_a,
+               coalesce(b.player_count, 0) as player_count_b,
+               coalesce(j.pair_player_count, 0) as pair_player_count
+        from league_pipeline.gold.mart_champion_cooccurrence r
+        cross join population p
+        left join totals a on r.champion_key_a = a.champion_key
+            and p.region <=> a.region and p.queue <=> a.queue and p.tier <=> a.tier
+        left join totals b on r.champion_key_b = b.champion_key
+            and p.region <=> b.region and p.queue <=> b.queue and p.tier <=> b.tier
+        left join pairs j on r.champion_key_a = j.champion_key_a and r.champion_key_b = j.champion_key_b
+            and p.region <=> j.region and p.queue <=> j.queue and p.tier <=> j.tier
+    """,
+    "champion_population_activity": """
+        with active as (
+            select a.champion_key, p.region, p.queue, p.tier,
+                   count(*) as active_player_count, avg(a.recent_share) as mean_active_share,
+                   count(p.role_top_pct) as role_sample_player_count,
+                   avg(p.role_top_pct) as role_top_pct, avg(p.role_jungle_pct) as role_jungle_pct,
+                   avg(p.role_middle_pct) as role_middle_pct, avg(p.role_bottom_pct) as role_bottom_pct,
+                   avg(p.role_support_pct) as role_support_pct
+            from league_pipeline.gold.fct_players_champion_activity a
+            join league_pipeline.gold.mart_player_profile p on a.player_id = p.player_id
+            where a.is_active
+            group by a.champion_key, p.region, p.queue, p.tier
+        ), population as (
+            select p.region, p.queue, p.tier, count(distinct p.player_id) as active_pool_player_count
+            from league_pipeline.gold.mart_player_profile p
+            join league_pipeline.gold.fct_players_champion_activity a on p.player_id = a.player_id
+            where a.is_active
+            group by p.region, p.queue, p.tier
+        )
+        select c.name as champion_name, p.region, p.queue, p.tier,
+               coalesce(a.active_player_count, 0) as active_player_count,
+               p.active_pool_player_count, a.mean_active_share,
+               coalesce(a.role_sample_player_count, 0) as role_sample_player_count,
+               a.role_top_pct, a.role_jungle_pct, a.role_middle_pct, a.role_bottom_pct, a.role_support_pct
+        from league_pipeline.silver.dim_champions c
+        cross join population p
+        left join active a on c.key = a.champion_key
+            and p.region <=> a.region and p.queue <=> a.queue and p.tier <=> a.tier
+    """,
+    "business_players": "select " + ", ".join(BUSINESS_PUBLIC_COLUMNS) + " from league_pipeline.gold.mart_player_spending",
     "champion_player_mastery_share": """
         select
             c.name as champion_name,
+            p.region,
+            p.queue,
             p.tier,
             m.champion_points,
             p.total_mastery_points,
@@ -177,6 +244,8 @@ DATASET_QUERIES = {
         )
         select
             p.starting_tier,
+            current_player.region,
+            current_player.queue,
             current_player.main_role as current_main_role,
             p.specialization_hhi,
             p.top_champion_share,
@@ -202,9 +271,14 @@ DATASET_QUERIES = {
             s.player_win_rate as win_rate,
             s.observed_period_count as period_count,
             s.attributed_games
+            , s.player_avg_end_rank_score as end_rank_score
+            , current_player.region
+            , current_player.queue
         from league_pipeline.gold.fct_players_champion_growth_summary s
         inner join league_pipeline.silver.dim_champions c
             on s.champion_key = c.key
+        left join league_pipeline.gold.mart_player_profile current_player
+            on s.player_id = current_player.player_id
         where s.cohort_scope = 'champion_tier'
     """,
     "growth_player_styles": """
@@ -226,6 +300,8 @@ DATASET_QUERIES = {
         select
             p.starting_tier,
             p.playstyle,
+            current_player.region,
+            current_player.queue,
             current_player.main_role as current_main_role,
             p.climbing_efficiency,
             p.win_rate,
@@ -292,6 +368,8 @@ DATASET_QUERIES = {
         select
             p.window_name,
             p.starting_tier,
+            current_player.region,
+            current_player.queue,
             current_player.main_role as current_main_role,
             p.median_ranked_mastery_share,
             p.period_count,
@@ -307,8 +385,25 @@ DATASET_QUERIES = {
     """,
 }
 
+# Resolve weights in the warehouse while private join keys are still available.
+# Prefix profile columns to avoid ambiguity; private keys never enter the export.
+PLAYER_PROFILE_QUERY = DATASET_QUERIES["players"]
+_profile_query = PLAYER_PROFILE_QUERY
+_profile_columns = _profile_query.split("select", 1)[1].split("from", 1)[0].strip().split(",")
+DATASET_QUERIES["players"] = (
+    "select " + ", ".join("p." + column.strip() for column in _profile_columns)
+    + ", w.population_weight, w.covered_population_share, w.reference_version, "
+    "w.reference_recorded_on, w.reference_review_after "
+    "from league_pipeline.gold.mart_player_profile p "
+    "left join league_pipeline.gold.mart_player_population_weights w "
+    "on p.player_id <=> w.player_id and p.region <=> w.region and p.queue <=> w.queue"
+)
+
 
 REQUIRED_COLUMNS = {
+    "champion_population_pairs": {"champion_key_a", "champion_name_a", "champion_key_b", "champion_name_b", "region", "queue", "tier", "pool_player_count", "player_count_a", "player_count_b", "pair_player_count"},
+    "champion_population_activity": {"champion_name", "tier", "region", "queue", "active_player_count", "active_pool_player_count", "mean_active_share", "role_sample_player_count", "role_top_pct", "role_jungle_pct", "role_middle_pct", "role_bottom_pct", "role_support_pct"},
+    "business_players": set(BUSINESS_PUBLIC_COLUMNS) - CASH_DISCOUNT_COLUMNS,
     "champion_player_mastery_share": {"champion_name", "tier", "champion_points", "total_mastery_points", "mastery_share"},
     "champion_tier_mastery": {"champion_name", "tier", "minimum_mastery", "player_count", "expert_player_count", "mean_mastery", "median_mastery", "mean_rank_score", "median_rank_score"},
     "players": {

@@ -16,11 +16,13 @@ The final marts are intentionally separated by grain:
 | Mart | Grain | Primary purpose |
 |---|---|---|
 | `mart_player_profile` | Player | Current player profile with rank, form, role, and specialization |
+| `mart_player_population_weights` | Current profile key (`player_id`, `region`, `queue`) | Relative weights for estimates under a frozen tier distribution |
 | `mart_player_delta_history` | Player and completed rank period | Rank growth associated with the champions used during a period |
 | `mart_champion_profile` | Champion | Overall champion population, rank, growth, mastery, and role profile |
 | `mart_champion_tier_growth` | Champion, starting tier, and optional playstyle | Player-equal growth within a tier |
 | `mart_champion_playstyle_profile` | Champion and playstyle | Comparison of a champion's results across player archetypes |
 | `mart_champion_cooccurrence` | Unordered champion pair | Strength and frequency of active-pool overlap |
+| `mart_player_spending` | Frozen sample player | Synthetic purchase history joined to real profile context; optional separate business branch |
 
 ## Overview
 
@@ -43,6 +45,8 @@ The final marts are intentionally separated by grain:
     Periods --> PeriodPools
 
     Player["mart_player_profile"]
+    PopulationReference["reference.rank_population_reference (manual seed)"]
+    PopulationWeights["mart_player_population_weights (live view)"]
     Delta["mart_player_delta_history"]
     Champion["mart_champion_profile"]
     Tier["mart_champion_tier_growth"]
@@ -52,6 +56,8 @@ The final marts are intentionally separated by grain:
     Roles --> Player
     Activity --> Player
     Periods --> Player
+    Player --> PopulationWeights
+    PopulationReference --> PopulationWeights
     Periods --> Delta
     PeriodPools --> Delta
     PeriodPools --> Growth
@@ -65,8 +71,21 @@ The final marts are intentionally separated by grain:
     Activity --> Champion
     Activity --> Cooccurrence
 
+    Frozen["Freeze real player profile + median valid ranked-mastery share"]
+    Synthetic["Seeded fictional transactions + scenario attributes"]
+    SampleRaw["raw.transactions + raw.business_sample_players"]
+    References["sample_reference: fictional products + currencies"]
+    SampleFact["bronze.transactions → silver.fct_transactions"]
+    Spending["mart_player_spending (synthetic spending, real context)"]
+    Player -.-> Frozen
+    Delta -.-> Frozen
+    Frozen --> Synthetic --> SampleRaw --> SampleFact --> Spending
+    References --> SampleFact
+    SampleRaw --> Spending
+
     classDef mart fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#172554
-    class Player,Delta,Champion,Tier,Playstyle,Cooccurrence mart
+    class Player,PopulationWeights,Delta,Champion,Tier,Playstyle,Cooccurrence mart
+    class Spending mart
 ```
 
 
@@ -168,8 +187,10 @@ Role inference is a two-stage, non-recursive process:
 
     subgraph PlayerMarts["Published player marts"]
         PProfile["mart_player_profile"]
+        PWeights["mart_player_population_weights (view)"]
         PDelta["mart_player_delta_history"]
     end
+    RankReference["reference.rank_population_reference (manual seed)"]
 
     subgraph Growth["Champion growth aggregation"]
         PCGrowth["fct_players_period_champion_growth"]
@@ -207,6 +228,7 @@ Role inference is a two-stage, non-recursive process:
     PCA --> PP
 
     PC & AP & MP & RPeriods & NR --> PProfile
+    PProfile & RankReference --> PWeights
     RPeriods & PP --> PDelta
 
     PCA & PDelta --> PCGrowth
@@ -218,7 +240,7 @@ Role inference is a two-stage, non-recursive process:
     CA & DC --> Cooccur
 
     classDef mart fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#172554
-    class PProfile,PDelta,CProfile,CTier,CPStyle,Cooccur mart
+    class PProfile,PWeights,PDelta,CProfile,CTier,CPStyle,Cooccur mart
 ```
 ## Bronze models
 
@@ -535,6 +557,40 @@ Role inference is a two-stage, non-recursive process:
 
 **Technical notes and edge cases.** A mastery delta is assigned when its ending snapshot falls after the previous rank endpoint and on or before the current endpoint. Because mastery and rank collection schedules can differ, that delta may represent activity spanning beyond the rank period. Negative mastery movement is excluded. Periods without positive mastery movement have no pool row and remain present in the delta mart with null pool metrics.
 
+## Population reference seed
+
+### `rank_population_reference`
+
+**Purpose.** Supply a manually maintained estimate of the ranked ladder's tier
+distribution for post-stratification. This is a supplied assumption, not a Riot
+observation produced by the extractor.
+
+**Grain and materialization.** One row per tier in one active reference version;
+dbt seed in `reference`. The initial version has ten tiers, positive fractional
+shares summing to one, and bronze/silver jointly account for 37.97%. Previous
+versions are preserved in version control rather than appended to this table.
+
+**Lineage.** Upstream: `seeds/rank_population_reference.csv`, edited manually.
+Downstream: `mart_player_population_weights`. The dashboard/Python bundle also
+read this same repository CSV directly, independent of warehouse deployment.
+
+| Column | Meaning |
+|---|---|
+| `tier` | Unique ladder tier |
+| `population_share` | Fractional estimate in the full reference, such as `0.2353` for Gold |
+| `reference_version` | Single active version, initially `2026-10-10-v1` |
+| `recorded_on` | Receipt/record date; the supplied estimate's observation date is unknown |
+| `review_after` | Manual maintenance reminder, initially 2027-04-10 |
+| `source`, `reference_scope` | Provenance; the supplied estimate's region and queue are unspecified |
+
+**Contracts and maintenance.** Tests check tier uniqueness/accepted values,
+nonmissing metadata, positive shares, total share one, exactly ten rows and a
+single version/provenance/date set. The review date must follow receipt. Python
+validates the same reference contract, including references supplied in memory.
+Update shares and metadata together, regenerate analyst bundles, and reseed the
+warehouse. A new rank requires deliberately updating validation and tier handling.
+The seed does not expire automatically or fetch external replacements.
+
 ## Final marts
 
 ### `mart_player_profile`
@@ -543,7 +599,7 @@ Role inference is a two-stage, non-recursive process:
 
 **Grain and materialization.** One row per current player; Delta table.
 
-**Lineage.** Upstream: `dim_players_current`, `dim_players_active_pool`, `fct_players_mastery_profile`, `fct_players_rank_periods`, `dim_players_naive_role_distribution`. Downstream: both champion profile marts.
+**Lineage.** Upstream: `dim_players_current`, `dim_players_active_pool`, `fct_players_mastery_profile`, `fct_players_rank_periods`, `dim_players_naive_role_distribution`. Downstream: both champion profile marts and `mart_player_population_weights`.
 
 | Column group | Columns and meaning |
 |---|---|
@@ -556,6 +612,78 @@ Role inference is a two-stage, non-recursive process:
 | Lifetime mastery | `champions_with_mastery`, `total_mastery_points`, `top_champion_key`, `top_champion_name`, `alltime_top1_share`, `alltime_favoured_champion_count`, `alltime_favoured_champions_share`, `alltime_hhi`, `alltime_normalized_entropy`, `alltime_playstyle`, `alltime_points_per_day`, `days_since_last_play`, `days_tracked` |
 
 **Technical notes and edge cases.** Active and all-time playstyles answer different questions and can legitimately disagree. `metadata_primary_roles` preserves ties from the first-stage role inference, while `main_role` is derived from empirically weighted active champions. Recent form uses the latest completed rank bucket available in the dataset. Its nominal window is seven days by default, while rates use the actual six-to-eight-day span between observed endpoints. Recent form excludes rank periods beyond the configured absolute LP-per-game growth bound. Players without an eligible period in that latest bucket have null form values, not zero performance.
+
+### `mart_player_population_weights`
+
+**Purpose.** Attach a relative analysis weight to each current player profile so
+pooled estimates can reflect an assumed tier mix. This model does not alter
+profiles, calculate champion aggregates or provide historical survey weights.
+
+**Grain and materialization.** One row per current profile key
+(`player_id`, `region`, `queue`); Gold SQL view. The upstream profile currently
+requires unique `player_id` and is used for one tracked queue. Retaining region
+and queue in the weight key prevents accidental cross-scope joins; it does not
+make the rest of the pipeline support multiple queues automatically. Join all
+three keys using null-safe equality where needed.
+
+**Lineage.** Upstream: `mart_player_profile`, `rank_population_reference`.
+Downstream: optional warehouse analyst joins. The dashboard computes the same
+formula in Python over its serving cohort; it does not query this view. The
+Population Analysis serving view restricts tiers through Master, while the
+Population Estimates page and CLI use all tiers available in the profile input.
+Comparisons must use the same calibration cohort and reference content.
+
+| Column | Meaning |
+|---|---|
+| `player_id`, `region`, `queue`, `tier` | Profile join key, scope and current calibration tier |
+| `profile_as_of_date`, `profile_snapshot_date` | Analytical and rank snapshot dates inherited from the profile |
+| `tier_sample_players` | Actual unfiltered count `n_t` in this tier/scope |
+| `scope_sample_players` | Unfiltered count `N` across supported tiers in this scope |
+| `sample_tier_share` | Supported tier's actual sample share `n_t / N` |
+| `estimated_population_share` | Full-reference estimate `p_t` |
+| `covered_population_share` | Sum `C` of reference shares for tiers with observations; zero if no tier is supported |
+| `supported_target_share` | Estimate normalized over represented tiers, `p_t / C` |
+| `population_weight` | Relative player weight `(p_t / C) / (n_t / N)` |
+| `reference_version`, `reference_recorded_on`, `reference_review_after` | Active seed version, receipt date and manual review reminder |
+
+**Calculation.** Count the actual current profile rows per region/queue/tier;
+left join the seed; sum supported counts and represented reference shares with
+region/queue window partitions; join the resulting weights back to profiles.
+The calculation uses actual sample counts rather than assuming perfectly even
+collection. Supported weights average one within each scope. Current snapshot
+examples: Iron receives about 0.2794, Gold 1.7511 and Master 4.6020. For Gold,
+`(0.2353 / 0.9994) / (4998 / 37172) = 1.7511`.
+
+Use `sum(weight * value) / sum(weight)` after excluding missing metric values
+and invalid weights. Keep the weights when filtering by role, champion,
+playstyle, tracking duration or mastery. Recalibrating each subset forces the
+subset to the full ladder mix and changes the quantity being estimated.
+
+**Technical notes and edge cases.** Unsupported tiers retain profile rows with
+null weights; no synthetic players are added. Results describe represented
+tiers, not the absent part of the ladder. The included snapshot covers 99.94%
+of this reference; Grandmaster and Challenger are absent. The unfiltered,
+supported region/queue mix keeps sample proportions because regional population
+sizes were not supplied; filtering can change this conditional mix. With one
+scope, a within-tier weight cancels from a within-tier mean/share. Mixing scopes
+can still change a tier's result because weights are normalized by scope.
+
+This is an assumed post-stratification adjustment, not a known inverse inclusion
+probability. It cannot repair within-tier selection, division/page order,
+refresh-priority selection or the selected Master climber cohort. It does not
+establish causal effects. Period statistics require a separately defined
+historical cohort; the dashboard's ranked-activity view calibrates starting tier
+within the selected observed window, retaining that view's selection caveats.
+
+**View lifecycle and validation.** The tier reference is frozen, but the view is
+live: refreshing profiles changes counts, coverage and weights under the same
+reference version. Freeze joined profiles and weights together for reproducible
+reports. Tests cover key uniqueness/non-null player keys, profile row cardinality,
+positive mean-one weights and valid coverage. A local regression executes the
+actual SQL arithmetic/window joins with SQLite null-safe equality to check Python
+parity; dbt parsing checks the model graph. Databricks execution remains a separate
+warehouse check. See [population method and design review](../../docs/population_weighting.md)
+for SQL examples, activation commands, exports and the implementation review.
 
 ### `mart_player_delta_history`
 
@@ -685,6 +813,48 @@ Role inference is a two-stage, non-recursive process:
 | `npmi` | Normalized pointwise mutual information in the range -1 to 1 |
 
 **Technical notes and edge cases.** Pairs are filtered to at least `cooccurrence_min_pair_players`, currently five. Lift can be volatile for uncommon champions even after filtering. Co-occurrence indicates shared player preference, not gameplay synergy, matchup strength, or causal affinity.
+
+## Synthetic business sample
+
+This optional branch reads the existing Gold profile and rank-period marts **once** through the Python cohort exporter. It freezes every current ranked player with complete valid core profile inputs at one common as-of date, with no row cap; actual per-player snapshot dates are preserved. Missing required core features or invalid observations exclude the player, including unclassified role/playstyle. Ranked-share estimates and recent games/day are optional; unobserved values remain null. This is a selected, well-observed cohort, not a random population sample. Its dbt lineage starts at dedicated sample raw tables, so `dbt build --select tag:business_sample` builds only the sample seeds, transaction models, spending mart and focused tests. All spending, inventory and customer-type relationships are generated. The public dashboard export uses an explicit allowlist and excludes private join/event/SKU identifiers.
+
+### Reference seeds and raw sample sources
+
+`sample_reference.sample_currencies` contains exactly `currency_id`, `name`, `currency_kind`. USD/BRL are fiat; L_RP/L_BE/L_IP are game currencies. L_IP has no generated events. `sample_products` supplies one fictional SKU per `product_id`, with `name`, `description`, `category`, `purchase_currency_id`, `sample_original_price` and nullable `sample_amount_usd`. Package prices and endpoint USD defaults are scenario assumptions; there is no FX feed or RP-to-USD valuation.
+
+`raw.transactions` has one row per completed generated event: `transaction_id`, private `player_id`, `product_id`, `region_at_purchase`, `currency_id`, `original_price`, `amount_spent`, nullable `amount_usd`, UTC `occurred_at`, `scenario_id`. Monetary fields are decimal(18,2). Fiat amounts are supplied by the hypothetical endpoint; USD events have `amount_usd = amount_spent`, while BRL endpoint USD amounts need not equal BRL paid. Discounts affect both source amounts. Game-currency USD is null.
+
+`raw.business_sample_players` has one row per frozen ranked player, real context, simulated ownership/customer type, scenario ID, as-of and inclusive 60-day window bounds. Its compact `scenario_metadata` preserves seed/version, fingerprints, source, date ranges, expected counts and source cash total. It is private and excluded from Gold/public row data. The loader invalidates this table before replacing transactions and writes it last. Empty/inconsistent raw metadata or stale Gold prevents export/live serving. This is a small completion marker, not a transaction registry.
+
+### `bronze_transactions` / `bronze.transactions`
+
+**Grain/materialization.** One generated event per `transaction_id`; rebuilt Delta table with explicit casts from `source('raw', 'transactions')`. Duplicates fail the grain test rather than being silently dropped. Synthetic history includes events before the recent window.
+
+### `fct_transactions`
+
+**Grain/materialization.** One generated event per `transaction_id`; rebuilt Silver Delta table. Joins `sample_products` and `sample_currencies` for `category` and `currency_kind`. `discount_fraction = 1 - amount_spent / original_price` only for discounted events, otherwise null. Reference/grain tests catch bad joins. RP packages are cash top-ups, while champion/cosmetic categories are content purchases.
+
+### `mart_player_spending`
+
+**Grain/materialization.** One row per frozen player; rebuilt Gold Delta table. Aggregates actual events per player/scenario before joining the frozen cohort, preserving non-cash buyers. It does not read mutable real gameplay models during dbt execution.
+
+| Field group | Definition |
+|---|---|
+| Real context | `snapshot_date`, `as_of_date`, `region`, `queue`, `tier`, `main_role`, `active_playstyle`, primary champion key/name, active entropy/top-one share, all-time top-one share, total mastery points, champions with mastery, recent games/day and ranked-mastery share. Core profile fields must be present and valid for eligibility. Ranked share and recent games/day may be null; observed values must be valid. The exporter freezes all complete current profiles at one as-of date, retains each actual snapshot date and records their min/max range. Ranked share is the median valid observed estimate for the same player/queue through as-of. |
+| Scenario context | `scenario_id`, inclusive `purchase_window_start/end`, `simulated_customer_type`, `simulated_owned_champions`. Customer probabilities are 72% sardine / 24% dolphin / 4% whale. Ownership is at least 20 and loosely anchored to mastery count, allowing rewards, rotations and unused characters. |
+| History | `first_purchase_at` / `last_purchase_at`: min/max across all generated currency types. `purchase_count_alltime` counts all events; `be_champion_purchase_count_alltime` counts BE champion unlocks. Every player has BE purchases. First purchase is the only tenure date, not real account creation; no redundant age field exists. |
+| Full generated-history cash | `cash_purchase_count_alltime`, `cash_spent_usd_alltime`, `cash_active_months_alltime`: fiat events, source USD sum, distinct purchasing calendar months. These are not observed lifetime totals. |
+| Frequency | `payment_frequency_alltime`: cash-active months / inclusive calendar months from first generated purchase through as-of. Zero for nonpayers. |
+| Intensity | `payment_intensity_alltime`: full-history USD / cash-active months; null for nonpayers. |
+| Consistency | `payment_consistency_alltime = 1 / (1 + population standard deviation(gap_days) / mean(gap_days))`. Uses gaps between distinct cash purchase dates, grouping same-day top-ups into one occasion. Null with fewer than three distinct cash dates (two gaps). This describes purchase timing, not gameplay regularity. |
+| Recent cash | `cash_purchase_count_60d`, `cash_spent_usd_60d`, `cash_active_months_60d` use the inclusive 60-day window ending on as-of. `last_cash_purchase_at_60d` and `days_since_last_cash_purchase_60d` are null without recent cash purchases. |
+| Content mix | `content_purchase_count_alltime` counts champion + cosmetic events; `cosmetic_purchase_count_alltime` counts cosmetics. `cosmetic_bias_alltime` divides cosmetic count by content count, excluding cash top-ups. |
+| Discounts | `discounted_purchase_count_alltime` counts events with paid < original price. `discount_share_alltime` divides that count by all purchases. `discount_mean_alltime` averages discount fractions conditional on discount. Means/ratios with no denominator are null. |
+| Recent cash discounts | `cash_discounted_purchase_count_60d` counts discounted fiat events in the inclusive recent window. `cash_discount_share_60d` divides that count by recent cash count, null without cash purchases. `cash_discount_mean_60d` averages discount fractions only among discounted recent fiat events, null without those events. RP/BE discounts are excluded. The dashboard combines player means using discounted-event counts, preserving event weighting. These measures describe discount usage, not causal offer effectiveness or price sensitivity. |
+
+Count and spend columns are zero for players without the relevant events. Purchaser status is derived from cash counts; there is no stored `has_purchase` or `is_synthetic_spending`. Gold has no RP/BE spending totals and never counts an RP content event as another cash payment. The reconciliation test checks player grain, source USD all-history/recent sums, BE coverage and money separation.
+
+**Generation assumptions.** [scenario.py](../../src/sample/scenario.py) holds seven editable base controls and grouped offsets for tier, role, primary champion (sparse overrides plus neutral default), playstyle, latent tenure, mastery-sum band, ranked-share band, active top-one-share band, active-entropy band and seeded customer type. The sum is clamped, then perturbed with residual noise. Tenure is generated before purchases, not caused by a computed first purchase. Frequency chooses purchasing months; consistency distributes occasions; intensity controls top-up count/size. Cosmetic share changes event selection and discounts change prices. Incomplete core profiles are excluded; missing optional ranked share and unlisted champion keys use neutral offsets. Recent games/day is context only. Champion-pool entropy is diversity, never playrate regularity. The dashboard reports the scenario's imposed shapes, not empirical evidence.
 
 ## Operational guidance
 

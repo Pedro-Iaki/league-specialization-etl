@@ -8,12 +8,18 @@ from app_core.queries import REQUIRED_COLUMNS
 
 FORBIDDEN_PUBLIC_COLUMNS = {
     "player_id",
+    "transaction_id",
+    "product_id",
+    "scenario_metadata",
     "puuid",
     "rank_delta_id",
     "champion_pair_id",
     "champion_playstyle_id",
 }
 OPTIONAL_DATASETS = {
+    "champion_population_pairs",
+    "champion_population_activity",
+    "business_players",
     "growth_players", "growth_player_styles", "champion_growth_players",
     "champion_tier_growth", "champion_tier_mastery", "champion_player_mastery_share",
 }

@@ -1,0 +1,30 @@
+version: 2
+seeds:
+  - name: sample_currencies
+    description: Fictional purchase units. Game currencies have no USD valuation; L_IP has no generated events.
+    config:
+      schema: sample_reference
+      tags: [business_sample]
+      column_types:
+        currency_id: string
+        name: string
+        currency_kind: string
+    columns:
+      - name: currency_id
+        data_tests: [unique, not_null]
+  - name: sample_products
+    description: Fictional SKU catalog and generation defaults; product_id identifies a SKU, never an event.
+    config:
+      schema: sample_reference
+      tags: [business_sample]
+      column_types:
+        product_id: string
+        name: string
+        description: string
+        category: string
+        purchase_currency_id: string
+        sample_original_price: decimal(18,2)
+        sample_amount_usd: decimal(18,2)
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]

@@ -1,8 +1,57 @@
 from __future__ import annotations
 
 import pandas as pd
-from app_core.analysis import champion_ranked_share_by_tier, composition_vs_population, specialization_trend
+from app_core.analysis import (
+    champion_ranked_share_by_tier,
+    composition_vs_population,
+    one_trick_tier_distribution,
+    specialization_trend,
+)
 from app_core.charts import champion_tier_outcome_heatmap, playstyle_outcome_chart
+
+
+def test_one_trick_distribution_uses_active_main_or_hhi_and_player_baseline():
+    players = pd.DataFrame({
+        "active_primary_champion_name": ["Riven", "Riven", "Riven", "Riven", None, "Riven"],
+        "tier": ["GOLD", "DIAMOND", "GOLD", "GOLD", "GOLD", "GOLD"],
+        "total_mastery_points": [300_000, 400_000, 200_000, 500_000, 500_000, 500_000],
+        "active_top1_share": [0.8, 0.5, 1.0, 0.3, 1.0, float("nan")],
+        "active_hhi": [0.5, 0.7, 1.0, 0.4, 1.0, float("nan")],
+        "recent_total_points": [1000, 1000, 1000, 1000, 0, 1000],
+    })
+    baseline = pd.DataFrame({
+        "champion_name": ["Riven"] * 4, "tier": ["GOLD", "DIAMOND", "ALL", "GOLD"],
+        "minimum_mastery": [0, 0, 0, 10_000], "player_count": [30, 10, 40, 1],
+        "mean_mastery": [100, 1_000_000, 100, 100],
+    })
+    result = one_trick_tier_distribution(players, baseline).set_index("tier")
+    assert result["one_trick_players"].sum() == 2
+    assert result.loc["GOLD", "one_trick_share"] == 0.5
+    assert result.loc["DIAMOND", "champion_share"] == 0.25
+    assert result.loc["DIAMOND", "representation_ratio"] == 2
+    assert result.loc["DIAMOND", "difference_pp"] == 25
+    assert pd.isna(result.loc["IRON", "representation_ratio"])
+    assert one_trick_tier_distribution(players, baseline, criterion="Main share")["one_trick_players"].sum() == 1
+    assert one_trick_tier_distribution(players, baseline, criterion="HHI")["one_trick_players"].sum() == 1
+    assert one_trick_tier_distribution(players, baseline, minimum_mastery=600_000).empty
+
+
+def test_one_trick_baseline_agreement_and_measured_zero():
+    players = pd.DataFrame({
+        "active_primary_champion_name": ["Teemo", "Teemo", "Riven"],
+        "tier": ["GOLD", "DIAMOND", "GOLD"], "total_mastery_points": [300_000] * 3,
+        "active_top1_share": [0.9] * 3, "active_hhi": [0.8] * 3, "recent_total_points": [1000] * 3,
+    })
+    baseline = pd.DataFrame({
+        "champion_name": ["Teemo", "Teemo", "Riven", "Riven"],
+        "tier": ["GOLD", "DIAMOND", "GOLD", "DIAMOND"],
+        "minimum_mastery": [0] * 4, "player_count": [10] * 4,
+    })
+    result = one_trick_tier_distribution(players, baseline)
+    assert result.loc[result["champion_name"].eq("Teemo") & result["champion_players"].gt(0), "representation_ratio"].eq(1).all()
+    zero = result.loc[result["champion_name"].eq("Riven") & result["tier"].eq("DIAMOND")].iloc[0]
+    assert zero["one_trick_share"] == 0
+    assert zero["representation_ratio"] == 0
 
 
 def test_over_under_includes_playstyles_missing_from_champion_players() -> None:

@@ -50,6 +50,33 @@ The intended collection was roughly even across tiers, not proportional to the L
 
 The short snapshot still offers leads for future collection. In its current player profiles, 34 of 59 Master players are classified as specialists or multispecialists. Their active-pool playstyle distribution differs sharply from Iron through Diamond, while their all-time distribution is more cohesive with other tiers. The Master players in this sample were originally fetched in Diamond before climbing, so the contrast describes a selected set of climbers rather than a representative Master sample. Specialization is also common in lower tiers; a simple rising-with-rank story does not fit. In the [tier mastery export](../streamlit_app/data/champion_tier_mastery.parquet), Teemo holders average about 38,700 mastery points in Iron and 24,200 in Diamond at the zero-point threshold. Those are sample descriptions, not evidence that champion choice or specialization caused a rank outcome. The small Master group, tier sampling, and active-pool fallback make confirmation with later snapshots important.
 
+## Adding population estimates without changing collection
+
+The tier-balanced collection was useful for comparisons across ranks, but its
+pooled averages described the collected sample. A manually supplied ten-tier
+distribution now provides a frozen assumption for population estimates. The
+reference received on 2026-10-10 assigns 37.97% jointly to bronze/silver; the
+original observation date, region and queue are unspecified. It is versioned
+and manually reviewed rather than inferred from the collection schedule.
+
+The [weight mart](../league_pipeline/docs/model_reference.md#mart_player_population_weights)
+keeps the adjustment separate from source profiles. Actual counts determine
+each tier's relative weight within region/queue, and missing tiers are reported
+through reference coverage. Filters retain the original weights rather than
+forcing every champion or role subset back to the full ladder mix. The SQL view
+is live; an anonymous snapshot bundle freezes profiles and reference together
+for repeatable analyst work. Dashboard calculations use the same formula on
+their own serving cohort, allowing offline use without warehouse activation.
+
+The design review added direct SQL/Python arithmetic parity checks, key and
+profile-cardinality tests, consistent rejection of invalid weights before
+support counts, reference fingerprints, and an explicit bundle file allowlist.
+These checks verify the implementation. The selected Master climbers, division
+ordering, refresh priorities and completed-period eligibility remain sampling
+limitations. Other pages' pooled aggregates retain sample definitions. The
+[method and review](population_weighting.md) records the affected views,
+maintenance workflow and remaining scientific limits.
+
 ## What I would change and what comes next
 
 In retrospect, a simpler source dataset could have demonstrated many of the same engineering skills faster. This project took roughly three months because answering the original question with sparse game data required much more collection and modeling work than expected. The difficulty also produced the most valuable learning: working through state boundaries, request economics, historical grain, and honest analytical limits.

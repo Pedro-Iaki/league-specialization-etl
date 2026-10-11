@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import streamlit as st
 from app_core import config as dashboard_config
 from app_core.analysis import (
     AXIS_LABELS,
@@ -30,7 +29,11 @@ from app_core.charts import (
 )
 from app_core.config import PLAYSTYLE_COLORS, PLAYSTYLE_LABELS, PLAYSTYLE_ORDER, TIER_ORDER
 from app_core.data import DashboardDataError, data_freshness, load_dataset, load_optional_dataset
+from app_core.i18n import st
 from app_core.metrics import champion_neighbors
+from app_core.population import apply_tier_weights, calibrate_population, row_weights, weighted_mean, weighted_quantile
+from app_core.population_champions import champion_estimates, mastery_summary, population_pairs
+from app_core.population_ui import population_controls
 from app_core.ui import (
     data_source_caption,
     format_compact,
@@ -46,7 +49,7 @@ from app_core.ui import (
 setup_page("Champion Explorer")
 minimum_support = getattr(dashboard_config, "MIN_SUPPORT_PLAYERS", 3)
 try:
-    players = load_dataset("players")
+    players = load_dataset("players", include_all_tiers=True)
     champions = load_dataset("champions")
     styles = load_dataset("champion_playstyles")
     cooccurrence = load_dataset("cooccurrence")
@@ -54,6 +57,10 @@ try:
     tier_growth = load_optional_dataset("champion_tier_growth")
     ranked_share_players = load_optional_dataset("ranked_mastery_cohorts")
     tier_mastery = load_optional_dataset("champion_tier_mastery")
+    player_mastery = load_optional_dataset("champion_player_mastery_share")
+    population_activity = load_optional_dataset("champion_population_activity")
+    tier_pairs = load_optional_dataset("champion_population_pairs")
+    growth_population = load_optional_dataset("growth_players")
 except DashboardDataError as error:
     render_load_error(error)
 
@@ -65,6 +72,32 @@ hero(
     "Compare each champion's players with the wider population, inspect playstyle and role tendencies, "
     "and explore how mastery share relates to rank growth.",
 )
+try:
+    players, population_diagnostics, use_population_weights = population_controls(players)
+    if use_population_weights:
+        if player_mastery is not None:
+            player_mastery = apply_tier_weights(player_mastery, population_diagnostics)
+        if tier_mastery is not None:
+            tier_mastery = apply_tier_weights(tier_mastery.loc[tier_mastery["tier"].ne("ALL")], population_diagnostics)
+        if population_activity is not None:
+            population_activity = apply_tier_weights(population_activity, population_diagnostics)
+        if tier_pairs is not None:
+            cooccurrence = population_pairs(apply_tier_weights(tier_pairs, population_diagnostics))
+        if growth_players is not None and growth_population is not None:
+            _, growth_diagnostics = calibrate_population(growth_population, tier_column="starting_tier")
+            growth_players = apply_tier_weights(growth_players, growth_diagnostics, "starting_tier")
+        if ranked_share_players is not None:
+            ranked_share_players, _ = calibrate_population(
+                ranked_share_players, tier_column="starting_tier", scope_columns=("window_name", "region", "queue"),
+            )
+        champions = champion_estimates(champions, players, growth_players, ranked_share_players,
+                                       player_mastery, tier_mastery, population_activity)
+except ValueError as error:
+    render_load_error(error)
+st.caption("Population mode weights pooled summaries before filters; individual points and support counts remain observations. Historical estimates describe represented player–tier observations with completed periods, not all ranked players.")
+st.caption("Champion overlap uses tier-preserving counts in population mode; support remains observed. Older snapshots without that export keep sample overlap.")
+if use_population_weights and population_activity is None:
+    st.info("Population estimates of active play rate and role mix need the champion_population_activity export. Refresh the snapshots to enable them.")
 
 names = sorted(champions["champion_name"].dropna().unique().tolist())
 selected = st.selectbox("Champion", names, index=names.index("Ahri") if "Ahri" in names else 0)
@@ -101,7 +134,12 @@ period_all = ranked_share_players.loc[ranked_share_players["window_name"] == "Al
 selected_period = period_all.loc[period_all["favoured_champions"].apply(lambda names: selected in names if isinstance(names, (list, tuple, np.ndarray)) else False)] if period_all is not None else None
 historical_denominator = len(period_all) if period_all is not None else 0
 card_mastery_threshold = max(15_000, minimum_mastery)
-if tier_mastery is None:
+if use_population_weights and player_mastery is not None:
+    mastery_cohort = mastery_summary(player_mastery, card_mastery_threshold)
+    matching_mastery = mastery_cohort.loc[mastery_cohort["champion_name"].eq(selected)]
+    mastery_overall = matching_mastery.rename(columns={"players": "player_count"}).iloc[0] if not matching_mastery.empty else None
+    mastery_baselines = mastery_cohort[["mean_mastery", "median_mastery"]].mean()
+elif tier_mastery is None:
     mastery_overall = None
     mastery_baselines = pd.Series(dtype=float)
 else:
@@ -136,9 +174,9 @@ def mastery_card(card, key: str, label: str, value: float, baseline: float) -> N
         else:
             displayed = format_compact(value)
         st.metric(
-            f"{label} vs sample" if compared else label,
+            f"{label} vs champion average" if compared else label,
             displayed,
-            help=f"Sample average across champions: {format_compact(baseline)}. Each champion contributes once; mastery holders meet the {card_mastery_threshold:,}-point threshold.",
+            help=f"Average across champions: {format_compact(baseline)}. Each champion contributes once; mastery holders meet the {card_mastery_threshold:,}-point threshold.",
         )
 
 
@@ -161,9 +199,15 @@ def cycle_association_metric() -> None:
 
 
 cards = st.columns(6)
-count_card(cards[0], "primary", "Primary players", players["active_primary_champion_name"].eq(selected).sum(), len(players), "Players whose current active mastery pool is led by this champion. Percentage uses the current tracked sample through Master.")
-count_card(cards[1], "active", "Active players", champion.get("active_player_count"), champion.get("active_pool_player_count"), "Players whose current active mastery pool contains this champion. Percentage uses all active-pool players in the same champion mart.")
-count_card(cards[2], "historical", "Historical players", len(selected_period) if selected_period is not None else champion.get("observed_player_count"), historical_denominator, "Players who favoured this champion in the all-period ranked-share cohort. Percentage uses all players in that same cohort.")
+primary_share = row_weights(players.loc[players["active_primary_champion_name"].eq(selected)]).sum() / row_weights(players).sum()
+primary_count = int(players["active_primary_champion_name"].eq(selected).sum())
+count_card(cards[0], "primary", "Primary players", primary_count, primary_count / primary_share if primary_share else len(players), "Players whose current active mastery pool is led by this champion. Shares use the selected analysis denominator; counts remain observed.")
+active_count = champion.get("active_player_count")
+active_rate = champion.get("active_play_rate")
+count_card(cards[1], "active", "Active players", active_count, active_count / active_rate if pd.notna(active_rate) and active_rate else champion.get("active_pool_player_count"), "Active champion membership uses the selected analysis denominator; counts remain observed.")
+historical_count = len(selected_period) if selected_period is not None else champion.get("observed_player_count")
+historical_share = row_weights(selected_period).sum() / row_weights(period_all).sum() if period_all is not None and len(period_all) else 0
+count_card(cards[2], "historical", "Historical players", historical_count, historical_count / historical_share if historical_share else historical_denominator, "Favoured champion membership among players with completed periods uses the selected analysis denominator; counts remain observed.")
 cards[3].metric(
     "Mean player win rate", format_percent(champion.get("observed_win_rate")) if display_historical else "—",
     help="Mean player win rate from attributed ranked outcomes. This is not the champion's match-level win rate.",
@@ -208,9 +252,9 @@ extra = st.columns(4)
 if period_all is not None and not period_all.empty:
     ranked_values = selected_period["median_ranked_mastery_share"]
     baseline_values = period_all["median_ranked_mastery_share"]
-    ranked_estimate = ranked_values.median()
-    ranked_median_difference = ranked_estimate - baseline_values.median()
-    ranked_mean_difference = ranked_values.mean() - baseline_values.mean()
+    ranked_estimate = weighted_quantile(ranked_values, row_weights(selected_period))
+    ranked_median_difference = ranked_estimate - weighted_quantile(baseline_values, row_weights(period_all))
+    ranked_mean_difference = weighted_mean(ranked_values, row_weights(selected_period)) - weighted_mean(baseline_values, row_weights(period_all))
 else:
     ranked_estimate = float("nan")
     ranked_median_difference = float("nan")
@@ -226,8 +270,11 @@ with extra[0].container(key="ranked_share_metric"):
         ranked_display = f"{100 * difference:+.1f} pp" if pd.notna(difference) else "—"
     st.metric("Ranked share", ranked_display, help="Cohort: players who favoured this champion in completed rank periods. Differences compare with all players in the same all-period ranked cohort. Estimated from ranked wins/losses and mastery gain; selection bias remains.")
 extra[1].metric("Mean conditional pool overlap", format_percent(overlap["conditional"]), help=f"Shared-player-weighted P(other champion in pool | this champion in pool), across {overlap['pairs']} retained pairs. Pairs with fewer than five shared players are absent.")
-extra[2].metric("Mean player active HHI", format_signed(players.loc[players["active_primary_champion_name"] == selected, "active_hhi"].mean(), 3), help="Mean active HHI from the current player-profile mart, among players whose current primary champion is selected. Each player has one current active pool; higher HHI means that pool's mastery is more concentrated.")
+current_primary = players.loc[players["active_primary_champion_name"].eq(selected)]
+extra[2].metric("Mean player active HHI", format_signed(weighted_mean(current_primary["active_hhi"], row_weights(current_primary)), 3), help="Mean active HHI from the current player-profile mart, among players whose current primary champion is selected. Each player has one current active pool; higher HHI means that pool's mastery is more concentrated.")
 filtered_expert_share = mastery_overall["expert_player_count"] / mastery_overall["player_count"] if mastery_overall is not None and mastery_overall["player_count"] else float("nan")
+if use_population_weights and mastery_overall is not None and "expert_share" in mastery_overall:
+    filtered_expert_share = mastery_overall["expert_share"]
 extra[3].metric("Expert share among mastery holders", format_percent(filtered_expert_share), help=f"Players with at least 100,000 mastery points divided by tracked players with at least {card_mastery_threshold:,} points on this champion. This updates with the mastery threshold.")
 
 section("Historical relationship", f"Mastery share and rank growth for {selected}")
@@ -295,7 +342,7 @@ basis = controls[0].segmented_control(
     "Mastery window", ["Active (60 days)", "All-time"], default="Active (60 days)"
 )
 view = controls[1].selectbox("Compare by", ["Tier", "Rank score", "Role"])
-over_under_mix = controls[2].toggle("Difference from sample", key="mix_over_under")
+over_under_mix = controls[2].toggle("Difference from selected denominator", key="mix_over_under")
 mix_display = st.segmented_control("Progression display", ["Progression lines", "Bars"], default="Progression lines", key="mix_display") if view != "Role" else "Bars"
 group = "main_role" if view == "Role" else "rank_band" if view == "Rank score" else "tier"
 mix_players = players.copy()
@@ -339,9 +386,9 @@ elif over_under_mix:
             comparison["Playstyle"] = comparison["playstyle"].map(PLAYSTYLE_LABELS)
             fig = px.line(comparison, x=group, y="difference_pp", color="Playstyle", markers=True, category_orders={group: TIER_ORDER, "Playstyle": [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER]} if group == "tier" else {"Playstyle": [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER]}, color_discrete_map={PLAYSTYLE_LABELS[key]: color for key, color in PLAYSTYLE_COLORS.items()}, custom_data=["players", "share", "population_share"])
             fig.add_hline(y=0, line_dash="dot")
-            fig.update_traces(line={"width": 3}, marker={"size": 8}, hovertemplate="%{x}<br>%{fullData.name}: %{y:+.1f} pp<br>Players: %{customdata[0]:,}<br>Champion share: %{customdata[1]:.1%}<br>Sample share: %{customdata[2]:.1%}<extra></extra>")
+            fig.update_traces(line={"width": 3}, marker={"size": 8}, hovertemplate="%{x}<br>%{fullData.name}: %{y:+.1f} pp<br>Players: %{customdata[0]:,}<br>Champion share: %{customdata[1]:.1%}<br>Reference share: %{customdata[2]:.1%}<extra></extra>")
             fig.update_xaxes(title="Current tier" if group == "tier" else "Rank score (200-point bands)")
-            fig.update_yaxes(title="Difference from sample (percentage points)")
+            fig.update_yaxes(title="Difference from selected denominator (percentage points)")
             st.plotly_chart(style_figure(fig, height=460), width="stretch")
         else:
             st.plotly_chart(composition_delta_chart(comparison, group), width="stretch")
@@ -419,13 +466,13 @@ if not representation.empty:
     ))
     fig.add_hline(y=1, line_dash="dot", line_color="#9AABC0")
     fig.update_xaxes(title="Current tier", categoryorder="array", categoryarray=TIER_ORDER)
-    fig.update_yaxes(title="Representation difference from sample", range=[0, 3], tickvals=[0, 1, 2, 3], ticktext=["−100%", "0%", "+100%", "+200%"])
+    fig.update_yaxes(title="Representation difference from selected denominator", range=[0, 3], tickvals=[0, 1, 2, 3], ticktext=["−100%", "0%", "+100%", "+200%"])
     st.plotly_chart(style_figure(fig, height=430), width="stretch")
 st.caption("Each point compares the champion's primary-player share in a tier with that tier's share of all tracked players. The dotted line is equal representation (1×); the visible vertical range is capped at 3×.")
 primary_players = players.loc[players["active_primary_champion_name" if representation_basis == "Active (60 days)" else "top_champion_name"] == selected]
 rank_cards = st.columns(2)
-rank_cards[0].metric("Mean primary-player rank score", format_compact(primary_players["rank_score"].mean()))
-rank_cards[1].metric("Median primary-player rank score", format_compact(primary_players["rank_score"].median()))
+rank_cards[0].metric("Mean primary-player rank score", format_compact(weighted_mean(primary_players["rank_score"], row_weights(primary_players))))
+rank_cards[1].metric("Median primary-player rank score", format_compact(weighted_quantile(primary_players["rank_score"], row_weights(primary_players))))
 
 section("Mastery by tier", f"{selected} mastery and expert population")
 if tier_mastery is None:

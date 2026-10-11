@@ -5,4 +5,5 @@ pyarrow>=18,<27
 numpy>=2,<3
 python-dotenv>=1,<2
 databricks-sql-connector>=4,<5
+databricks-sdk>=0.68,<0.118
 

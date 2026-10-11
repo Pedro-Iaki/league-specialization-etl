@@ -9,8 +9,10 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from app_core.business import BUSINESS_PUBLIC_COLUMNS
 from app_core.config import DATA_DIR, DATASET_FILES, MANIFEST_PATH, REPO_ROOT, TIER_ORDER
-from app_core.queries import DATASET_QUERIES, REQUIRED_COLUMNS
+from app_core.i18n import t
+from app_core.queries import DATASET_QUERIES, PLAYER_PROFILE_QUERY, REQUIRED_COLUMNS
 
 
 class DashboardDataError(RuntimeError):
@@ -31,6 +33,8 @@ def _validate_dataset(name: str, frame: pd.DataFrame) -> pd.DataFrame:
     if missing:
         missing_columns = ", ".join(sorted(missing))
         raise DashboardDataError(f"Dataset '{name}' is missing: {missing_columns}")
+    if name == "business_players" and set(frame.columns) - set(BUSINESS_PUBLIC_COLUMNS):
+        raise DashboardDataError("Business dataset violates the anonymous column allowlist")
     return frame
 
 
@@ -41,7 +45,12 @@ def _read_snapshot(name: str) -> pd.DataFrame:
             f"Snapshot not found at {path}. Run scripts/export_data.py from the "
             "streamlit_app directory or switch to Databricks mode."
         )
-    return pd.read_parquet(path)
+    frame = pd.read_parquet(path)
+    if name == "business_players":
+        metadata = load_manifest().get("datasets", {}).get(name, {}).get("scenario", {})
+        if metadata and set(frame["scenario_id"]) == {metadata.get("scenario_id")}:
+            frame.attrs["business_scenario"] = metadata
+    return frame
 
 
 def _load_databricks_connection():
@@ -56,13 +65,31 @@ def _read_databricks(name: str) -> pd.DataFrame:
     connection = _load_databricks_connection()
     cursor = connection.cursor()
     try:
-        cursor.execute(DATASET_QUERIES[name])
+        metadata = None
+        if name == "business_players":
+            from src.sample.validation import warehouse_metadata
+            metadata = warehouse_metadata(cursor)
         try:
-            return cursor.fetchall_arrow().to_pandas()
+            cursor.execute(DATASET_QUERIES[name])
+        except Exception as error:
+            if name != "players" or "TABLE_OR_VIEW_NOT_FOUND" not in str(error) or "mart_player_population_weights" not in str(error):
+                raise
+            cursor.execute(PLAYER_PROFILE_QUERY)
+        try:
+            frame = cursor.fetchall_arrow().to_pandas()
         except AttributeError:
             rows = cursor.fetchall()
             columns = [column[0] for column in cursor.description]
-            return pd.DataFrame(rows, columns=columns)
+            frame = pd.DataFrame(rows, columns=columns)
+        if metadata is not None:
+            if len(frame) != metadata["player_count"] or set(frame["scenario_id"]) != {metadata["scenario_id"]}:
+                raise DashboardDataError("Business sample changed during reading; reload after the sample build finishes")
+            frame.attrs["business_scenario"] = metadata
+        return frame
+    except Exception as error:
+        if name == "business_players":
+            raise DashboardDataError(str(error)) from error
+        raise
     finally:
         cursor.close()
         connection.close()
@@ -75,13 +102,15 @@ def _load_dataset_cached(name: str, selected_mode: str, snapshot_version: int | 
     return _validate_dataset(name, frame)
 
 
-def load_dataset(name: str, mode: str | None = None) -> pd.DataFrame:
+def load_dataset(name: str, mode: str | None = None, *, include_all_tiers: bool = False) -> pd.DataFrame:
     """Load one contracted dataset from a local snapshot or Databricks."""
     if name not in DATASET_FILES:
         raise DashboardDataError(f"Unknown dashboard dataset: {name}")
     selected_mode = mode or configured_data_mode()
     snapshot_version = MANIFEST_PATH.stat().st_mtime_ns if selected_mode == "snapshot" and MANIFEST_PATH.exists() else None
     frame = _load_dataset_cached(name, selected_mode, snapshot_version)
+    if name == "business_players" or include_all_tiers:
+        return frame.copy()  # preserve the full frozen denominator, including any apex tiers
     allowed_tiers = set(TIER_ORDER) | ({"ALL"} if name == "champion_tier_mastery" else set())
     for tier_column in ("tier", "starting_tier", "previous_tier"):
         if tier_column in frame:
@@ -93,7 +122,12 @@ def load_optional_dataset(name: str) -> pd.DataFrame | None:
     """Use new analytical extracts when available; keep older snapshots readable."""
     if configured_data_mode() == "snapshot" and not snapshot_paths()[name].exists():
         return None
-    return load_dataset(name)
+    try:
+        return load_dataset(name)
+    except Exception as error:
+        if name == "business_players" and "TABLE_OR_VIEW_NOT_FOUND" in str(error):
+            return None
+        raise
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -111,7 +145,10 @@ def data_freshness(frames: list[pd.DataFrame]) -> str:
             if column in frame.columns and frame[column].notna().any():
                 dates.append(pd.to_datetime(frame[column]).max())
                 break
-    return max(dates).strftime("%B %d, %Y") if dates else "Unknown"
+    if not dates:
+        return t("Unknown")
+    latest = max(dates)
+    return t("_formats.long_date", p0=f"{latest.day:02d}", p1=t(latest.strftime("%B")), p2=latest.year)
 
 
 def snapshot_paths() -> dict[str, Path]:

@@ -1,0 +1,6 @@
+currency_id,name,currency_kind
+USD,US dollar,fiat
+BRL,Brazilian real,fiat
+L_RP,Riot Points,game
+L_BE,Blue Essence,game
+L_IP,Influence Points,game

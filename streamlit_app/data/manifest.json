@@ -1,13 +1,13 @@
 {
-  "exported_at_utc": "2026-10-02T10:37:56.371356+00:00",
+  "exported_at_utc": "2026-10-10T23:37:07.016606+00:00",
   "source": "league_pipeline.gold",
   "privacy": "Player and interval identifiers excluded from public extracts.",
   "datasets": {
     "champion_player_mastery_share": {
       "file": "champion_player_mastery_share.parquet",
       "rows": 1139520,
-      "columns": 5,
-      "size_bytes": 14496458
+      "columns": 7,
+      "size_bytes": 14505676
     },
     "champion_tier_mastery": {
       "file": "champion_tier_mastery.parquet",
@@ -18,8 +18,8 @@
     "players": {
       "file": "player_profiles.parquet",
       "rows": 37172,
-      "columns": 52,
-      "size_bytes": 4027260,
+      "columns": 53,
+      "size_bytes": 4041839,
       "min_as_of_date": "2026-09-29T00:00:00",
       "max_as_of_date": "2026-09-29T00:00:00",
       "min_snapshot_date": "2026-09-16T00:00:00",
@@ -62,20 +62,20 @@
     "growth_players": {
       "file": "growth_players.parquet",
       "rows": 1066,
-      "columns": 10,
-      "size_bytes": 51863
+      "columns": 12,
+      "size_bytes": 52904
     },
     "champion_growth_players": {
       "file": "champion_growth_players.parquet",
       "rows": 4089,
-      "columns": 10,
-      "size_bytes": 130297
+      "columns": 13,
+      "size_bytes": 138593
     },
     "growth_player_styles": {
       "file": "growth_player_styles.parquet",
       "rows": 1066,
-      "columns": 7,
-      "size_bytes": 15433
+      "columns": 9,
+      "size_bytes": 16490
     },
     "champion_tier_growth": {
       "file": "champion_tier_growth.parquet",
@@ -86,8 +86,79 @@
     "ranked_mastery_cohorts": {
       "file": "ranked_mastery_cohorts.parquet",
       "rows": 4296,
-      "columns": 8,
-      "size_bytes": 39955
+      "columns": 10,
+      "size_bytes": 41013
+    },
+    "business_players": {
+      "file": "business_players.parquet",
+      "rows": 24990,
+      "columns": 42,
+      "size_bytes": 2117210,
+      "min_as_of_date": "2026-09-29T00:00:00",
+      "max_as_of_date": "2026-09-29T00:00:00",
+      "min_snapshot_date": "2026-09-16T00:00:00",
+      "max_snapshot_date": "2026-09-29T00:00:00",
+      "scenario": {
+        "as_of_date": "2026-09-29",
+        "cash_spent_usd_alltime": "7439491.86",
+        "cohort_fingerprint": "94f8adc25f33f1553a5e7b3f9d357c9c714c05fd4d1928700ffc82c61b5d35d6",
+        "cohort_policy": "all complete current ranked profiles at one as-of date; no row cap",
+        "config_fingerprint": "9d212a7ad4aec2d2033c1d8d2139f3109f24e095cee4c632b76a119c99dd413e",
+        "fiat_transaction_count": 447282,
+        "generator_seed": 42,
+        "generator_version": "1.2",
+        "history_end_at": "2026-09-29T23:59:51+00:00",
+        "history_start_at": "2018-10-02T00:38:39+00:00",
+        "max_snapshot_date": "2026-09-29",
+        "min_snapshot_date": "2026-09-16",
+        "observed_optional_feature_counts": {
+          "games_per_day_recent": 1074,
+          "ranked_mastery_share": 1066
+        },
+        "optional_real_features": [
+          "games_per_day_recent",
+          "ranked_mastery_share"
+        ],
+        "player_count": 24990,
+        "provenance": "Purchase history and spending patterns are synthetic; frozen player metrics are real Riot API data.",
+        "purchase_window_end": "2026-09-29",
+        "purchase_window_start": "2026-08-01",
+        "queue": "RANKED_SOLO_5x5",
+        "ranked_share_source": "median valid observed ranked-mastery estimate; null when unobserved; optional for eligibility",
+        "required_real_features": [
+          "player_id",
+          "region",
+          "queue",
+          "tier",
+          "main_role",
+          "active_playstyle",
+          "snapshot_date",
+          "as_of_date",
+          "active_primary_champion_key",
+          "active_primary_champion_name",
+          "active_top1_share",
+          "active_normalized_entropy",
+          "champions_with_mastery",
+          "total_mastery_points",
+          "alltime_top1_share"
+        ],
+        "scenario_id": "business-8bd0372374d1daa4f5859fab",
+        "source": "league_pipeline.gold.mart_player_profile + mart_player_delta_history",
+        "top1_champion_share_source": "mart_player_profile.active_top1_share",
+        "transaction_count": 3900172
+      }
+    },
+    "champion_population_activity": {
+      "file": "champion_population_activity.parquet",
+      "rows": 1384,
+      "columns": 13,
+      "size_bytes": 87727
+    },
+    "champion_population_pairs": {
+      "file": "champion_population_pairs.parquet",
+      "rows": 119024,
+      "columns": 11,
+      "size_bytes": 565230
     }
   }
 }

@@ -17,13 +17,19 @@ if str(APP_ROOT) not in sys.path:
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from app_core.business import BUSINESS_PUBLIC_COLUMNS
 from app_core.config import DATASET_FILES
-from app_core.queries import DATASET_QUERIES, REQUIRED_COLUMNS
+from app_core.population import population_weights
+from app_core.queries import DATASET_QUERIES, PLAYER_PROFILE_QUERY, REQUIRED_COLUMNS
 
 from src.load.databricks_helper import get_connection
+from src.sample.validation import warehouse_metadata
 
 FORBIDDEN_PUBLIC_COLUMNS = {
     "player_id",
+    "transaction_id",
+    "product_id",
+    "scenario_metadata",
     "puuid",
     "rank_delta_id",
     "champion_pair_id",
@@ -52,7 +58,13 @@ def json_value(value: Any) -> Any:
 
 
 def fetch_frame(cursor: Any, query: str) -> pd.DataFrame:
-    cursor.execute(query)
+    try:
+        cursor.execute(query)
+    except Exception as error:
+        if query != DATASET_QUERIES["players"] or "TABLE_OR_VIEW_NOT_FOUND" not in str(error) or "mart_player_population_weights" not in str(error):
+            raise
+        print("  Weight mart is not built; calculating equivalent frozen weights on the full export.", flush=True)
+        cursor.execute(PLAYER_PROFILE_QUERY)
     try:
         return cursor.fetchall_arrow().to_pandas()
     except AttributeError:
@@ -70,6 +82,8 @@ def validate_public_frame(name: str, frame: pd.DataFrame) -> None:
         raise ValueError(f"{name} contains forbidden public columns: {sorted(forbidden)}")
     if frame.empty:
         raise ValueError(f"{name} returned no rows")
+    if name == "business_players" and set(frame.columns) != set(BUSINESS_PUBLIC_COLUMNS):
+        raise ValueError("Business export must use the explicit anonymous column allowlist")
 
 
 def dataset_metadata(path: Path, frame: pd.DataFrame) -> dict[str, Any]:
@@ -103,14 +117,31 @@ def export_snapshots(output_dir: Path, datasets: list[str] | None = None) -> dic
         for name in (datasets or DATASET_QUERIES):
             query = DATASET_QUERIES[name]
             print(f"Exporting {name}...", flush=True)
+            business_metadata = None
+            if name == "business_players":
+                try:
+                    business_metadata = warehouse_metadata(cursor)
+                except Exception as error:
+                    if not datasets and "TABLE_OR_VIEW_NOT_FOUND" in str(error):
+                        print("  Optional business sample is not built; skipping.", flush=True)
+                        continue
+                    raise
             frame = fetch_frame(cursor, query)
+            if name == "players":
+                frame, _ = population_weights(frame)
             validate_public_frame(name, frame)
+            if business_metadata is not None and (
+                len(frame) != business_metadata["player_count"] or set(frame["scenario_id"]) != {business_metadata["scenario_id"]}
+            ):
+                raise ValueError("Business sample changed during export; retry after the load/build completes")
 
             destination = output_dir / DATASET_FILES[name]
             temporary = output_dir / f".{destination.name}.tmp"
             frame.to_parquet(temporary, index=False, compression="zstd")
             os.replace(temporary, destination)
             manifest["datasets"][name] = dataset_metadata(destination, frame)
+            if business_metadata is not None:
+                manifest["datasets"][name]["scenario"] = business_metadata
             print(f"  {len(frame):,} rows -> {destination.name}", flush=True)
     finally:
         cursor.close()
