@@ -16,16 +16,14 @@ from app_core.queries import DATASET_QUERIES
 from streamlit.testing.v1 import AppTest
 
 
-def test_mart_weights_are_preserved_and_stale_snapshot_is_rejected():
+def test_cached_weights_are_recalculated_from_the_local_reference():
     raw = pd.DataFrame({"tier": ["IRON", "GOLD", "GOLD"], "region": "BR1", "queue": "solo"})
     exported, _ = calibrate_population(raw)
     checked, _ = population_weights(exported)
     np.testing.assert_allclose(checked[WEIGHT], exported[WEIGHT])
-    with pytest.raises(ValueError, match="full snapshot"):
-        population_weights(exported.iloc[:2])
     exported.loc[0, WEIGHT] = 1
-    with pytest.raises(ValueError, match="Refresh the export"):
-        population_weights(exported)
+    recalculated, _ = population_weights(exported)
+    np.testing.assert_allclose(recalculated[WEIGHT], checked[WEIGHT])
 
 
 def test_champion_subset_keeps_full_cohort_weights_and_raw_counts():
@@ -94,11 +92,12 @@ def test_activity_aggregates_use_weighted_numerators_and_observed_counts():
     assert result["role_top_pct"] == pytest.approx(2.9 / 13)
 
 
-def test_player_export_joins_mart_without_exporting_identifiers():
+def test_player_export_needs_only_profiles_and_excludes_identifiers():
     query = DATASET_QUERIES["players"]
-    assert "mart_player_population_weights" in query
+    assert "mart_player_profile" in query
+    assert "mart_player_population_weights" not in query
     select = query.split("from", 1)[0]
-    assert "w.population_weight" in select
+    assert "population_weight" not in select
     assert "player_id" not in select and "puuid" not in select
 
 

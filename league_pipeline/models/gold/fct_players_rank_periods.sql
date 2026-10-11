@@ -31,7 +31,7 @@ endpoints as (
 
     select *
     from snapshots
-    where date_add(period_bucket_start, {{ period_days }}) <= current_date()
+    where date_add(period_bucket_start, {{ period_days }}) <= {{ report_cutoff() }}
     qualify row_number() over (
         partition by player_id, queue, period_bucket_start
         order by snapshot_date desc

@@ -20,7 +20,7 @@ if str(REPO_ROOT) not in sys.path:
 from app_core.business import BUSINESS_PUBLIC_COLUMNS
 from app_core.config import DATASET_FILES
 from app_core.population import population_weights
-from app_core.queries import DATASET_QUERIES, PLAYER_PROFILE_QUERY, REQUIRED_COLUMNS
+from app_core.queries import DATASET_QUERIES, REQUIRED_COLUMNS
 
 from src.load.databricks_helper import get_connection
 from src.sample.validation import warehouse_metadata
@@ -58,13 +58,7 @@ def json_value(value: Any) -> Any:
 
 
 def fetch_frame(cursor: Any, query: str) -> pd.DataFrame:
-    try:
-        cursor.execute(query)
-    except Exception as error:
-        if query != DATASET_QUERIES["players"] or "TABLE_OR_VIEW_NOT_FOUND" not in str(error) or "mart_player_population_weights" not in str(error):
-            raise
-        print("  Weight mart is not built; calculating equivalent frozen weights on the full export.", flush=True)
-        cursor.execute(PLAYER_PROFILE_QUERY)
+    cursor.execute(query)
     try:
         return cursor.fetchall_arrow().to_pandas()
     except AttributeError:

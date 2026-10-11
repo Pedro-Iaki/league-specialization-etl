@@ -25,15 +25,16 @@ recent_form as (
         r.period_bucket_days as window_days,
         r.period_in_days as days_covered,
         r.games_delta as games,
-        r.lp_delta,
+        case when {{ lp_growth_eligible('r.lp_delta', 'r.games_delta') }} then r.lp_delta end as lp_delta,
         {{ dbt_utils.safe_divide('r.wins_delta', 'r.games_delta') }} as win_rate,
-        {{ dbt_utils.safe_divide('r.lp_delta', 'r.games_delta') }} as lp_per_game,
-        {{ dbt_utils.safe_divide('r.lp_delta', 'r.period_in_days') }} as lp_per_day,
+        case when {{ lp_growth_eligible('r.lp_delta', 'r.games_delta') }} then
+            {{ dbt_utils.safe_divide('r.lp_delta', 'r.games_delta') }} end as lp_per_game,
+        case when {{ lp_growth_eligible('r.lp_delta', 'r.games_delta') }} then
+            {{ dbt_utils.safe_divide('r.lp_delta', 'r.period_in_days') }} end as lp_per_day,
         {{ dbt_utils.safe_divide('r.games_delta', 'r.period_in_days') }} as games_per_day
     from {{ ref('fct_players_rank_periods') }} r
     inner join latest_period l
         on r.period_bucket_start = l.period_bucket_start
-    where {{ lp_growth_eligible('r.lp_delta', 'r.games_delta') }}
 
 )
 

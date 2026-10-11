@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-import sqlite3
 from zipfile import ZipFile
 
 import numpy as np
@@ -142,40 +140,6 @@ def test_unsupported_rows_are_excluded_from_bands_transitions_and_support():
     assert ranked_share_by_dimensions(weighted, "Role", "Champion")["player_count"].sum() == 8
 
 
-def test_warehouse_sql_and_python_weights_match_with_missing_scopes_and_tiers():
-    from app_core.config import REPO_ROOT
-
-    raw = profiles()
-    second = raw.iloc[[0, 4, 5, 6, 7]].copy()
-    second["region"] = "EUW1"
-    second["queue"] = None
-    unsupported = raw.iloc[[0]].copy()
-    unsupported["region"] = "UNKNOWN_SCOPE"
-    unsupported["tier"] = "UNRANKED"
-    frame = pd.concat([raw, second, unsupported], ignore_index=True)
-    frame["player_id"] = [f"player-{index}" for index in range(len(frame))]
-    frame["as_of_date"] = "2026-09-29"
-    frame["snapshot_date"] = "2026-09-28"
-    expected, _ = calibrate_population(frame)
-    query = (REPO_ROOT / "league_pipeline/models/gold/mart_player_population_weights.sql").read_text(encoding="utf-8")
-    query = re.sub(r"\{\{\s*config\(.*?\)\s*\}\}", "", query)
-    query = re.sub(r"\{\{\s*ref\('([^']+)'\)\s*\}\}", r"\1", query)
-    # SQLite IS has the same null-safe equality semantics as Databricks <=>.
-    # Window sums, grouping, joins and arithmetic execute from the actual model.
-    query = query.replace("<=>", "IS")
-    with sqlite3.connect(":memory:") as connection:
-        frame.to_sql("mart_player_profile", connection, index=False)
-        load_reference().to_sql("rank_population_reference", connection, index=False)
-        result = pd.read_sql_query(query, connection).set_index("player_id")
-    expected = expected.set_index("player_id")
-    assert len(result) == len(expected)
-    assert result.index.is_unique
-    assert np.allclose(result.loc[expected.index, WEIGHT], expected[WEIGHT], equal_nan=True)
-    assert result.loc["player-13", "covered_population_share"] == 0
-    assert pd.isna(result.loc["player-13", "sample_tier_share"])
-    assert result["profile_as_of_date"].eq("2026-09-29").all()
-    supported = result.loc[result[WEIGHT].notna()]
-    assert np.allclose(supported["supported_target_share"] / supported["sample_tier_share"], supported[WEIGHT])
 
 
 def test_bundle_exports_only_named_artifacts_and_fingerprints_reference(tmp_path):

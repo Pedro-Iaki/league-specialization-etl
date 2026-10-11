@@ -211,25 +211,8 @@ def direct_standardized_means(
 
 
 def population_weights(players: pd.DataFrame, reference: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Use mart weights when exported, validating the frozen cohort and reference.
-
-    Older anonymous snapshots calculate the identical formula locally. Validation
-    catches stale weights, a changed reference, and calibration after filtering.
-    """
-    reference = load_reference() if reference is None else validate_reference(reference)
-    calculated, diagnostics = calibrate_population(players, reference)
-    if WEIGHT not in players:
-        return calculated, diagnostics
-    supplied = row_weights(players)
-    expected = row_weights(calculated)
-    if not np.allclose(supplied, expected, equal_nan=True, rtol=1e-8, atol=1e-10):
-        raise ValueError("Exported population weights do not match the full snapshot and frozen reference. Refresh the export.")
-    if "reference_version" in players:
-        versions = players.loc[supplied.notna(), "reference_version"]
-        if versions.isna().any() or not versions.eq(reference["reference_version"].iloc[0]).all():
-            raise ValueError("Exported population weights use a different reference version. Refresh the export.")
-    calculated[WEIGHT] = supplied.to_numpy()
-    return calculated, diagnostics
+    """Calculate weights from the local reference, replacing cached weight values."""
+    return calibrate_population(players, reference)
 
 
 def apply_tier_weights(

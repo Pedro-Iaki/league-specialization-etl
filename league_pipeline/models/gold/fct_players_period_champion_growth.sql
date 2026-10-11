@@ -1,8 +1,9 @@
-{{ config(materialized='table', file_format='delta') }}
+{{ config(materialized='view', file_format='delta') }}
 
 select
     p.rank_period_id,
     p.player_id,
+    p.region,
     p.queue,
     p.previous_tier,
     p.period_bucket_start,

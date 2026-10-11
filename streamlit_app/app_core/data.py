@@ -12,7 +12,7 @@ import streamlit as st
 from app_core.business import BUSINESS_PUBLIC_COLUMNS
 from app_core.config import DATA_DIR, DATASET_FILES, MANIFEST_PATH, REPO_ROOT, TIER_ORDER
 from app_core.i18n import t
-from app_core.queries import DATASET_QUERIES, PLAYER_PROFILE_QUERY, REQUIRED_COLUMNS
+from app_core.queries import DATASET_QUERIES, REQUIRED_COLUMNS
 
 
 class DashboardDataError(RuntimeError):
@@ -69,12 +69,7 @@ def _read_databricks(name: str) -> pd.DataFrame:
         if name == "business_players":
             from src.sample.validation import warehouse_metadata
             metadata = warehouse_metadata(cursor)
-        try:
-            cursor.execute(DATASET_QUERIES[name])
-        except Exception as error:
-            if name != "players" or "TABLE_OR_VIEW_NOT_FOUND" not in str(error) or "mart_player_population_weights" not in str(error):
-                raise
-            cursor.execute(PLAYER_PROFILE_QUERY)
+        cursor.execute(DATASET_QUERIES[name])
         try:
             frame = cursor.fetchall_arrow().to_pandas()
         except AttributeError:

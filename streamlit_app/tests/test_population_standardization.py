@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import re
-import sqlite3
-
 import numpy as np
 import pandas as pd
 import pytest
-from app_core.config import REPO_ROOT
 from app_core.population import (
     WEIGHT,
     calibrate_population,
@@ -14,7 +10,6 @@ from app_core.population import (
     load_reference,
     weighted_mean,
 )
-from jinja2 import Environment
 
 
 def selected_profiles():
@@ -93,47 +88,6 @@ def test_standardization_separates_scopes_and_handles_invalid_and_unsupported_va
         direct_standardized_means(frame, ["active_hhi"], minimum_tier_players=0)
 
 
-@pytest.mark.parametrize("minimum_support", [1, 2, 5])
-def test_standardization_mart_matches_python_for_all_cohorts_and_metrics(minimum_support):
-    frame = selected_profiles()
-    second = frame.iloc[:1].copy()
-    second["region"] = "EUW1"
-    second["queue"] = None
-    unknown = second.copy()
-    unknown["region"] = "UNKNOWN_SCOPE"
-    unknown["tier"] = "UNRANKED"
-    frame = pd.concat([frame, second, unknown], ignore_index=True)
-    sql = (REPO_ROOT / "league_pipeline/models/gold/mart_player_population_standardization.sql").read_text()
-    query = Environment().from_string(sql).render(
-        config=lambda **kwargs: "", ref=lambda name: name,
-        var=lambda name, default: minimum_support if name == "population_min_tier_players" else default,
-    )
-    query = query.replace("<=>", "is")
-    query = re.sub(r"cast\((\w+) as double\)", r"cast(\1 as real)", query)
-    with sqlite3.connect(":memory:") as connection:
-        frame.to_sql("mart_player_profile", connection, index=False)
-        load_reference().to_sql("rank_population_reference", connection, index=False)
-        actual = pd.read_sql_query(query, connection)
-    cohorts = {
-        "all_profiles": frame,
-        "active_classified": frame.loc[frame.active_playstyle.notna()],
-        "alltime_classified": frame.loc[frame.alltime_playstyle.notna()],
-    }
-    metrics = ["total_mastery_points", "rank_score", "active_hhi", "alltime_hhi",
-               "lp_per_game_recent", "win_rate_recent"]
-    keys = ["region", "queue", "cohort", "metric", "tier"]
-    expected = pd.concat([
-        direct_standardized_means(cohort, metrics, minimum_tier_players=minimum_support)[1].assign(cohort=name)
-        for name, cohort in cohorts.items()
-    ])
-    compared = actual.merge(expected, on=keys, suffixes=("_sql", "_py"), validate="one_to_one")
-    assert len(compared) == len(actual) == len(expected)
-    for column in ("metric_players", "selected_players", "tier_supported", "tier_mean",
-                   "supported_target_share", "covered_population_share", "standardized_mean"):
-        assert np.allclose(
-            pd.to_numeric(compared[f"{column}_sql"]), pd.to_numeric(compared[f"{column}_py"]), equal_nan=True,
-        )
-    assert compared.coverage_status_sql.equals(compared.coverage_status_py)
 
 
 def test_full_reference_recovers_full_standardized_mean():

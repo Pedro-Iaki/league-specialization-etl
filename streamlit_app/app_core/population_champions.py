@@ -74,6 +74,11 @@ def champion_estimates(
         for column in metrics:
             result[column] = pooled[column]
         result["observed_player_count"] = pooled["players"]
+        if "end_rank_score" in growth:
+            medians = growth.groupby("champion_name", observed=True).apply(
+                lambda rows: weighted_quantile(rows["end_rank_score"], row_weights(rows)), include_groups=False,
+            )
+            result["median_end_rank_score"] = medians
     if ranked is not None:
         periods = ranked.loc[ranked["window_name"].eq("All observed periods")].explode("favoured_champions")
         pooled = weighted_summary(periods, "favoured_champions", {"mean_ranked_share": "median_ranked_mastery_share"})

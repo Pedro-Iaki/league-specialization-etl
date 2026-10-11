@@ -51,7 +51,6 @@ minimum_support = getattr(dashboard_config, "MIN_SUPPORT_PLAYERS", 3)
 try:
     players = load_dataset("players", include_all_tiers=True)
     champions = load_dataset("champions")
-    styles = load_dataset("champion_playstyles")
     cooccurrence = load_dataset("cooccurrence")
     growth_players = load_optional_dataset("champion_growth_players")
     tier_growth = load_optional_dataset("champion_tier_growth")
@@ -112,7 +111,6 @@ if not has_historical_support and pd.notna(historical_sample) and historical_sam
         "champion_cards",
     )
 display_historical = has_historical_support or show_thin_cards
-style_profile = styles.loc[styles["champion_name"] == selected].copy()
 observations_all = (
     growth_players.loc[growth_players["champion_name"] == selected].copy()
     if growth_players is not None else None

@@ -51,7 +51,7 @@ To refresh only the spending-mart change and its reconciliation tests, run from 
 
 The optional `champion_player_mastery_share` extract powers the Cross Champion View mastery-share boxes. It contains one row per player and champion with at least 15K champion mastery points, with tier and mastery ratios but no player identifier. When absent from a snapshot, that chart explains which extract is needed.
 
-Build the growth marts before refreshing the export. Each Parquet file is replaced atomically in `data/`, followed by a manifest recording row counts, file sizes, date coverage, and export time. The included snapshot contains historical growth extracts. Older snapshots without those extracts remain supported: the app identifies unavailable views and labels older champion estimates explicitly.
+Build the retained dbt models before refreshing the export. Champion growth and tier/style heatmaps now use saved SQL queries over the period-attribution view, rendered directly from the same macro used by the champion-profile model. The unused champion-playstyle and raw rank-growth extracts are omitted. Each Parquet file is replaced atomically in `data/`, followed by a manifest recording row counts, file sizes, date coverage, and export time. The included snapshot contains historical growth extracts. Older snapshots without those extracts remain supported: the app identifies unavailable views and labels older champion estimates explicitly.
 
 ## Optional live mode
 
@@ -178,6 +178,11 @@ not 99.94% of all real players. It has no Grandmaster/Challenger observations.
 Weights do not correct within-tier selection, including the selected Master
 climbers, or selection into completed rank periods. Effective sample size is a
 weight-dispersion diagnostic; no weighted confidence intervals are claimed.
-See the [model reference](../league_pipeline/docs/model_reference.md#mart_player_population_weights)
+See the [model reference](../league_pipeline/docs/model_reference.md#saved-growth-sql-and-local-population-weights)
 for warehouse grain, join keys and SQL column definitions.
 
+
+Population weights are calculated in Python from the local rank-reference CSV;
+the player export reads `mart_player_profile` directly. Cached weight values are
+recomputed against that reference. Dashboard windows and defaults have not been
+changed by this model trim.

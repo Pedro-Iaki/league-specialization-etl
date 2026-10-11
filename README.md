@@ -66,7 +66,7 @@ This took roughly three months of self-directed work. The main lesson was that t
     R["Sample-only raw tables + SKU/currency seeds"]
     T["Bronze/Silver transactions → Gold player spending"]
     Q["Manual tier population reference"]
-    W["Gold player population weights (live view)"]
+    W["Python tier weights (local CSV)"]
     D -. "read existing player + rank-period marts" .-> F
     F --> G --> R --> T --> E
     D --> W
@@ -150,9 +150,9 @@ actual tier counts and remain attached when filtering.
 Generate the reproducible offline handoff with
 `python streamlit_app/scripts/export_population_estimates.py`. It writes a ZIP,
 anonymous weighted profiles, CSV comparisons, input/reference fingerprints and
-an analyst guide under `data/population_estimates/`. The optional warehouse
-weight view is implemented and locally parsed; this does not claim warehouse
-activation. See the [model catalog](league_pipeline/docs/model_reference.md#mart_player_population_weights)
+an analyst guide under `data/population_estimates/`. The dashboard reads the
+reference CSV directly; no weight-mart activation is required. See the
+[model catalog](league_pipeline/docs/model_reference.md#saved-growth-sql-and-local-population-weights)
 and [method, maintenance and design review](docs/population_weighting.md).
 
 ## About the business sample
@@ -217,3 +217,10 @@ Designed and built by Pedro Iaki. Generative AI was used as a learning and imple
 
 This is an independent project using Riot Games API services. League of Legends and Riot Games are trademarks of Riot Games, Inc.; the project is not affiliated with or endorsed by Riot Games.
 
+
+The analytics model trim keeps four gameplay marts and uses two saved growth
+queries instead of redundant stored summaries. Population normalization reads
+the local reference CSV in Python. Build the retained models with the existing
+dbt setup, then refresh the dashboard manually with
+`python streamlit_app/scripts/export_data.py`. Export still overwrites the
+ordinary snapshot files; extraction and ingestion are unchanged in this pass.

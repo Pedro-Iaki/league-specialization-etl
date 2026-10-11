@@ -16,11 +16,8 @@ The final marts are intentionally separated by grain:
 | Mart | Grain | Primary purpose |
 |---|---|---|
 | `mart_player_profile` | Player | Current player profile with rank, form, role, and specialization |
-| `mart_player_population_weights` | Current profile key (`player_id`, `region`, `queue`) | Relative weights for estimates under a frozen tier distribution |
 | `mart_player_delta_history` | Player and completed rank period | Rank growth associated with the champions used during a period |
 | `mart_champion_profile` | Champion | Overall champion population, rank, growth, mastery, and role profile |
-| `mart_champion_tier_growth` | Champion, starting tier, and optional playstyle | Player-equal growth within a tier |
-| `mart_champion_playstyle_profile` | Champion and playstyle | Comparison of a champion's results across player archetypes |
 | `mart_champion_cooccurrence` | Unordered champion pair | Strength and frequency of active-pool overlap |
 | `mart_player_spending` | Frozen sample player | Synthetic purchase history joined to real profile context; optional separate business branch |
 
@@ -46,11 +43,11 @@ The final marts are intentionally separated by grain:
 
     Player["mart_player_profile"]
     PopulationReference["reference.rank_population_reference (manual seed)"]
-    PopulationWeights["mart_player_population_weights (live view)"]
+    PopulationWeights["Python population weights (local CSV)"]
     Delta["mart_player_delta_history"]
     Champion["mart_champion_profile"]
-    Tier["mart_champion_tier_growth"]
-    Playstyle["mart_champion_playstyle_profile"]
+    Tier["champion_tier_growth (saved query)"]
+    Playstyle["Playstyle summaries (saved query)"]
     Cooccurrence["mart_champion_cooccurrence"]
 
     Roles --> Player
@@ -63,7 +60,6 @@ The final marts are intentionally separated by grain:
     PeriodPools --> Growth
     Delta --> Growth
     Player --> Champion
-    Player --> Playstyle
     Growth --> Champion
     Growth --> Tier
     Growth --> Playstyle
@@ -187,20 +183,20 @@ Role inference is a two-stage, non-recursive process:
 
     subgraph PlayerMarts["Published player marts"]
         PProfile["mart_player_profile"]
-        PWeights["mart_player_population_weights (view)"]
+        PWeights["Python population weights (local CSV)"]
         PDelta["mart_player_delta_history"]
     end
     RankReference["reference.rank_population_reference (manual seed)"]
 
     subgraph Growth["Champion growth aggregation"]
         PCGrowth["fct_players_period_champion_growth"]
-        PCSummary["fct_players_champion_growth_summary"]
+        PCSummary["Shared player-first growth SQL (macro)"]
     end
 
-    subgraph ChampionMarts["Published champion marts"]
+    subgraph ChampionMarts["Published champion marts and saved queries"]
         CProfile["mart_champion_profile"]
-        CTier["mart_champion_tier_growth"]
-        CPStyle["mart_champion_playstyle_profile"]
+        CTier["champion_tier_growth (saved query)"]
+        CPStyle["Playstyle summaries (saved query)"]
         Cooccur["mart_champion_cooccurrence"]
     end
 
@@ -571,7 +567,7 @@ shares summing to one, and bronze/silver jointly account for 37.97%. Previous
 versions are preserved in version control rather than appended to this table.
 
 **Lineage.** Upstream: `seeds/rank_population_reference.csv`, edited manually.
-Downstream: `mart_player_population_weights`. The dashboard/Python bundle also
+Downstream: Python population weighting. The dashboard/Python bundle also
 read this same repository CSV directly, independent of warehouse deployment.
 
 | Column | Meaning |
@@ -599,7 +595,7 @@ The seed does not expire automatically or fetch external replacements.
 
 **Grain and materialization.** One row per current player; Delta table.
 
-**Lineage.** Upstream: `dim_players_current`, `dim_players_active_pool`, `fct_players_mastery_profile`, `fct_players_rank_periods`, `dim_players_naive_role_distribution`. Downstream: both champion profile marts and `mart_player_population_weights`.
+**Lineage.** Upstream: `dim_players_current`, `dim_players_active_pool`, `fct_players_mastery_profile`, `fct_players_rank_periods`, `dim_players_naive_role_distribution`. Downstream: `mart_champion_profile` and Python population weighting.
 
 | Column group | Columns and meaning |
 |---|---|
@@ -611,110 +607,7 @@ The seed does not expire automatically or fetch external replacements.
 | Active pool | `active_champion_count`, `recent_total_points`, `active_primary_champion_key`, `active_primary_champion_name`, `active_playstyle`, `active_top1_share`, `active_favoured_champion_count`, `active_favoured_champions_share`, `active_hhi`, `active_normalized_entropy`, `active_champion_names` |
 | Lifetime mastery | `champions_with_mastery`, `total_mastery_points`, `top_champion_key`, `top_champion_name`, `alltime_top1_share`, `alltime_favoured_champion_count`, `alltime_favoured_champions_share`, `alltime_hhi`, `alltime_normalized_entropy`, `alltime_playstyle`, `alltime_points_per_day`, `days_since_last_play`, `days_tracked` |
 
-**Technical notes and edge cases.** Active and all-time playstyles answer different questions and can legitimately disagree. `metadata_primary_roles` preserves ties from the first-stage role inference, while `main_role` is derived from empirically weighted active champions. Recent form uses the latest completed rank bucket available in the dataset. Its nominal window is seven days by default, while rates use the actual six-to-eight-day span between observed endpoints. Recent form excludes rank periods beyond the configured absolute LP-per-game growth bound. Players without an eligible period in that latest bucket have null form values, not zero performance.
-
-### `mart_player_population_weights`
-
-**Purpose.** Attach a relative analysis weight to each current player profile so
-pooled estimates can reflect an assumed tier mix. This model does not alter
-profiles, calculate champion aggregates or provide historical survey weights.
-
-**Grain and materialization.** One row per current profile key
-(`player_id`, `region`, `queue`); Gold SQL view. The upstream profile currently
-requires unique `player_id` and is used for one tracked queue. Retaining region
-and queue in the weight key prevents accidental cross-scope joins; it does not
-make the rest of the pipeline support multiple queues automatically. Join all
-three keys using null-safe equality where needed.
-
-**Lineage.** Upstream: `mart_player_profile`, `rank_population_reference`.
-Downstream: optional warehouse analyst joins. The dashboard computes the same
-formula in Python over its serving cohort; it does not query this view. The
-Population Analysis serving view restricts tiers through Master, while the
-Population Estimates page and CLI use all tiers available in the profile input.
-Comparisons must use the same calibration cohort and reference content.
-
-| Column | Meaning |
-|---|---|
-| `player_id`, `region`, `queue`, `tier` | Profile join key, scope and current calibration tier |
-| `profile_as_of_date`, `profile_snapshot_date` | Analytical and rank snapshot dates inherited from the profile |
-| `tier_sample_players` | Actual unfiltered count `n_t` in this tier/scope |
-| `scope_sample_players` | Unfiltered count `N` across supported tiers in this scope |
-| `sample_tier_share` | Supported tier's actual sample share `n_t / N` |
-| `estimated_population_share` | Full-reference estimate `p_t` |
-| `covered_population_share` | Sum `C` of reference shares for tiers with observations; zero if no tier is supported |
-| `supported_target_share` | Estimate normalized over represented tiers, `p_t / C` |
-| `population_weight` | Relative player weight `(p_t / C) / (n_t / N)` |
-| `reference_version`, `reference_recorded_on`, `reference_review_after` | Active seed version, receipt date and manual review reminder |
-
-**Calculation.** Count the actual current profile rows per region/queue/tier;
-left join the seed; sum supported counts and represented reference shares with
-region/queue window partitions; join the resulting weights back to profiles.
-The calculation uses actual sample counts rather than assuming perfectly even
-collection. Supported weights average one within each scope. Current snapshot
-examples: Iron receives about 0.2794, Gold 1.7511 and Master 4.6020. For Gold,
-`(0.2353 / 0.9994) / (4998 / 37172) = 1.7511`.
-
-Use `sum(weight * value) / sum(weight)` after excluding missing metric values
-and invalid weights. Keep the weights when filtering by role, champion,
-playstyle, tracking duration or mastery. Recalibrating each subset forces the
-subset to the full ladder mix and changes the quantity being estimated.
-
-**Technical notes and edge cases.** Unsupported tiers retain profile rows with
-null weights; no synthetic players are added. Results describe represented
-tiers, not the absent part of the ladder. The included snapshot covers 99.94%
-of this reference; Grandmaster and Challenger are absent. The unfiltered,
-supported region/queue mix keeps sample proportions because regional population
-sizes were not supplied; filtering can change this conditional mix. With one
-scope, a within-tier weight cancels from a within-tier mean/share. Mixing scopes
-can still change a tier's result because weights are normalized by scope.
-
-This is an assumed post-stratification adjustment, not a known inverse inclusion
-probability. It cannot repair within-tier selection, division/page order,
-refresh-priority selection or the selected Master climber cohort. It does not
-establish causal effects. Period statistics require a separately defined
-historical cohort; the dashboard's ranked-activity view calibrates starting tier
-within the selected observed window, retaining that view's selection caveats.
-
-**View lifecycle and validation.** The tier reference is frozen, but the view is
-live: refreshing profiles changes counts, coverage and weights under the same
-reference version. Freeze joined profiles and weights together for reproducible
-reports. Tests cover key uniqueness/non-null player keys, profile row cardinality,
-positive mean-one weights and valid coverage. A local regression executes the
-actual SQL arithmetic/window joins with SQLite null-safe equality to check Python
-parity; dbt parsing checks the model graph. Databricks execution remains a separate
-warehouse check. See [population method and design review](../../docs/population_weighting.md)
-for SQL examples, activation commands, exports and the implementation review.
-
-### `mart_player_population_standardization`
-
-**Purpose.** Compare selected cohorts' metric means at a common tier mix,
-separately from conditional subgroup estimates using original profile weights.
-
-**Grain and materialization.** Live view with one row per region, queue, cohort,
-metric and reference tier. All ten tiers appear, including tiers with no valid
-observations. Upstream: `mart_player_profile`, `rank_population_reference`.
-
-**Cohorts and metrics.** All profiles, active-classified and all-time-classified
-players; mastery points, rank score, active/all-time HHI, recent LP/game and
-recent win rate. Recent outcomes use current tier and only observed profiles.
-The dashboard's ranked-mastery comparison separately uses starting tier within
-the selected completed-period window.
-
-**Calculation.** Calculate each tier's valid metric count and mean after cohort
-selection. Require `population_min_tier_players` (default 5), then compute
-`sum(reference_share * tier_mean) / sum(reference_share)` over supported tiers.
-The result and coverage repeat over tier rows; select distinct summaries rather
-than summing them. No supported tiers gives a null mean. Coverage below
-`population_min_coverage` (default 0.99) is flagged; incomplete coverage always
-means a result conditional on supported tiers. Null/nonfinite metric values and
-unsupported tiers do not enter the estimate. Original player weights are unused.
-
-**Validation and limitations.** Composite uniqueness, ten-row tier grids,
-supported target normalization and arithmetic are checked. Local SQL/Python
-parity covers unequal retention, multiple scopes, missing values and low support.
-This comparison does not recover missing profiles/outcomes or correct division,
-within-tier selection or active-pool definitions. Relative population sizes of
-regions/queues are unknown, so their standardized means are reported separately.
+**Technical notes and edge cases.** Active and all-time playstyles answer different questions and can legitimately disagree. `metadata_primary_roles` preserves ties from the first-stage role inference, while `main_role` is derived from empirically weighted active champions. Recent form uses the latest completed rank bucket available in the dataset. Its nominal window is seven days by default, while rates use the actual six-to-eight-day span between observed endpoints. The absolute LP-per-game bound nulls only LP-derived fields; games, games/day and win rate retain their independent observations. Players without a period in that latest bucket have null form values, not zero performance.
 
 ### `mart_player_delta_history`
 
@@ -740,13 +633,13 @@ regions/queues are unknown, so their standardized means are reported separately.
 
 **Purpose.** Attribute each valid rank period's observed growth to all favoured champions using their share of positive mastery gain.
 
-**Grain and materialization.** One row per rank period and favoured champion with games and a starting-tier baseline; Delta table.
+**Grain and materialization.** One row per rank period and favoured champion with games and a starting-tier baseline; view.
 
-**Lineage.** Upstream: `fct_players_period_champion_activity`, `mart_player_delta_history`. Downstream: `fct_players_champion_growth_summary`.
+**Lineage.** Upstream: `fct_players_period_champion_activity`, `mart_player_delta_history`. Downstream: `Shared player-first growth SQL (macro)`.
 
 | Column group | Columns and meaning |
 |---|---|
-| Context | `rank_period_id`, `player_id`, `queue`, `previous_tier`, `period_bucket_start`, `period_in_days`, `playstyle` |
+| Context | `rank_period_id`, `player_id`, `region`, `queue`, `previous_tier`, `period_bucket_start`, `period_in_days`, `playstyle` |
 | Champion | `champion_key`, `champion_name`, `points_gained`, `points_rank`, `attribution_share` |
 | Period outcomes | `games_delta`, `wins_delta`, `lp_delta`, `tier_lp_per_game_baseline`, `lp_per_game`, `lp_per_day`, `period_win_rate`, `lp_per_game_lift_vs_tier` |
 | Estimated attribution | `attributed_games`, `attributed_wins`, `attributed_lp_delta`, `attributed_excess_lp` |
@@ -754,29 +647,13 @@ regions/queues are unknown, so their standardized means are reported separately.
 
 **Technical notes and edge cases.** Attributed outcomes multiply the period total by the champion's unrenormalized mastery share. `attributed_excess_lp` multiplies the tier-adjusted total LP by that share, so attribution and baseline adjustment reconcile. A champion's rate within one period is still the period rate; match-specific champion wins and LP are unavailable. Non-favoured mastery share remains unassigned.
 
-### `fct_players_champion_growth_summary`
-
-**Purpose.** Give each player one result per champion cohort before calculating champion-level outcomes.
-
-**Grain and materialization.** One row per player and champion within each of four cohort scopes: champion; champion and observed playstyle; champion and starting tier; champion, starting tier, and observed playstyle. Delta table. The unused cohort dimensions are null.
-
-**Lineage.** Upstream: `fct_players_period_champion_growth`. Downstream: both champion profile marts and `mart_champion_tier_growth`.
-
-| Column group | Columns and meaning |
-|---|---|
-| Key/cohort | `player_champion_growth_id`, `player_id`, `champion_key`, `cohort_scope`, `starting_tier`, `cohort_playstyle` |
-| Support | `observed_period_count`, `attributed_games` |
-| Player outcomes | `player_win_rate`, `player_lp_per_game`, `player_lp_per_day`, `median_lp_per_game_lift_vs_tier`, `player_avg_end_rank_score`, `player_median_end_rank_score` |
-
-**Technical notes and edge cases.** The LP/game lift median orders a player's qualifying period lifts and weights each period by the champion's mastery share. The first value crossing half the cumulative share is selected. Other player rates use attributed numerators and denominators. Champion marts average these player results, so each player contributes one vote within the chosen cohort. Tier-specific rows remain available even though the existing champion marts report the all-tier scopes.
-
 ### `mart_champion_profile`
 
 **Purpose.** Provide one concise overall profile per champion: current active-pool popularity, rank height among primary players, observed growth, mastery depth, and empirical role usage.
 
 **Grain and materialization.** One row per champion; Delta table.
 
-**Lineage.** Upstream: `dim_champions`, `fct_players_champion_activity`, `mart_player_profile`, `fct_players_champion_growth_summary`, `fct_masteries_current`, `dim_champion_role_weights`. Downstream: none.
+**Lineage.** Upstream: `dim_champions`, `fct_players_champion_activity`, `mart_player_profile`, `Shared player-first growth SQL (macro)`, `fct_masteries_current`, `dim_champion_role_weights`. Downstream: none.
 
 | Column group | Columns and meaning |
 |---|---|
@@ -788,38 +665,6 @@ regions/queues are unknown, so their standardized means are reported separately.
 | Empirical roles | `role_sample_player_count`, `role_top_pct`, `role_jungle_pct`, `role_middle_pct`, `role_bottom_pct`, `role_support_pct` |
 
 **Technical notes and edge cases.** Active play rate uses players with at least one active champion and positive recent mastery as its population. Primary-player metrics describe players whose current active pool is led by the champion. Growth metrics include every favoured champion in a period and average player-level results equally. `climbing_efficiency` is the mean player median LP/game lift. The Streamlit query translates this field to its existing `lp_per_game_lift_vs_tier` contract. `observed_games` is a compatibility alias for the fractional `attributed_games`, not a count of confirmed champion games. Win rate and LP rates are estimates derived from shared period outcomes.
-
-### `mart_champion_tier_growth`
-
-**Purpose.** Publish the player-equal champion growth comparison within each starting tier, with an optional observed playstyle split.
-
-**Grain and materialization.** One row per champion and starting tier for `champion_tier`, plus one row per champion, starting tier, and observed playstyle for `champion_tier_playstyle`; Delta table. `playstyle` is null for the all-playstyle row.
-
-**Lineage.** Upstream: `fct_players_champion_growth_summary`, `dim_champions`. Downstream: none.
-
-| Column group | Columns and meaning |
-|---|---|
-| Key/cohort | `champion_tier_growth_id`, `champion_key`, `champion_name`, `starting_tier`, `playstyle`, `cohort_scope` |
-| Support | `observed_player_count`, `observed_period_count`, `attributed_games` |
-| Player-equal outcomes | `observed_win_rate`, `expected_lp_per_game`, `expected_lp_per_day`, `climbing_efficiency` |
-
-**Technical notes and edge cases.** `climbing_efficiency` averages the weighted median LP/game lift of each player in that champion and starting-tier cohort. The playstyle split uses the classification observed in each rank period.
-
-### `mart_champion_playstyle_profile`
-
-**Purpose.** Show how the same champion's rank height and growth differ across specialist, multispecialist, versatile, and generalist players without widening the champion profile into repeated column groups.
-
-**Grain and materialization.** One row per observed champion and playstyle combination; Delta table.
-
-**Lineage.** Upstream: `mart_player_profile`, `fct_players_champion_growth_summary`, `dim_champions`. Downstream: none.
-
-| Column group | Columns and meaning |
-|---|---|
-| Key/context | `champion_playstyle_id`, `as_of_date`, `champion_key`, `champion_name`, `playstyle` |
-| Current players | `current_player_count`, `recent_form_player_count`, `avg_current_rank_score`, `median_current_rank_score`, `avg_recent_lp_per_game`, `avg_recent_win_rate` |
-| Observed growth | `observed_player_count`, `observed_period_count`, `attributed_games`, `observed_games`, `observed_win_rate`, `expected_lp_per_game`, `expected_lp_per_day`, `climbing_efficiency`, `avg_end_rank_score`, `median_end_rank_score` |
-
-**Technical notes and edge cases.** Only combinations observed in either the current player population or historical growth periods receive a row. Current metrics use active-pool playstyle; historical metrics use the champion distribution observed inside each completed rank period. Zero count means that side of the union had no observations; null averages mean no valid denominator.
 
 ### `mart_champion_cooccurrence`
 
@@ -898,3 +743,28 @@ dbt build --full-refresh
 Deleting a model file does not remove its existing relation from Databricks. Obsolete relations must be dropped explicitly.
 
 The final marts are tables rebuilt from their upstream state. Supporting diagnostic columns are deliberately retained outside the marts so classification behavior can be inspected without making analyst-facing tables unnecessarily wide.
+
+## Saved growth SQL and local population weights
+
+`champion_player_growth` is a shared macro over the period-champion attribution
+view. It calculates one player/champion/starting-tier observation, with an
+optional observed-playstyle grouping. Each player's period LP lift uses a
+mastery-share-weighted median. Every grouping is derived from periods; subgroup
+medians are not combined into a pooled median.
+
+The two files in `analyses/` are saved SQL queries, not tables or database views.
+`champion_growth_players.sql` provides anonymous player/tier observations;
+`champion_tier_growth.sql` provides the tier and tier/playstyle summaries used by
+the dashboard. The champion-profile model uses the same macro. The dashboard
+renders these queries directly from the current macro, so no compiled-query
+package, fingerprint check or additional compilation command is needed.
+
+The dashboard and analyst export read `seeds/rank_population_reference.csv`
+directly and calculate their weights in Python. No population-weight or
+standardization mart is required. The optional reference seed and its integrity
+test remain available. Counts are observations, not estimated population sizes.
+
+Recent games and win rate remain available when an LP change is implausible;
+only LP-derived recent fields become null. Completed rank buckets are bounded by
+the latest current player snapshot, or the ISO date supplied as
+`report_as_of_date`, rather than by the day the build happens to run.

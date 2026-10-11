@@ -13,64 +13,23 @@ The full model catalog is in [docs/model_reference.md](docs/model_reference.md).
 ## Main analytical outputs
 
 - `mart_player_profile`
-- `mart_player_population_weights` — live view of relative current-tier weights under a frozen population estimate.
 - `mart_player_delta_history`
 - `mart_champion_profile`
-- `mart_champion_tier_growth`
-- `mart_champion_playstyle_profile`
 - `mart_champion_cooccurrence`
 - `mart_player_spending` — optional synthetic spending scenario over frozen real profiles; separate from gameplay marts.
 
-## Frozen population reference and weight view
+## Frozen population reference
 
-`rank_population_reference` is a manually maintained ten-tier seed in
-`reference`. `gold.mart_player_population_weights` is a view over this seed and
-the unfiltered current profile mart. One row represents the profile key
-(`player_id`, `region`, `queue`); it includes actual tier/scope counts, sample and
-target shares, covered reference share, profile dates and the relative weight
-`(p_t / C) / (n_t / N)`. Weights average one within supported region/queue scopes.
-Use all three keys when joining to profiles, and keep weights when filtering.
+The dashboard and analyst export read `seeds/rank_population_reference.csv`
+directly. The existing Python helpers calculate population weights and direct
+standardization; no population mart is needed. The reference is a manual estimate,
+not an API observation. Region/queue and observation date were not supplied.
 
-For comparisons at a common tier mix, use the new view
-`mart_player_population_standardization`: it computes tier means after cohort
-selection, requires five valid values per tier by default, and divides the
-reference-weighted mean by supported reference coverage. Every reference tier
-appears; coverage below 99% is flagged. Scope/cohort/metric summaries repeat over
-tier rows, so select distinct summaries. Original profile weights remain valid
-for conditional subgroup estimates. See [population weighting](../docs/population_weighting.md)
-for interpretation, configuration and arbitrary filtered-cohort comparisons.
-
-The current reference is `2026-10-10-v1`, received on 2026-10-10 with review due
-2027-04-10. Observation date and region/queue were not supplied. It is an assumed
-distribution, not an API observation or a guarantee of fixed ladder shares.
-Missing tiers are not imputed, and within-tier selection remains possible.
-The view changes when profiles refresh even if the reference version stays fixed.
-
-With the existing profile mart built, activate only the new resources:
-
-```powershell
-dbt seed --select rank_population_reference
-dbt test --select rank_population_reference
-dbt run --select mart_player_population_weights mart_player_population_standardization
-dbt test --select mart_player_population_weights mart_player_population_standardization
-```
-
-The profile-grain test reads the existing profile mart for comparison but does
-not rebuild it. `dbt build --select tag:population_weighting` is also available
-once the upstream profile mart exists. Tests enforce reference completeness,
-metadata, positive shares and normalization, weight key uniqueness/profile row
-cardinality, positive weights and valid coverage. Local verification includes
-dbt parsing and Python/SQL numerical parity with equivalent SQLite null-safe
-joins; Databricks execution of these resources has not been claimed.
-
-The dashboard and anonymous analyst exporter read the same repository seed and
-compute the same formula on their own serving cohorts. They work before
-warehouse activation; a seed update must still be applied to the warehouse for
-SQL analysts. Compare both reference content and calibration cohort before
-comparing Python/SQL results. Definitions, columns and lifecycle are in the
-[model catalog](docs/model_reference.md#mart_player_population_weights); the
-[method and review](../docs/population_weighting.md) documents maintenance,
-analyst exports and scope limitations.
+The optional warehouse copy can still be loaded with
+`dbt seed --select rank_population_reference` and checked with
+`dbt test --select rank_population_reference`. This is not required by Streamlit.
+See [population weighting](../docs/population_weighting.md) for the formula,
+coverage, support and maintenance rules.
 
 ## Separate business sample
 
@@ -123,3 +82,21 @@ Validated against Databricks on 2026-09-30 using dbt Core 1.12.3 and dbt-databri
 Each run covered 21 models and 129 data tests across the bronze, silver, and gold layers, with `WARN=0`, `ERROR=0`, and `SKIP=0`. This includes source constraints, uniqueness and grain checks, accepted-value and range checks, the silver mastery-to-champion relationship test, and nine end-to-end business-rule tests under `tests/business`.
 
 These results record a successful validation at the commit where they were produced; they are not a substitute for rerunning `dbt build` after future model or source-contract changes.
+
+## Analytics model trim
+
+Gameplay now exposes four marts: player profiles, player rank-period history,
+champion profiles and champion overlap. The five redundant population/growth/
+playstyle definitions were removed from the repository; existing warehouse
+relations are not dropped automatically.
+
+Champion growth calculations are shared by the champion profile and two saved
+queries in `analyses/`. Those queries create no warehouse tables. Streamlit and
+its manual exporter render the same SQL directly; they need no compile script.
+The population reference is used directly in Python. See the
+[model reference](docs/model_reference.md#saved-growth-sql-and-local-population-weights).
+
+Keep the normal dbt workflow (`dbt build`). No additional build selectors were
+introduced. After building the retained models, manually run
+`python streamlit_app/scripts/export_data.py` from the repository root. The
+exporter overwrites ordinary Parquet files and updates the existing manifest.

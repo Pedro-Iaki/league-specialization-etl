@@ -139,9 +139,7 @@ For a comparison at a common tier mix, use the separate direct-standardization f
 
 Edit `league_pipeline/seeds/rank_population_reference.csv`, keep all ten positive shares summing to 1, and update version, recorded/review dates and provenance together. The dashboard flags review after {reference["review_after"].iloc[0]}; it does not fetch external data or silently replace the reference. New ranks require updating supported tier lists and reviewing chart/model coverage. Regenerate this bundle after a seed or snapshot change.
 
-Warehouse analysts can join `gold.mart_player_population_weights` to `gold.mart_player_profile` on player_id, region and queue after seeding/building the new resources. See `docs/population_weighting.md` for commands and scope details.
-
-The weight mart is a live view: source profile refreshes change sample counts and weights even with the same frozen reference version. Freeze the joined dataset together for a historical report. This bundle freezes the current input snapshot and its exact reference; it includes only the files explicitly listed in the manifest.
+Population weights are computed in Python from the local reference CSV. No warehouse weight mart is needed. Recreate the bundle after a profile snapshot or reference change; the bundle freezes the input snapshot and its exact reference, including only the files listed in its manifest.
 """
     (output_dir / "ANALYST_HANDOFF.md").write_text(report, encoding="utf-8")
     with ZipFile(output_dir / "population_estimates.zip", "w", ZIP_DEFLATED) as archive:

@@ -1,6 +1,28 @@
 from __future__ import annotations
 
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
+
 from app_core.business import BUSINESS_PUBLIC_COLUMNS, CASH_DISCOUNT_COLUMNS
+from app_core.config import REPO_ROOT
+
+
+def _analysis_query(name: str) -> str:
+    """Render saved growth SQL directly from the same macro dbt uses."""
+    relations = {
+        "dim_champions": "league_pipeline.silver.dim_champions",
+        "fct_players_period_champion_growth": "league_pipeline.gold.fct_players_period_champion_growth",
+    }
+    environment = Environment(
+        loader=FileSystemLoader(REPO_ROOT / "league_pipeline"), undefined=StrictUndefined,
+    )
+    environment.globals["ref"] = lambda relation: relations[relation]
+    macros = environment.get_template("macros/champion_player_growth.sql").module
+    environment.globals.update(
+        champion_player_growth=macros.champion_player_growth,
+        champion_tier_growth=macros.champion_tier_growth,
+    )
+    return environment.get_template(f"analyses/{name}.sql").render().strip()
+
 
 DATASET_QUERIES = {
     "champion_population_pairs": """
@@ -176,51 +198,9 @@ DATASET_QUERIES = {
         select *
         from league_pipeline.gold.mart_champion_profile
     """,
-    "champion_playstyles": """
-        select * except(champion_playstyle_id)
-        from league_pipeline.gold.mart_champion_playstyle_profile
-    """,
     "cooccurrence": """
         select * except(champion_pair_id)
         from league_pipeline.gold.mart_champion_cooccurrence
-    """,
-    "rank_growth": """
-        select
-            region,
-            queue,
-            previous_tier,
-            previous_division,
-            previous_league_points,
-            previous_rank_score,
-            tier,
-            division,
-            league_points,
-            rank_score,
-            previous_snapshot_date,
-            snapshot_date,
-            period_in_days,
-            wins_delta,
-            losses_delta,
-            games_delta,
-            lp_delta,
-            is_lp_growth_eligible,
-            champion_count,
-            mastery_points_gained,
-            primary_champion_key,
-            primary_champion_name,
-            primary_champion_points,
-            pool_top1_share,
-            pool_favoured_champion_count,
-            pool_favoured_champions_share,
-            pool_hhi,
-            pool_normalized_entropy,
-            playstyle,
-            tier_lp_per_game_baseline,
-            lp_per_game,
-            lp_per_day,
-            period_win_rate,
-            lp_per_game_lift_vs_tier
-        from league_pipeline.gold.mart_player_delta_history
     """,
     "growth_players": """
         with player_tiers as (
@@ -259,28 +239,7 @@ DATASET_QUERIES = {
         left join league_pipeline.gold.mart_player_profile current_player
             on p.player_id = current_player.player_id
     """,
-    "champion_growth_players": """
-        select
-            c.name as champion_name,
-            s.champion_key,
-            s.starting_tier,
-            s.player_mean_champion_share as champion_commitment,
-            s.player_mean_pool_hhi as specialization_hhi,
-            s.player_mean_pool_top1_share as top_champion_share,
-            s.median_lp_per_game_lift_vs_tier as climbing_efficiency,
-            s.player_win_rate as win_rate,
-            s.observed_period_count as period_count,
-            s.attributed_games
-            , s.player_avg_end_rank_score as end_rank_score
-            , current_player.region
-            , current_player.queue
-        from league_pipeline.gold.fct_players_champion_growth_summary s
-        inner join league_pipeline.silver.dim_champions c
-            on s.champion_key = c.key
-        left join league_pipeline.gold.mart_player_profile current_player
-            on s.player_id = current_player.player_id
-        where s.cohort_scope = 'champion_tier'
-    """,
+    "champion_growth_players": _analysis_query("champion_growth_players"),
     "growth_player_styles": """
         with player_cohorts as (
             select
@@ -311,10 +270,7 @@ DATASET_QUERIES = {
         left join league_pipeline.gold.mart_player_profile current_player
             on p.player_id = current_player.player_id
     """,
-    "champion_tier_growth": """
-        select * except(champion_tier_growth_id)
-        from league_pipeline.gold.mart_champion_tier_growth
-    """,
+    "champion_tier_growth": _analysis_query("champion_tier_growth"),
     "ranked_mastery_cohorts": """
         with latest as (
             select max(period_bucket_end) as latest_period_end
@@ -385,21 +341,6 @@ DATASET_QUERIES = {
     """,
 }
 
-# Resolve weights in the warehouse while private join keys are still available.
-# Prefix profile columns to avoid ambiguity; private keys never enter the export.
-PLAYER_PROFILE_QUERY = DATASET_QUERIES["players"]
-_profile_query = PLAYER_PROFILE_QUERY
-_profile_columns = _profile_query.split("select", 1)[1].split("from", 1)[0].strip().split(",")
-DATASET_QUERIES["players"] = (
-    "select " + ", ".join("p." + column.strip() for column in _profile_columns)
-    + ", w.population_weight, w.covered_population_share, w.reference_version, "
-    "w.reference_recorded_on, w.reference_review_after "
-    "from league_pipeline.gold.mart_player_profile p "
-    "left join league_pipeline.gold.mart_player_population_weights w "
-    "on p.player_id <=> w.player_id and p.region <=> w.region and p.queue <=> w.queue"
-)
-
-
 REQUIRED_COLUMNS = {
     "champion_population_pairs": {"champion_key_a", "champion_name_a", "champion_key_b", "champion_name_b", "region", "queue", "tier", "pool_player_count", "player_count_a", "player_count_b", "pair_player_count"},
     "champion_population_activity": {"champion_name", "tier", "region", "queue", "active_player_count", "active_pool_player_count", "mean_active_share", "role_sample_player_count", "role_top_pct", "role_jungle_pct", "role_middle_pct", "role_bottom_pct", "role_support_pct"},
@@ -424,27 +365,12 @@ REQUIRED_COLUMNS = {
         "primary_player_count",
         "observed_games",
     },
-    "champion_playstyles": {
-        "champion_key",
-        "champion_name",
-        "playstyle",
-        "current_player_count",
-        "observed_games",
-    },
     "cooccurrence": {
         "champion_name_a",
         "champion_name_b",
         "pair_player_count",
         "lift",
         "npmi",
-    },
-    "rank_growth": {
-        "previous_tier",
-        "games_delta",
-        "lp_delta",
-        "wins_delta",
-        "playstyle",
-        "primary_champion_name",
     },
     "growth_players": {"starting_tier", "specialization_hhi", "climbing_efficiency", "period_count"},
     "growth_player_styles": {"starting_tier", "playstyle", "climbing_efficiency", "period_count"},

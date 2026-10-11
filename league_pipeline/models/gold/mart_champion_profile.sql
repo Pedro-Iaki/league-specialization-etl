@@ -54,6 +54,10 @@ primary_player_metrics as (
 
 ),
 
+player_growth as (
+    {{ champion_player_growth() }}
+),
+
 growth_metrics as (
 
     select
@@ -68,9 +72,8 @@ growth_metrics as (
         avg(player_lp_per_day) as expected_lp_per_day,
         avg(median_lp_per_game_lift_vs_tier) as climbing_efficiency,
         avg(player_avg_end_rank_score) as avg_end_rank_score,
-        percentile(player_median_end_rank_score, 0.5) as median_end_rank_score
-    from {{ ref('fct_players_champion_growth_summary') }}
-    where cohort_scope = 'champion'
+        percentile(player_avg_end_rank_score, 0.5) as median_end_rank_score
+    from player_growth
     group by champion_key
 
 ),
