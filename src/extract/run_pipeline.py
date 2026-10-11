@@ -7,6 +7,7 @@ After running for the designated amount of loops, the pipeline will verify the i
 
 import json
 import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,7 @@ import pydantic_models as models
 from extract.get_masteries import run as extract_masteries
 from extract.get_players import run as extract_players
 from extract.reset_extraction_state import reset_local_data
+from load.build_dbt import run_dbt
 from load.load_champions_to_databricks import load_champions
 from load.load_compacted_to_databricks import load_compacted
 
@@ -104,7 +106,7 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
                 load_result = run_load()
                 # Handle load failures
                 if not load_result["status"] or db.count_incomplete_loads():
-                    logger.error("Load incomplete; retaining local data for retry.")
+                    logger.error("Load or dbt build incomplete; retaining local data. Confirmed load flags remain unchanged.")
                     return False
                 # Clear local files only after every recorded player and mastery load succeeds.
                 reset_local_data()
@@ -184,23 +186,24 @@ def run_stale_refresh(config_manifest: dict, run_n, date, api_client) -> dict:
 
 
 def run_load() -> dict:
+    result = {
+        "status": False,
+        "champion_load_result": None,
+        "compacted_load_result": None,
+        "dbt_build_result": None,
+    }
     try:
-        champion_load_result = load_champions()
-        logger.info(f"Champion load result: {champion_load_result}")
-        compacted_load_result = load_compacted()
-        logger.info(f"Compacted load result: {compacted_load_result}")
-        return {
-            "status": compacted_load_result,
-            "champion_load_result": champion_load_result,
-            "compacted_load_result": compacted_load_result,
-        }
+        result["champion_load_result"] = load_champions()
+        logger.info(f"Champion load result: {result['champion_load_result']}")
+        result["compacted_load_result"] = load_compacted()
+        logger.info(f"Compacted load result: {result['compacted_load_result']}")
+        if result["compacted_load_result"]:
+            result["dbt_build_result"] = run_dbt()
+            result["status"] = result["dbt_build_result"]
+            logger.info(f"dbt build result: {result['dbt_build_result']}")
     except Exception as e:  # noqa: BLE001 - preserve local files after any load-stage failure
-        logger.exception(f"Compaction and load failed: {e}")
-        return {
-            "status": False,
-            "champion_load_result": None,
-            "compacted_load_result": None,
-        }
+        logger.exception(f"Load or dbt build failed: {e}")
+    return result
 
 
 def get_configs(config_path: Path) -> tuple[dict, bool]:
@@ -239,4 +242,4 @@ def get_configs(config_path: Path) -> tuple[dict, bool]:
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    sys.exit(0 if run_pipeline() else 1)

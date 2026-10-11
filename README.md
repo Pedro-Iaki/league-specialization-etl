@@ -183,6 +183,46 @@ python -m extract.run_pipeline
 
 That command runs the **legacy local orchestrator**: collection, stale-player refresh, periodic compaction, and upload as configured. It is an environment-dependent data collection run, not a small demo command. It now retains local files when integrity or recorded landing-zone upload status fails; this check does not confirm downstream raw-table ingestion. Rank-page and refresh state can still advance before that load. The planned Airflow path will replace this runner and own the full post-load commit and retry boundary. The repository also contains the [ingestion notebook](src/load/ingest_players.ipynb) and a [Databricks job definition](resources/ingest_clean_transform.job.yml) for loading raw tables and building dbt layers.
 
+### Confirm ingestion before marking a load complete
+
+The loader uploads both available compacted inputs, starts an ingestion-only
+Databricks job, and waits for its result. Auto Loader and its existing checkpoints
+remain in use. Only a successful job permits the loader's Neon freshness upsert
+and SQLite `load_success` updates. Failed uploads or ingestion retain local files
+and mark the affected loads `load_failed`; the existing runner then stops.
+
+To activate this change:
+
+1. Pause the old **Ingest_Clean_Transform** file-arrival trigger in Databricks.
+   Its repository definition now defaults to paused.
+2. Make the reviewed code available to Databricks and deploy the
+   [ingestion-only job](resources/ingest_players.job.yml) and
+   [dbt build job](resources/build_dbt.job.yml). Neither has an automatic trigger.
+   The ingestion job uses the existing notebook; the dbt job runs `dbt deps` and
+   one `dbt build` on the existing SQL warehouse.
+3. Put their numeric IDs in `INGEST_JOB_ID` and `DBT_JOB_ID` in
+   `config/EXTRACTION_CONFIG.env`. `INGESTION_TIMEOUT_SECONDS` defaults to 900
+   and `DBT_TIMEOUT_SECONDS` to 1800.
+   The loader reads that file directly; no shell export is required. Existing
+   Databricks credentials remain in `config/DATABRICKS_CONFIG.env`.
+4. Run the existing Python extractor command above. Ingestion failures retry up
+   to three times. A timeout stops local loading immediately and logs the remote
+   run ID, when available; inspect that run in Databricks before retrying.
+   After confirmed ingestion and registry updates, Python starts the dbt job and
+   checks its result. A failed build stops the pipeline without changing the
+   confirmed ingestion flags. The build can be retried independently:
+
+   ```powershell
+   python -m load.build_dbt
+   ```
+
+No ready markers, batch framework, completion receipts or submission-deduplication
+system are added. Ingestion and dbt are separate jobs, sequenced by Python rather
+than a file-arrival timer. Dashboard export remains manual. These changes cover
+the loader's writes only; deferring the existing
+fetchers' cursor/inactivity updates is a separate follow-up. Neither job deployment
+nor a live ingestion run is performed by the local tests.
+
 For a configured `league_pipeline` dbt profile, run from the project directory:
 
 ```powershell

@@ -1,0 +1,17 @@
+resources:
+  jobs:
+    ingest_players:
+      name: League_Ingest_Players
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      timeout_seconds: 1800
+      tasks:
+        - task_key: ingestion
+          notebook_task:
+            notebook_path: src/load/ingest_players
+            source: GIT
+      git_source:
+        git_branch: main
+        git_provider: gitHub
+        git_url: https://github.com/Pedro-Iaki/league-specialization-etl/

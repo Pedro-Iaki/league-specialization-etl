@@ -38,7 +38,7 @@ def ensure_schema(conn: psycopg.Connection) -> None:
 
 
 def upsert_players(players: list[dict], conn: psycopg.Connection | None = None) -> int:
-    """Register uploaded player snapshots without counting a repeated upload as inactivity."""
+    """Register ingested player snapshots without counting a repeated load as inactivity."""
     if not players:
         return 0
 

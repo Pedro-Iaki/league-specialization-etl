@@ -1,3 +1,5 @@
+import sys
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -7,6 +9,7 @@ from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponenti
 
 import extract.extraction_db_helper as db
 from load import player_registry
+from load.confirm_ingestion import get_ingestion_config, run_ingestion
 from load.databricks_helper import upload_parquet
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -45,42 +48,58 @@ def load_dataset(dataset: str) -> dict:
         registry_columns = ["puuid", "region", "queueType"]
         if dataset == "players":
             registry_columns.extend(["wins", "losses"])
-        players = table.select(registry_columns).to_pylist()
+        rows = table.select(registry_columns).to_pylist()
+        players = list({(row["puuid"], row["region"], row["queueType"]): row for row in rows}.values())
     except Exception as e:  # noqa: BLE001 - malformed Parquet must not be treated as loaded
         logger.error(f"Failed to extract players from {dataset}: {e}")
         return {"dataset": dataset, "status": "extract_failed", "rows": table.num_rows, "players": 0}
 
     try:
         _upload(dataset, compacted_path)
-        status = "load_success"
+        status = "uploaded"
     except Exception as e:  # noqa: BLE001 - external upload clients raise several error types
         logger.error(f"Failed to load {dataset} after {MAX_UPLOAD_ATTEMPTS} attempts, will retry on next run: {e}")
         status = "load_failed"
 
-    db.update_load_status(dataset, players, status)
-    logger.info(f"{dataset}: {table.num_rows} row(s), {len(players)} player(s) marked {status}.")
+    db.update_load_status(dataset, players, "pending_load" if status == "uploaded" else "load_failed")
+    logger.info(f"{dataset}: {table.num_rows} row(s), {len(players)} player(s); upload {status}, ingestion not confirmed.")
 
-    if status == "load_success" and dataset == "players":
-        try:
-            player_registry.upsert_players(players)
-        except Exception as e:  # noqa: BLE001 - registry failure must prevent cleanup
-            logger.error(f"Failed to update Neon player registry after upload: {e}")
-            status = "registry_failed"
+    return {"dataset": dataset, "status": status, "rows": table.num_rows, "players": len(players), "records": players}
 
-    return {"dataset": dataset, "status": status, "rows": table.num_rows, "players": len(players)}
+
+def mark_load_status(results: list[dict], status: str) -> None:
+    with closing(db.get_connection()) as conn, conn:
+        for result in results:
+            if result.get("records"):
+                db.update_load_status(result["dataset"], result["records"], status, conn=conn)
 
 
 def load_compacted() -> bool:
+    config = get_ingestion_config()
     results = [load_dataset(dataset) for dataset in ("players", "masteries")]
-    success = all(r["status"] in ("load_success", "skipped") for r in results)
+    if not all(result["status"] in ("uploaded", "skipped") for result in results):
+        mark_load_status(results, "load_failed")
+        logger.error("Upload failed; ingestion was not started. Retaining local files.")
+        return False
+    if all(result["status"] == "skipped" for result in results):
+        return True
+    if not run_ingestion(config.ingest_job_id, config.ingestion_timeout_seconds):
+        mark_load_status(results, "load_failed")
+        logger.error("Ingestion was not confirmed; retaining local files without applying the loader's Neon updates.")
+        return False
 
-    if success:
-        logger.info("Load succeeded for all available datasets.")
-    else:
-        logger.error("Load failed for one or more datasets, leaving extraction state untouched.")
-
-    return success
+    try:
+        for result in results:
+            if result["dataset"] == "players" and result.get("records"):
+                player_registry.upsert_players(result["records"])
+        mark_load_status(results, "load_success")
+    except Exception as error:  # noqa: BLE001 - registry/ledger failures must prevent local cleanup
+        mark_load_status(results, "load_failed")
+        logger.error(f"Ingestion succeeded but registry/ledger updates failed: {error}. Retaining local files.")
+        return False
+    logger.info("Ingestion confirmed; Neon freshness and SQLite load status updated.")
+    return True
 
 
 if __name__ == "__main__":
-    load_compacted()
+    sys.exit(0 if load_compacted() else 1)

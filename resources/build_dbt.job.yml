@@ -1,0 +1,30 @@
+resources:
+  jobs:
+    build_dbt:
+      name: League_Build_DBT
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      timeout_seconds: 3600
+      tasks:
+        - task_key: build
+          dbt_task:
+            catalog: league_pipeline
+            commands:
+              - dbt deps
+              - dbt build
+            project_directory: league_pipeline
+            schema: bronze
+            source: GIT
+            warehouse_id: c815c35672de1d79
+          environment_key: dbt-default
+      environments:
+        - environment_key: dbt-default
+          spec:
+            dependencies:
+              - dbt-databricks==1.12.5
+            environment_version: "5"
+      git_source:
+        git_branch: main
+        git_provider: gitHub
+        git_url: https://github.com/Pedro-Iaki/league-specialization-etl/

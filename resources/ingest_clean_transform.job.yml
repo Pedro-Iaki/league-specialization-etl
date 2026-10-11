@@ -88,5 +88,5 @@ resources:
       trigger:
         file_arrival:
           url: /Volumes/league_pipeline/landing_zone/players/
-        pause_status: UNPAUSED
+        pause_status: PAUSED
       webhook_notifications: {}

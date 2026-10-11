@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -6,10 +7,14 @@ import pandas as pd
 from databricks import sql
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
+from databricks.sdk.service.jobs import RunResultState
 from dotenv import load_dotenv
+from loguru import logger
+from requests.exceptions import Timeout
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = BASE_DIR / "config" / "DATABRICKS_CONFIG.env"
+MAX_JOB_ATTEMPTS = 3
 
 
 def get_config() -> dict[str, str | None]:
@@ -44,9 +49,39 @@ def use_catalog_and_schema(cursor: Any, catalog: str, schema: str) -> None:
 
 
 def upload_parquet(local_path: str, dbfs_path: str) -> None:
+    get_workspace_client().files.upload_from(dbfs_path, local_path, overwrite=True)
+
+
+def get_workspace_client() -> WorkspaceClient:
     cfg = get_config()
-    w = WorkspaceClient(config=Config(host=cfg["host"], token=cfg["token"]))
-    w.files.upload_from(dbfs_path, local_path, overwrite=True)
+    return WorkspaceClient(config=Config(host=cfg["host"], token=cfg["token"]))
+
+
+def run_job(job_id: int, timeout_seconds: int, job_name: str) -> bool:
+    try:
+        workspace = get_workspace_client()
+    except Exception as error:  # noqa: BLE001 - invalid workspace credentials must stop loading
+        logger.error(f"Cannot start {job_name} job {job_id}: {error}")
+        return False
+    for attempt in range(1, MAX_JOB_ATTEMPTS + 1):
+        run_id = None
+        try:
+            waiting = workspace.jobs.run_now(job_id=job_id)
+            run_id = waiting.run_id
+            logger.info(f"{job_name} job {job_id}, run {run_id}, attempt {attempt}/{MAX_JOB_ATTEMPTS} started.")
+            run = waiting.result(timeout=timedelta(seconds=timeout_seconds))
+            if run.state.result_state != RunResultState.SUCCESS:
+                raise RuntimeError(f"Job ended with {run.state.result_state}")
+            logger.info(f"{job_name} run {run_id} succeeded.")
+            return True
+        except (TimeoutError, Timeout) as error:
+            logger.error(
+                f"{job_name} job {job_id}, run {run_id} timed out: {error}. Stopping this job check; check the run in Databricks before retrying."
+            )
+            return False
+        except Exception as error:  # noqa: BLE001 - SDK submission and job failures have several error types
+            logger.error(f"{job_name} job {job_id}, run {run_id}, attempt {attempt} failed: {error}")
+    return False
 
 
 PANDAS_TO_SPARK_TYPES = {
