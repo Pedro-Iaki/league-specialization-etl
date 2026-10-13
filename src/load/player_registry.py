@@ -256,6 +256,7 @@ def claim_stale_players(
     *,
     region: str | None = None,
     queue: str | None = None,
+    excluded_puuids: list[str] | None = None,
 ) -> list[dict[str, str]]:
     """Atomically claim up to `limit` stale players' 'players' rows for a refresh job.
 
@@ -279,6 +280,7 @@ def claim_stale_players(
                   AND last_updated_at < (now() - (%s * interval '1 minute'))
                   AND (%s::text IS NULL OR region = %s)
                   AND (%s::text IS NULL OR queue = %s)
+                  AND NOT (puuid = ANY(%s::text[]))
                 ORDER BY
                     greatest(
                         inactive_streak - floor(
@@ -299,7 +301,7 @@ def claim_stale_players(
               AND registry.queue = candidates.queue
             RETURNING registry.puuid, registry.region, registry.queue
             """,
-            (threshold_minutes, region, region, queue, queue, threshold_minutes, limit, run_id),
+            (threshold_minutes, region, region, queue, queue, excluded_puuids or [], threshold_minutes, limit, run_id),
         ).fetchall()
         stale_players = [{"puuid": str(row[0]), "region": str(row[1]), "queue": str(row[2])} for row in rows]
         if own_conn:

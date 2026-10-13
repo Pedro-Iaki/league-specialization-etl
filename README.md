@@ -314,6 +314,9 @@ SQLite task helpers update the run heartbeat when player/mastery tasks are added
 Expired claims are released before claiming stale players; the normal `finally`
 cleanup releases surviving claims even when patch lookup or fetching fails.
 Heartbeats and cleanup do not touch claims reassigned to another worker.
+Refresh claiming excludes fresh local collections awaiting rank ingestion in SQLite
+when they have no current failure. This uses the same freshness window as refresh.
+Stale or failed work passes the local filter; normal registry claiming rules still apply.
 
 Refresh observations use their SQLite task completion time for Neon freshness.
 Loading the same observation again does not increase inactivity or replace a newer

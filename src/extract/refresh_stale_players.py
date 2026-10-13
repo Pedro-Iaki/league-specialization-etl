@@ -47,7 +47,8 @@ def run(
 
     worker = f"refresh_{run_id}_{uuid4().hex}"
     players = player_registry.claim_stale_players(
-        limit, run_id=worker, threshold_minutes=freshness_minutes, region=region, queue=queue
+        limit, run_id=worker, threshold_minutes=freshness_minutes, region=region, queue=queue,
+        excluded_puuids=db.get_pending_player_ids(region, queue, freshness_minutes=freshness_minutes),
     )
     if not players or len(players) == 0:
         logger.info("No stale players to refresh.")

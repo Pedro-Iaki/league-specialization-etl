@@ -61,6 +61,9 @@ python -m extract.run_pipeline
   update immediately.
 - Refresh heartbeats renew only claims still owned by that worker. Existing
   expiry cleanup runs before refresh claiming. Lost claims do not invalidate files.
+  Only fresh local collections awaiting rank ingestion, without a current failure,
+  are excluded from refresh claims. Stale or failed work passes this local filter;
+  the registry's normal freshness and claim rules still apply.
 - Snapshot outcomes always have a result object. Refresh scheduling details stay
   inside `refresh_result`; top-level status/stage/error summarize the round for
   the operator. Detailed errors stay with their stage results.

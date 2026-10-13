@@ -847,6 +847,32 @@ def count_incomplete_loads(conn: sqlite3.Connection | None = None) -> int:
             conn.close()
 
 
+def get_pending_player_ids(
+    region: OptStr = None, queue: OptStr = None, conn: sqlite3.Connection | None = None,
+    *, freshness_minutes: int,
+) -> list[str]:
+    """Fresh local players awaiting rank ingestion, without a current failure."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT player_id FROM players_recorded AS player
+               JOIN player_tasks AS task
+                 ON task.task_id = json_extract(player.player_task_ids, '$[#-1]')
+               WHERE player_load_status IN ('pending_compaction', 'pending_load')
+                 AND task.status != 'failed'
+                 AND mastery_status != 'failed' AND mastery_load_status != 'load_failed'
+                 AND datetime(json_extract(paths_logged_at, '$[#-1]')) > datetime('now', ?)
+                 AND (? IS NULL OR region = ?) AND (? IS NULL OR queue = ?)""",
+            (f"-{freshness_minutes} minutes", region, region, queue, queue),
+        ).fetchall()
+        return [row["player_id"] for row in rows]
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def update_load_status(
     dataset: str,
     players: list[dict[str, str]],
