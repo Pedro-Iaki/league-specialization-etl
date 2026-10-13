@@ -201,6 +201,12 @@ commits its task success and player-record updates together through the database
 helper's `complete_compaction_task` operation. Failed attempts retain
 raw files and keep records awaiting compaction. The report is saved to
 `data/logs/compaction_integrity_check.json`.
+Loads run every `RUNS_PER_LOAD` completed rounds and once for the final leftover
+rounds. `data/logs/job_results.json` includes every attempted round, its stage,
+status, human-readable error summary and detailed stage results, including failed
+or interrupted rounds. Snapshot outcomes always have a result object, including
+skipped/not-started states; staleness and allocation details belong to the refresh
+result. It is a report; SQLite remains the task ledger.
 
 ### Confirm ingestion before marking a load complete
 

@@ -47,8 +47,17 @@ def test_round_uses_observed_size_or_logged_fallback_and_skips_entire_snapshot(
 
     monkeypatch.setattr(pipeline, "run_snapshot_fetchers", snapshot)
     monkeypatch.setattr(pipeline, "run_stale_refresh", refresh)
+    monkeypatch.setattr(pipeline.verify, "run_integrity_check", lambda full: {"database": {"faulty_records_count": 0}})
+    monkeypatch.setattr(pipeline.compact, "run", lambda: None)
+    monkeypatch.setattr(
+        pipeline.verify, "verify_compaction_integrity",
+        lambda: {"task_level_issues_count": 0, "pending_compaction_records_count": {"players": 0, "masteries": 0}},
+    )
+    monkeypatch.setattr(pipeline, "run_load", lambda: {"status": True})
+    monkeypatch.setattr(pipeline.db, "count_incomplete_loads", lambda: 0)
+    monkeypatch.setattr(pipeline, "reset_local_data", lambda: None)
     config = {
-        "players_fetch_depth": 1, "tiers": ["GOLD"], "divisions": ["I"], "runs_per_load": 10,
+        "players_fetch_depth": 1, "tiers": ["GOLD"], "divisions": ["I"], "runs_per_load": 10, "full_check": False,
         "region": "na1", "queue": "solo", "freshness_threshold_minutes": 10080,
         "stale_claim_timeout_minutes": 30, "max_refresh_scale": cap,
     }
@@ -58,9 +67,13 @@ def test_round_uses_observed_size_or_logged_fallback_and_skips_entire_snapshot(
     report = json.loads((tmp_path / "data" / "logs" / "job_results.json").read_text())[0]
     assert report["snapshot_result"]["status"] == ("skipped" if skipped else "success")
     assert report["snapshot_result"]["snapshot_size"] == (None if skipped else snapshot_size)
-    assert report["refresh_snapshot_size"] == (
+    assert report["refresh_result"]["refresh_snapshot_size"] == (
         pipeline.FALLBACK_SNAPSHOT_SIZE if skipped or not snapshot_size else snapshot_size
     )
+    assert report["refresh_result"]["staleness_fraction"] == staleness
+    assert "discovery" not in report
+    assert "staleness_fraction" not in report
+    assert "refresh_scale" not in report
     if skipped:
         assert "both snapshot fetchers skipped" in report["snapshot_result"]["reason"]
 

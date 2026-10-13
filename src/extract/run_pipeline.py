@@ -46,8 +46,9 @@ class run_result:
     refresh_result: dict
     integrity_result: dict
     load_result: dict
-    refresh_scale: float
-    refresh_snapshot_size: int
+    status: bool = False
+    stage: str = "staleness"
+    error: str | None = None
 
 
 def run_pipeline(config_path: Path = CONFIG_PATH) -> bool:
@@ -77,8 +78,7 @@ def run_pipeline(config_path: Path = CONFIG_PATH) -> bool:
 
 
 def extraction_loop(config_manifest: dict, api_client) -> bool:
-    """Run the local pipeline."""
-
+    """Run collection rounds and load at the configured cadence and final round."""
     pages_per_division = int(config_manifest["players_fetch_depth"])
     target_tier = config_manifest["tiers"]
     target_division = config_manifest["divisions"]
@@ -88,87 +88,106 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
     job_date = datetime.now(timezone.utc).isoformat()
     job_results: list[run_result] = []
 
-    run_n = 0
-    try:
-        while runs_remaining > run_n:
-            run_date = datetime.now(timezone.utc).isoformat()
-
+    for run_n in range(runs_remaining):
+        run_date = datetime.now(timezone.utc).isoformat()
+        result = run_result(run_n, run_date, job_date, {"status": "not_started"}, {}, {}, {})
+        job_results.append(result)
+        # Attach raised errors to the result of the stage currently executing.
+        stage_result = result.refresh_result
+        logger.info(f"Starting round {run_n + 1}/{runs_remaining}.")
+        try:
             staleness = player_registry.get_staleness_fraction(
                 config_manifest["region"], config_manifest["queue"],
                 int(config_manifest["freshness_threshold_minutes"]),
                 int(config_manifest["stale_claim_timeout_minutes"]),
             )
             refresh_scale = get_refresh_scale(staleness, max_refresh_scale)
+            result.refresh_result.update({"staleness_fraction": staleness, "refresh_scale": refresh_scale})
             should_fetch_snapshot = refresh_scale < max_refresh_scale
-            # Get new players and their missing masteries
             snapshot_size = FALLBACK_SNAPSHOT_SIZE
+
+            result.stage = "snapshot"
+            stage_result = result.snapshot_result
             if should_fetch_snapshot:
-                snapshot_result = run_snapshot_fetchers(config_manifest, run_n, run_date, api_client)
-                observed_size = snapshot_result["snapshot_size"]
+                result.snapshot_result.update(run_snapshot_fetchers(config_manifest, run_n, run_date, api_client))
+                if result.snapshot_result["status"] == "failed":
+                    result.error = "Player or mastery collection failed; local files retained."
+                    return False
+                observed_size = result.snapshot_result["snapshot_size"]
                 if observed_size:
                     snapshot_size = observed_size
                 else:
                     logger.debug(f"Using fallback snapshot size {snapshot_size} for refresh allocation.")
             else:
-                snapshot_result = {
-                    "status": "skipped",
-                    "snapshot_size": None,
+                result.snapshot_result.update({
+                    "status": "skipped", "snapshot_size": None,
                     "reason": "Refresh scale reached MAX_REFRESH_SCALE; both snapshot fetchers skipped.",
-                }
+                })
                 logger.info("Skipping new-player collection to refresh previously collected players.")
 
-            # Fetch stale players and their masteries based on postgresql loaded database
+            result.stage = "refresh"
+            stage_result = result.refresh_result
+            result.refresh_result["refresh_snapshot_size"] = snapshot_size
             refresh_limit = get_refresh_limit(snapshot_size, refresh_scale)
-            refresh_result = run_stale_refresh(config_manifest, run_n, run_date, api_client, refresh_limit)
+            result.refresh_result.update(run_stale_refresh(config_manifest, run_n, run_date, api_client, refresh_limit))
+            if not result.refresh_result.get("status", True):
+                result.error = "Previously collected players could not be refreshed; local files retained."
+                return False
 
-            # Compact and load data into the database
-            load_result = {}
-            integrity_result = {}
-            if run_n % runs_per_load == 0 and run_n != 0:
-                # Run integrity check before compacting and loading data, ensuring the database is in a consistent state
-                integrity_result = verify.run_integrity_check(config_manifest["full_check"])
-                if not verify.is_compaction_ready(integrity_result):
-                    logger.error("Integrity check did not pass; retaining local data for inspection.")
+            if (run_n + 1) % runs_per_load == 0 or run_n + 1 == runs_remaining:
+                result.stage = "integrity"
+                stage_result = result.integrity_result
+                result.integrity_result.update(verify.run_integrity_check(config_manifest["full_check"]))
+                if not verify.is_compaction_ready(result.integrity_result):
+                    result.error = "Collected data failed integrity checks; local files retained."
                     return False
-                # Compact all parquets then load
+
+                result.stage = "compaction"
+                stage_result = result.integrity_result.setdefault("compaction", {})
                 compact.run()
-                integrity_result["compaction"] = verify.verify_compaction_integrity()
-                if not verify.is_load_ready(integrity_result):
-                    logger.error("Compacted output did not pass integrity checks; upload stopped and local data retained.")
+                result.stage = "compaction_integrity"
+                stage_result.update(verify.verify_compaction_integrity())
+                if not verify.is_load_ready(result.integrity_result):
+                    result.error = "Compacted files failed verification; upload stopped and local files retained."
                     return False
-                load_result = run_load()
-                # Handle load failures
-                if not load_result["status"] or db.count_incomplete_loads():
-                    logger.error("Load or dbt build incomplete; retaining local data. Confirmed load flags remain unchanged.")
+
+                result.stage = "load"
+                stage_result = result.load_result
+                result.load_result.update(run_load())
+                if not result.load_result["status"] or db.count_incomplete_loads():
+                    if result.load_result.get("compacted_load_result") and not result.load_result.get("dbt_build_result"):
+                        result.stage = "dbt_build"
+                        result.error = "The warehouse build did not complete; local files retained."
+                    else:
+                        result.error = "Loading did not complete; local files retained."
                     return False
-                # Clear local files only after every recorded player and mastery load succeeds.
+
+                result.stage = "cleanup"
                 reset_local_data()
-
-            job_results.append(
-                run_result(
-                    run_number=run_n,
-                    run_date=run_date,
-                    job_date=job_date,
-                    snapshot_result=snapshot_result,
-                    refresh_result=refresh_result,
-                    integrity_result=integrity_result,
-                    load_result=load_result,
-                    refresh_scale=refresh_scale,
-                    refresh_snapshot_size=snapshot_size,
-                )
-            )
-
+            result.status = True
+            result.stage = "complete"
+        except KeyboardInterrupt:
+            stage_result["error"] = "Interrupted by operator."
+            if result.stage == "snapshot":
+                stage_result["status"] = "interrupted"
+            result.error = "Interrupted by operator; local files retained."
+            return False
+        except Exception as error:  # noqa: BLE001 - finalize stage details and stop the round
+            stage_result["error"] = str(error)
+            if result.stage == "snapshot":
+                stage_result["status"] = "failed"
+            result.error = "An unexpected error stopped this round; local files retained."
+            logger.exception(f"Round {run_n + 1} failed at {result.stage}.")
+            return False
+        finally:
+            if not result.status:
+                logger.error(f"Round {run_n + 1} stopped at {result.stage}: {result.error}")
+            else:
+                logger.info(f"Round {run_n + 1} completed.")
             log_path = BASE_DIR / "data" / "logs" / "job_results.json"
             log_path.parent.mkdir(parents=True, exist_ok=True)
             log_data = [r.__dict__ for r in job_results]
             log_path.write_text(json.dumps(log_data, indent=2), encoding="utf-8")
-
-            run_n += 1
-
-    except RuntimeError as e:
-        logger.error(f"Pipeline encountered an error: {e}")
-        return False
-
     return True
 
 
@@ -224,7 +243,7 @@ def run_stale_refresh(config_manifest: dict, run_n, date, api_client, limit: int
         logger.exception(f"Stale-player refresh run failed: {e}")
         db.finish_run(run_id, "failed")
         db.cleanup_failed_run(run_id)
-        return {"status": False, "claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0}
+        return {"status": False, "claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0, "error": str(e)}
 
 
 def run_load() -> dict:
@@ -246,6 +265,7 @@ def run_load() -> dict:
             if result["status"]:
                 logger.info("Player files loaded and analytical tables built.")
     except Exception as e:  # noqa: BLE001 - preserve local files after any load-stage failure
+        result["error"] = str(e)
         logger.exception(f"Load or dbt build failed: {e}")
     return result
 

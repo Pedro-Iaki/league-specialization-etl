@@ -101,7 +101,7 @@ def test_runner_checks_compacted_output_before_any_upload(collection, tmp_path, 
 
     monkeypatch.setattr(compact, "run", compact_and_damage)
     result = pipeline.extraction_loop(
-        {"players_fetch_depth": 2, "tiers": ["GOLD"], "divisions": ["I"], "runs_per_load": 1, "full_check": False,
+        {"players_fetch_depth": 1, "tiers": ["GOLD"], "divisions": ["I"], "runs_per_load": 1, "full_check": False,
          "region": "na1", "queue": "solo", "freshness_threshold_minutes": 10080, "stale_claim_timeout_minutes": 30,
          "max_refresh_scale": 4},
         api_client=object(),
