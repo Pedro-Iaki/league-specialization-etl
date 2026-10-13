@@ -183,6 +183,25 @@ python -m extract.run_pipeline
 
 That command runs the Python orchestrator: collection, stale-player refresh, periodic compaction, upload, confirmed raw ingestion, and dbt build. It is an environment-dependent data collection run, not a small demo command. Integrity, upload, ingestion, registry-update, or dbt failures retain local files and stop the runner. The repository contains the [ingestion notebook](src/load/ingest_players.ipynb), [ingestion-only job](resources/ingest_players.job.yml), and [dbt build job](resources/build_dbt.job.yml).
 
+Before upload, Python checks compaction even when `FULL_VERIFICATION_POST=false`.
+`is_compaction_ready` checks database/raw-file integrity before compaction;
+`is_load_ready` always requires the compacted-output report before upload.
+The existing integrity report checks records still awaiting compaction, their task
+references, readable output files, required load columns, row counts, and missing
+players. Completed loads do not require their old output files to remain on disk.
+Unreferenced raw files remain diagnostic information; the gate checks the tracked
+records and compacted outputs.
+
+Temporary file errors (including Windows sharing violations) and SQLite
+busy/locked errors during compaction retry up to three times with a short backoff.
+Missing files, denied permissions, invalid SQL, corrupt input and failed integrity
+checks stop the runner for inspection. Each compaction attempt uses the existing task table.
+Compaction verifies a temporary output before replacing the previous file and
+commits its task success and player-record updates together through the database
+helper's `complete_compaction_task` operation. Failed attempts retain
+raw files and keep records awaiting compaction. The report is saved to
+`data/logs/compaction_integrity_check.json`.
+
 ### Confirm ingestion before marking a load complete
 
 The loader uploads both available compacted inputs, starts an ingestion-only

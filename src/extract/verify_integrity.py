@@ -3,6 +3,7 @@ import sqlite3
 from collections import defaultdict
 from pathlib import Path
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 from loguru import logger
 from tqdm import tqdm
@@ -34,19 +35,35 @@ def run_integrity_check(full: bool = False):
     return results
 
 
-def is_load_ready(results: dict) -> bool:
+def is_compaction_ready(results: dict) -> bool:
+    """Check the database and optional raw-file report before compaction."""
     database = results.get("database") or {}
 
     has_faulty_records_key = "faulty_records_count" in database
     faulty_count = database.get("faulty_records_count", 0)
     if not has_faulty_records_key or faulty_count > 0:
+        logger.error("Database integrity check failed: faulty record count {}.", database.get("faulty_records_count"))
         return False
 
     files = results.get("files")
     if files:
         total_errors = files.get("total_errors_or_missing", 0)
         if total_errors > 0:
+            logger.error("Raw file integrity check failed: {} error(s).", total_errors)
             return False
+    return True
+
+
+def is_load_ready(results: dict) -> bool:
+    """Require valid inputs and a successful compacted-output check before upload."""
+    if not is_compaction_ready(results):
+        return False
+    compaction = results.get("compaction") or {}
+    issues = compaction.get("task_level_issues_count")
+    pending = compaction.get("pending_compaction_records_count")
+    if issues is None or pending is None or issues > 0 or any(pending.values()):
+        logger.error("Compaction integrity check failed: issues {}, uncompacted records {}.", issues, pending)
+        return False
     return True
 
 
@@ -74,8 +91,9 @@ def verify_files_integrity() -> dict:
                     continue
                 all_puuids_players[puuid].append(player_file)
 
-        except RuntimeError as e:
+        except (OSError, RuntimeError, pa.ArrowException) as e:
             logger.error(f"Failed to read player file {player_file}: {e}")
+            broken_files.append(player_file)
             continue
 
     # get all masteries
@@ -91,8 +109,9 @@ def verify_files_integrity() -> dict:
                     continue
                 all_puuids_masteries[puuid] = mastery_file
 
-        except RuntimeError as e:
+        except (OSError, RuntimeError, pa.ArrowException) as e:
             logger.error(f"Failed to read mastery file {mastery_file}: {e}")
+            broken_files.append(mastery_file)
             continue
 
     for puuid, mastery_file in tqdm(all_puuids_masteries.items(), desc="Verifying mastery records", unit="record"):
@@ -285,27 +304,63 @@ def _read_puuid_set(path: Path) -> set[str]:
 
 
 def verify_compaction_integrity() -> dict:
-    """Cross-check compaction_tasks records against actual file contents.
-    Two separate failure modes are checked:
-    - task-level: did every path_compressed for a successful task actually end up in the compacted output?
-    - disk-level: are there raw files present that aren't accounted for by any successful task?
-    """
+    """Check outputs still awaiting ingestion; retain raw-file diagnostics separately."""
     conn = db.get_connection()
-    tasks = conn.execute(
-        """
-        SELECT task_id, dataset, output_path, paths_compressed, status
-        FROM compaction_tasks
-        WHERE status = 'success'
-        """
-    ).fetchall()
-    conn.close()
+    try:
+        records = conn.execute(
+            """
+            SELECT player_id, 'players' AS dataset, player_load_status AS status,
+                latest_player_compacted_task_id AS task_id, latest_player_compacted_path AS output_path
+            FROM players_recorded WHERE player_load_status != 'load_success'
+            UNION ALL
+            SELECT player_id, 'masteries', mastery_load_status,
+                mastery_compacted_task_id, mastery_compacted_path
+            FROM players_recorded WHERE mastery_load_status != 'load_success'
+            """
+        ).fetchall()
+        tasks = conn.execute(
+            """
+            SELECT task_id, dataset, output_path, paths_compressed, rows_written, status
+            FROM compaction_tasks
+            WHERE task_id IN (
+                SELECT latest_player_compacted_task_id FROM players_recorded
+                WHERE player_load_status IN ('pending_load', 'load_failed')
+                UNION
+                SELECT mastery_compacted_task_id FROM players_recorded
+                WHERE mastery_load_status IN ('pending_load', 'load_failed')
+            ) ORDER BY task_id
+            """
+        ).fetchall()
+    finally:
+        conn.close()
 
     task_level_issues = []
     accounted_raw_paths: set[str] = set()
+    pending = {"players": 0, "masteries": 0}
+    tasks_by_id = {task["task_id"]: task for task in tasks}
+    latest_tasks = {task["output_path"]: task["task_id"] for task in tasks}
+    output_tables = {}
+
+    for record in records:
+        if record["status"] == "pending_compaction":
+            pending[record["dataset"]] += 1
+            continue
+        task = tasks_by_id.get(record["task_id"])
+        if not task or task["dataset"] != record["dataset"] or task["output_path"] != record["output_path"]:
+            task_level_issues.append(
+                {
+                    "player_id": record["player_id"],
+                    "dataset": record["dataset"],
+                    "issue": "compaction_reference_missing_or_invalid",
+                }
+            )
 
     for task in tqdm(tasks, desc="Verifying compaction tasks", unit="task"):
         dataset = task["dataset"]
         output_path = Path(task["output_path"])
+        if task["status"] != "success":
+            task_level_issues.append({"task_id": task["task_id"], "issue": "compaction_task_not_success"})
+            continue
         paths_compressed = json.loads(task["paths_compressed"] or "[]")
         accounted_raw_paths.update(paths_compressed)
 
@@ -320,8 +375,17 @@ def verify_compaction_integrity() -> dict:
             continue
 
         try:
-            compacted_puuids = _read_puuid_set(output_path)
-        except RuntimeError as e:
+            if output_path not in output_tables:
+                output_tables[output_path] = pq.read_table(output_path)
+            table = output_tables[output_path]
+            required = ["puuid", "region", "queueType"] + (
+                ["wins", "losses"] if dataset == "players" else ["championId"]
+            )
+            missing_columns = sorted(set(required) - set(table.column_names))
+            if missing_columns:
+                raise ValueError(f"Missing load columns: {missing_columns}")
+            compacted_puuids = {p for p in table.column("puuid").to_pylist() if p}
+        except (OSError, RuntimeError, ValueError, pa.ArrowException) as e:
             task_level_issues.append(
                 {
                     "task_id": task["task_id"],
@@ -332,15 +396,25 @@ def verify_compaction_integrity() -> dict:
             )
             continue
 
-        source_puuids: set[str] = set()
+        if task["task_id"] == latest_tasks[task["output_path"]] and table.num_rows != task["rows_written"]:
+            task_level_issues.append(
+                {
+                    "task_id": task["task_id"],
+                    "issue": "compacted_row_count_mismatch",
+                    "expected_rows": task["rows_written"],
+                    "actual_rows": table.num_rows,
+                }
+            )
+
+        source_puuids = {record["player_id"] for record in records if record["task_id"] == task["task_id"]}
         for raw_path_str in paths_compressed:
             raw_path = Path(raw_path_str)
             if not raw_path.exists():
-                # expected once raw cleanup ships; not an error by itself
+                # The compacted output remains checkable after source cleanup.
                 continue
             try:
                 source_puuids |= _read_puuid_set(raw_path)
-            except RuntimeError as e:
+            except (OSError, RuntimeError, ValueError, pa.ArrowException) as e:
                 task_level_issues.append(
                     {
                         "task_id": task["task_id"],
@@ -362,7 +436,7 @@ def verify_compaction_integrity() -> dict:
                 }
             )
 
-    # disk-level: raw files on disk that no successful task ever claimed
+    # Raw files not referenced by the compaction tasks awaiting ingestion.
     unaccounted_files = {"players": [], "masteries": []}
     for dataset, raw_root in (
         ("players", PLAYERS_INPUT_PATH),
@@ -376,6 +450,7 @@ def verify_compaction_integrity() -> dict:
         "tasks_checked": len(tasks),
         "task_level_issues": task_level_issues,
         "task_level_issues_count": len(task_level_issues),
+        "pending_compaction_records_count": pending,
         "unaccounted_raw_files": unaccounted_files,
         "unaccounted_raw_files_count": {k: len(v) for k, v in unaccounted_files.items()},
     }
@@ -383,6 +458,7 @@ def verify_compaction_integrity() -> dict:
     log_file = LOGS_PATH / "compaction_integrity_check.json"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     log_file.write_text(json.dumps(log_data, indent=2), encoding="utf-8")
+    logger.info("Compaction check: {} issue(s), uncompacted records {}.", len(task_level_issues), pending)
     return log_data
 
 

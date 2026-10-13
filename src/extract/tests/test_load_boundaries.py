@@ -13,6 +13,10 @@ def test_legacy_runner_retains_files_when_load_is_incomplete(tmp_path, monkeypat
     monkeypatch.setattr(pipeline, "run_stale_refresh", lambda *args: {"status": True})
     monkeypatch.setattr(pipeline.verify, "run_integrity_check", lambda full: {"database": {"faulty_records_count": 0}})
     monkeypatch.setattr(pipeline.compact, "run", lambda: None)
+    monkeypatch.setattr(
+        pipeline.verify, "verify_compaction_integrity",
+        lambda: {"task_level_issues_count": 0, "pending_compaction_records_count": {"players": 0, "masteries": 0}},
+    )
     monkeypatch.setattr(pipeline, "run_load", lambda: {"status": load_status})
     monkeypatch.setattr(pipeline.db, "count_incomplete_loads", lambda: pending_count)
     cleared = []

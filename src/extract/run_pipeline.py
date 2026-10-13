@@ -98,11 +98,15 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
             if run_n % runs_per_load == 0 and run_n != 0:
                 # Run integrity check before compacting and loading data, ensuring the database is in a consistent state
                 integrity_result = verify.run_integrity_check(config_manifest["full_check"])
-                if not verify.is_load_ready(integrity_result):
+                if not verify.is_compaction_ready(integrity_result):
                     logger.error("Integrity check did not pass; retaining local data for inspection.")
                     return False
                 # Compact all parquets then load
                 compact.run()
+                integrity_result["compaction"] = verify.verify_compaction_integrity()
+                if not verify.is_load_ready(integrity_result):
+                    logger.error("Compacted output did not pass integrity checks; upload stopped and local data retained.")
+                    return False
                 load_result = run_load()
                 # Handle load failures
                 if not load_result["status"] or db.count_incomplete_loads():

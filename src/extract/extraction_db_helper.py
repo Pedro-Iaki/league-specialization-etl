@@ -800,6 +800,36 @@ def update_compaction_records(
             conn.close()
 
 
+def complete_compaction_task(
+    task_id: int,
+    dataset: str,
+    player_ids: list[str],
+    new_path: str,
+    paths_compressed: list[str],
+    rows_written: int,
+    conn: sqlite3.Connection | None = None,
+):
+    """Commit the compacted records and successful task together."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        update_compaction_records(task_id, dataset, player_ids, new_path, conn=conn)
+        update_compaction_task(
+            task_id,
+            "success",
+            paths_compressed=paths_compressed,
+            source_file_count=len(paths_compressed),
+            rows_written=rows_written,
+            conn=conn,
+        )
+        if own_conn:
+            conn.commit()
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def count_incomplete_loads(conn: sqlite3.Connection | None = None) -> int:
     """Count tracked players whose rank or mastery has not completed loading."""
     own_conn = conn is None

@@ -18,7 +18,8 @@ def test_fast_integrity_report_can_gate_loading(monkeypatch):
 
     report = verify_integrity.run_integrity_check(full=False)
 
-    assert verify_integrity.is_load_ready(report)
+    assert verify_integrity.is_compaction_ready(report)
+    assert not verify_integrity.is_load_ready(report)
     assert not verify_integrity.is_load_ready({"database": {"faulty_records_count": 1}})
     assert not verify_integrity.is_load_ready({"database": {"faulty_records_count": 0}, "files": {"total_errors_or_missing": 1}})
 

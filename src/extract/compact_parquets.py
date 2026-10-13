@@ -1,11 +1,13 @@
+import errno
 import os
-from dataclasses import dataclass
+import sqlite3
 from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 from loguru import logger
+from tenacity import before_sleep_log, retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 import extract.extraction_db_helper as db
 
@@ -17,6 +19,7 @@ COMPACTED_FILENAMES = {
     "masteries": "masteries_compacted.parquet",
 }
 COMPRESSION = "zstd"
+MAX_COMPACTION_ATTEMPTS = 3
 DEDUP_KEYS = {
     "players": ["puuid"],
     "masteries": ["puuid", "championId"],
@@ -65,15 +68,18 @@ def compact_files(compacted_path: Path, source_files: list[Path], dataset: str) 
     merged = pa.concat_tables(tables, promote_options="permissive")
     os.makedirs(compacted_path.parent, exist_ok=True)
     merged = _dedup_merged_table(merged, dataset)
-    pq.write_table(merged, compacted_path, compression=COMPRESSION)
-
-    check_table = pq.read_table(compacted_path)
-    if check_table.num_rows != merged.num_rows:
-        compacted_path.unlink(missing_ok=True)
-        raise RuntimeError(
-            f"Compacted file verification failed for {compacted_path} "
-            f"(expected {merged.num_rows} rows, got {check_table.num_rows})."
-        )
+    temporary_path = compacted_path.with_suffix(".tmp")
+    try:
+        pq.write_table(merged, temporary_path, compression=COMPRESSION)
+        check_table = pq.read_table(temporary_path)
+        if check_table.num_rows != merged.num_rows:
+            raise RuntimeError(
+                f"Compacted file verification failed for {compacted_path} "
+                f"(expected {merged.num_rows} rows, got {check_table.num_rows})."
+            )
+        temporary_path.replace(compacted_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
     return {
         "output_path": compacted_path,
@@ -82,6 +88,25 @@ def compact_files(compacted_path: Path, source_files: list[Path], dataset: str) 
     }
 
 
+def _is_transient_compaction_error(error: BaseException) -> bool:
+    if isinstance(error, sqlite3.OperationalError):
+        code = getattr(error, "sqlite_errorcode", 0) & 0xFF
+        return code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+    if isinstance(error, OSError):
+        # Windows reports a temporary sharing violation as PermissionError.
+        return getattr(error, "winerror", None) == 32 or error.errno in (
+            errno.EAGAIN, errno.EBUSY, errno.EINTR, errno.ETIMEDOUT,
+        )
+    return False
+
+
+@retry(
+    retry=retry_if_exception(_is_transient_compaction_error),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    stop=stop_after_attempt(MAX_COMPACTION_ATTEMPTS),
+    before_sleep=before_sleep_log(logger, "WARNING"),  # type: ignore
+    reraise=True,
+)
 def compact_dataset(dataset: str) -> dict:
     rows = db.get_uncompacted_players() if dataset == "players" else db.get_uncompacted_masteries()
     logger.info(f"Found {len(rows)} pending_compaction record(s) for dataset {dataset}.")
@@ -109,33 +134,21 @@ def compact_dataset(dataset: str) -> dict:
 
     try:
         result = compact_files(compacted_path, list(path_to_player_ids), dataset)
-    except RuntimeError as e:
+        if result is None:
+            raise RuntimeError("No source files existed on disk for the pending_compaction records.")
+        player_ids = sorted({pid for f in result["compacted_files"] for pid in path_to_player_ids[f]})
+        db.complete_compaction_task(
+            task_id,
+            dataset,
+            player_ids,
+            str(result["output_path"]),
+            paths_compressed=[str(f) for f in result["compacted_files"]],
+            rows_written=result["rows_written"],
+        )
+    except Exception as e:
         logger.error(f"Failed to compact dataset {dataset}: {e}")
         db.update_compaction_task(task_id, "failed", error_message=str(e))
-        return summary
-
-    if result is None:
-        error_message = "No source files existed on disk for the pending_compaction records."
-        logger.error(f"Compaction produced nothing for dataset {dataset}: {error_message}")
-        db.update_compaction_task(task_id, "failed", error_message=error_message)
-        return summary
-
-    player_ids = sorted({pid for f in result["compacted_files"] for pid in path_to_player_ids[f]})
-
-    try:
-        db.update_compaction_records(task_id, dataset, player_ids, str(result["output_path"]))
-    except ConnectionError as e:
-        db.update_compaction_task(task_id, "failed", error_message=str(e))
-        logger.error(f"Failed to update database for dataset {dataset}, leaving records pending_compaction: {e}")
-        return summary
-
-    db.update_compaction_task(
-        task_id,
-        "success",
-        paths_compressed=[str(f) for f in result["compacted_files"]],
-        source_file_count=len(result["compacted_files"]),
-        rows_written=result["rows_written"],
-    )
+        raise
 
     summary["records_compacted"] = len(player_ids)
     summary["files_merged"] = len(result["compacted_files"])
@@ -178,7 +191,7 @@ def run():
         masteries_summary = compact_dataset("masteries")
     except Exception as e:
         logger.exception(f"Compaction run failed: {e}")
-        raise
+        raise RuntimeError(f"Compaction failed; retaining local files: {e}") from e
     logger.info(f"Players compaction summary: {players_summary}")
     logger.info(f"Masteries compaction summary: {masteries_summary}")
 
