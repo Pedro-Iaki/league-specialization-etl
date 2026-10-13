@@ -50,17 +50,17 @@ class Division(str, Enum):
 
 
 class ExtractionConfigManifest(BaseModel):
-    api_key: str
-    version: str
+    model_config = ConfigDict(hide_input_in_errors=True, str_strip_whitespace=True)
+
+    api_key: str = Field(min_length=1)
     players_fetch_depth: int = Field(ge=1, le=1000)
     mastery_task_limit: int = Field(ge=1, le=1000)
-    full_check: bool
-    region: str
-    queue: str
-    tiers: list[Tier] = Field(default_factory=list)
-    divisions: list[Division] = Field(default_factory=list)
+    full_check: bool = False
+    region: str = Field(min_length=1)
+    queue: str = Field(min_length=1)
+    tiers: list[Tier] = Field(default_factory=lambda: list(Tier), min_length=1)
+    divisions: list[Division] = Field(default_factory=lambda: list(Division), min_length=1)
     freshness_threshold_minutes: int = Field(default=10080, ge=1)
-    stale_claim_timeout_minutes: int = Field(default=30, ge=1)
     max_refresh_scale: float = Field(default=4, gt=0, allow_inf_nan=False)
     runs_per_load: int = Field(default=10, ge=1)
 

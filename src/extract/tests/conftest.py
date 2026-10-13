@@ -29,6 +29,7 @@ def pipeline_stub(monkeypatch: pytest.MonkeyPatch):
         return True
 
     monkeypatch.setattr(pl.db, "cleanup_stale_runs", lambda: None)
+    monkeypatch.setattr(pl.init_db, "db_exists", lambda: True)
     monkeypatch.setattr(pl.db, "is_active", lambda: True)
     monkeypatch.setattr(pl.client, "RiotAPIClient", DummyClient)
     monkeypatch.setattr(pl, "extraction_loop", fake_extraction_loop)

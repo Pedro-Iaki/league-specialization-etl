@@ -10,6 +10,7 @@ from loguru import logger
 BASE_DIR = Path(__file__).resolve().parents[2]
 ENV_PATH = BASE_DIR / ".env.local"
 DEFAULT_FRESHNESS_MINUTES = 10080  # A Week
+CLAIM_TIMEOUT_MINUTES = 30
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "player_registry_schema.sql"
 
@@ -219,7 +220,7 @@ def get_staleness_fraction(
     region: str,
     queue: str,
     threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
-    claim_timeout_minutes: int = 30,
+    claim_timeout_minutes: int = CLAIM_TIMEOUT_MINUTES,
     conn: psycopg.Connection | None = None,
 ) -> float:
     """Weighted claimable stale players divided by all tracked players in this scope."""
@@ -354,7 +355,9 @@ def heartbeat_claims(claimed_by: str, conn: psycopg.Connection | None = None) ->
             conn.close()
 
 
-def release_expired_claims(claim_timeout_minutes: int, conn: psycopg.Connection | None = None) -> int:
+def release_expired_claims(
+    claim_timeout_minutes: int = CLAIM_TIMEOUT_MINUTES, conn: psycopg.Connection | None = None
+) -> int:
     """Reap claims left stuck by a crashed or killed refresh worker."""
     own_conn = conn is None
     if own_conn:
@@ -383,7 +386,7 @@ def claim_rank_page(
     patch: str,
     tiers: list[str],
     divisions: list[str],
-    claim_timeout_minutes: int = 30,
+    claim_timeout_minutes: int = CLAIM_TIMEOUT_MINUTES,
     conn: psycopg.Connection | None = None,
 ) -> dict[str, str | int] | None:
     """Reserve one division page in shared Postgres state.

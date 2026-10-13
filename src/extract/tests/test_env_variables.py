@@ -20,7 +20,10 @@ import extract.run_pipeline as pl
             True,
         ),
         ("missing_api_key", {}, {"RIOT_API_KEY"}, None, False),
-        ("missing_version", {}, {"VERSION"}, None, False),
+        ("missing_version", {}, {"VERSION"}, None, True),
+        ("blank_api_key", {"RIOT_API_KEY": ""}, set(), None, False),
+        ("blank_region", {"REGION": " "}, set(), None, False),
+        ("invalid_verification_flag", {"FULL_VERIFICATION": "perhaps"}, set(), None, False),
         ("missing_fetch_depth", {}, {"PLAYERS_FETCH_DEPTH"}, None, False),
         ("missing_region", {}, {"REGION"}, None, False),
         ("missing_queue", {}, {"QUEUE"}, None, False),
@@ -82,11 +85,7 @@ def test_run_pipeline_env_matrix(
         duplicates=duplicates,
     )
 
-    try:
-        result = pl.run_pipeline(config_path=env_path)
-        assert result is expected
-    except Exception:  # noqa: BLE001
-        assert expected is False
+    assert pl.run_pipeline(config_path=env_path) is expected
 
 
 # test if on a valid configuration, the correct data reaches extraction_loop, including the API key and the config manifest
@@ -115,3 +114,26 @@ def test_valid_case_passes_manifest_to_extraction_loop(
     assert manifest["tiers"] == ["GOLD", "SILVER"]
     assert manifest["divisions"] == ["I", "II"]
     assert pipeline_stub["api_key"] == "test-api-key"
+
+
+def test_config_files_do_not_leak_values_into_process_environment(tmp_path, monkeypatch):
+    import os
+
+    util._clear_pipeline_env(monkeypatch)
+    first = util.EnvFactory.create(tmp_path, "first", overrides={"PLAYERS_FETCH_DEPTH": "3"})
+    second = util.EnvFactory.create(tmp_path, "second", overrides={"PLAYERS_FETCH_DEPTH": "7"})
+    assert pl.get_configs(first)["players_fetch_depth"] == "3"
+    assert pl.get_configs(second)["players_fetch_depth"] == "7"
+    assert "RIOT_API_KEY" not in os.environ
+    monkeypatch.setenv("PLAYERS_FETCH_DEPTH", "2")
+    assert pl.get_configs(first)["players_fetch_depth"] == "2"
+
+
+def test_invalid_config_logs_do_not_expose_credentials(tmp_path, monkeypatch, pipeline_stub, caplog):
+    util._clear_pipeline_env(monkeypatch)
+    config = util.EnvFactory.create(
+        tmp_path, "invalid", overrides={"RIOT_API_KEY": "private-test-api-key", "PLAYERS_FETCH_DEPTH": "wrong"}
+    )
+    assert not pl.run_pipeline(config)
+    assert "private-test-api-key" not in caplog.text
+    assert "Invalid configuration" in caplog.text

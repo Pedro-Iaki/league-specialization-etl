@@ -24,10 +24,9 @@ class EnvFactory:
     def __init__(self):
         self.BASE_VALID = {
             "RIOT_API_KEY": "test-api-key",
-            "VERSION": "vtest",
             "PLAYERS_FETCH_DEPTH": "1",
             "MASTERY_TASK_LIMIT": "400",
-            "FULL_VERIFICATION_POST": "false",
+            "FULL_VERIFICATION": "false",
             "REGION": "na1",
             "QUEUE": "RANKED_SOLO_5x5",
             "TIERS": "GOLD",
@@ -63,13 +62,15 @@ class EnvFactory:
 def _clear_pipeline_env(monkeypatch: pytest.MonkeyPatch):
     keys = [
         "RIOT_API_KEY",
-        "VERSION",
         "PLAYERS_FETCH_DEPTH",
-        "FULL_VERIFICATION_POST",
-        "REGION",
-        "QUEUE",
+        "FULL_VERIFICATION",
+        "MASTERY_TASK_LIMIT",
         "TIERS",
         "DIVISIONS",
+        "FRESHNESS_THRESHOLD_MINUTES",
+        "RUNS_PER_LOAD",
+        "REGION",
+        "QUEUE",
         "MAX_REFRESH_SCALE",
     ]
     for key in keys:

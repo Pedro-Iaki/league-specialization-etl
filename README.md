@@ -29,7 +29,7 @@ The repository contains an end-to-end **extract, load, transform, and serve** pa
 | Loading | Parquet compaction, Databricks landing-volume uploads, champion metadata load, and a Databricks ingestion notebook | [Loading code](src/load/) |
 | Transformation | dbt Bronze, Silver, and Gold models, schema tests, and business-rule tests | [dbt project README](league_pipeline/README.md) |
 | Presentation | Business Sample opening page, plus Overview, Population Analysis, Population Estimates, Cross Champion View, and Champion Explorer; anonymous Parquet exports and analyst bundles | [Dashboard README](streamlit_app/README.md) |
-| Orchestration | A deployed Databricks job for ingestion and layer-by-layer dbt builds, with its definition versioned here | [Job definition](resources/ingest_clean_transform.job.yml) |
+| Orchestration | Python confirms ingestion, then runs a separate dbt build job | [Ingestion job](resources/ingest_players.job.yml), [dbt job](resources/build_dbt.job.yml) |
 
 The included dashboard files are a **snapshot**, not a live feed. Their export timestamp and coverage are recorded in the [snapshot manifest](streamlit_app/data/manifest.json). The dbt README records the most recent documented full and incremental build; those results describe that validation run, not every future run. A public dashboard deployment is still planned.
 
@@ -111,7 +111,7 @@ The active pool uses a 60-day reference window. For players tracked for less tha
 | Keep playstyle rules deterministic and configurable | Lets the full analytical path remain in dbt and makes exploratory definitions inspectable without claiming a trained or validated classifier. |
 | Export fixed, identifier-free dashboard datasets | Makes the public app independent of warehouse uptime and removes player and interval identifiers from its serving files. |
 
-SQLite holds temporary job and file evidence, Neon holds durable operational coordination, and Databricks holds analytical observations. These separate jobs explain the three databases. The design prepares for a larger API allowance and future marts, even though the current personal key does not demand multiple collector machines. The operational ledger and validation checks make failures easier to diagnose; live failure and recovery behavior still needs evaluation.
+SQLite holds job and file evidence, Neon holds durable collection coordination, and Databricks holds analytical observations. These separate jobs explain the three databases. The operational ledger and validation checks make failures easier to diagnose. The [Python orchestration guide](docs/orchestration.md) describes the implemented flow, configuration and feature checks; live failure and recovery behavior still needs evaluation.
 
 ## What the current data suggests
 
@@ -183,7 +183,7 @@ python -m extract.run_pipeline
 
 That command runs the Python orchestrator: collection, stale-player refresh, periodic compaction, upload, confirmed raw ingestion, and dbt build. It is an environment-dependent data collection run, not a small demo command. Integrity, upload, ingestion, registry-update, or dbt failures retain local files and stop the runner. The repository contains the [ingestion notebook](src/load/ingest_players.ipynb), [ingestion-only job](resources/ingest_players.job.yml), and [dbt build job](resources/build_dbt.job.yml).
 
-Before upload, Python checks compaction even when `FULL_VERIFICATION_POST=false`.
+Before upload, Python checks compaction even when `FULL_VERIFICATION=false`.
 `is_compaction_ready` checks database/raw-file integrity before compaction;
 `is_load_ready` always requires the compacted-output report before upload.
 The existing integrity report checks records still awaiting compaction, their task

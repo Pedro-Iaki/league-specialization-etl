@@ -11,8 +11,9 @@ from datetime import datetime, timezone
 from math import ceil
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 from loguru import logger
+from pydantic import ValidationError
 
 import extract.api_client as client
 import extract.compact_parquets as compact
@@ -52,14 +53,9 @@ class run_result:
 
 
 def run_pipeline(config_path: Path = CONFIG_PATH) -> bool:
-    config_manifest, success = get_configs(config_path)
-
-    if not success:
-        logger.error("Failed to load configuration. Exiting.")
-        return False
     try:
-        validated_manifest = models.ExtractionConfigManifest.model_validate(config_manifest).model_dump()
-    except RuntimeError as e:
+        validated_manifest = models.ExtractionConfigManifest.model_validate(get_configs(config_path)).model_dump()
+    except (ValidationError, OSError) as e:
         logger.error(f"Invalid configuration: {e}")
         return False
 
@@ -99,7 +95,6 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
             staleness = player_registry.get_staleness_fraction(
                 config_manifest["region"], config_manifest["queue"],
                 int(config_manifest["freshness_threshold_minutes"]),
-                int(config_manifest["stale_claim_timeout_minutes"]),
             )
             refresh_scale = get_refresh_scale(staleness, max_refresh_scale)
             result.refresh_result.update({"staleness_fraction": staleness, "refresh_scale": refresh_scale})
@@ -193,7 +188,7 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
 
 def run_snapshot_fetchers(config_manifest: dict, run_n, date, api_client) -> dict:
     try:
-        run_id = db.start_run(f"fetch_{config_manifest['version']}_{run_n}_{date}")
+        run_id = db.start_run(f"fetch_{run_n}_{date}")
         logger.debug(f"Starting snapshot run {run_id}.")
         snapshot_size = extract_players(
             run_id,
@@ -225,7 +220,7 @@ def run_stale_refresh(config_manifest: dict, run_n, date, api_client, limit: int
     if not limit:
         logger.info("Refresh skipped: the calculated player limit is zero.")
         return {"status": True, "claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0}
-    run_id = db.start_run(f"refresh_{config_manifest['version']}_{run_n}_{date}")
+    run_id = db.start_run(f"refresh_{run_n}_{date}")
     logger.debug(f"Starting refresh run {run_id} with a limit of {limit} players.")
     try:
         summary = refresh_stale.run(
@@ -233,7 +228,6 @@ def run_stale_refresh(config_manifest: dict, run_n, date, api_client, limit: int
             api_client=api_client,
             limit=limit,
             freshness_minutes=int(config_manifest["freshness_threshold_minutes"]),
-            claim_timeout_minutes=int(config_manifest["stale_claim_timeout_minutes"]),
             region=config_manifest["region"],
             queue=config_manifest["queue"],
         )
@@ -284,39 +278,25 @@ def get_refresh_limit(snapshot_size: int, refresh_scale: float) -> int:
     return ceil(snapshot_size * refresh_scale)
 
 
-def get_configs(config_path: Path) -> tuple[dict, bool]:
-    load_dotenv(config_path)
-    api_key = os.getenv("RIOT_API_KEY")
-    version = os.getenv("VERSION")
-    players_fetch_depth = os.getenv("PLAYERS_FETCH_DEPTH")
-    mastery_task_limit = os.getenv("MASTERY_TASK_LIMIT")
-    full_check = os.getenv("FULL_VERIFICATION_POST", "false").lower() == "true"
-    region = os.getenv("REGION")
-    queue = os.getenv("QUEUE")
-    tiers = os.getenv("TIERS", "DIAMOND,EMERALD,PLATINUM,GOLD,SILVER,BRONZE,IRON").split(",")
-    divisions = os.getenv("DIVISIONS", "I,II,III,IV").split(",")
-    freshness_threshold_minutes = os.getenv("FRESHNESS_THRESHOLD_MINUTES", "10080")
-    stale_claim_timeout_minutes = os.getenv("STALE_CLAIM_TIMEOUT_MINUTES", "30")
-    max_refresh_scale = os.getenv("MAX_REFRESH_SCALE", "4")
-    runs_per_load = os.getenv("RUNS_PER_LOAD", "10")
-    if not api_key or not version or not players_fetch_depth or not mastery_task_limit or not region or not queue:
-        logger.error("Missing required environment variables.")
-        return {}, False
-    return {
-        "api_key": api_key,
-        "version": version,
-        "players_fetch_depth": players_fetch_depth,
-        "mastery_task_limit": mastery_task_limit,
-        "full_check": full_check,
-        "region": region,
-        "queue": queue,
-        "tiers": tiers,
-        "divisions": divisions,
-        "freshness_threshold_minutes": freshness_threshold_minutes,
-        "stale_claim_timeout_minutes": stale_claim_timeout_minutes,
-        "max_refresh_scale": max_refresh_scale,
-        "runs_per_load": runs_per_load,
-    }, True
+def get_configs(config_path: Path) -> dict:
+    """Read the local file without mutating process settings; explicit environment values override it."""
+    settings = {**dotenv_values(config_path), **os.environ}
+    fields = {
+        "RIOT_API_KEY": "api_key",
+        "PLAYERS_FETCH_DEPTH": "players_fetch_depth",
+        "MASTERY_TASK_LIMIT": "mastery_task_limit",
+        "FULL_VERIFICATION": "full_check",
+        "REGION": "region",
+        "QUEUE": "queue",
+        "FRESHNESS_THRESHOLD_MINUTES": "freshness_threshold_minutes",
+        "RUNS_PER_LOAD": "runs_per_load",
+        "MAX_REFRESH_SCALE": "max_refresh_scale",
+    }
+    config = {field: settings[key] for key, field in fields.items() if key in settings}
+    for key in ("TIERS", "DIVISIONS"):
+        if key in settings:
+            config[key.lower()] = [value.strip() for value in (settings[key] or "").split(",")]
+    return config
 
 
 if __name__ == "__main__":

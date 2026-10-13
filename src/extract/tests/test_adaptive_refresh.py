@@ -59,7 +59,7 @@ def test_round_uses_observed_size_or_logged_fallback_and_skips_entire_snapshot(
     config = {
         "players_fetch_depth": 1, "tiers": ["GOLD"], "divisions": ["I"], "runs_per_load": 10, "full_check": False,
         "region": "na1", "queue": "solo", "freshness_threshold_minutes": 10080,
-        "stale_claim_timeout_minutes": 30, "max_refresh_scale": cap,
+        "max_refresh_scale": cap,
     }
 
     assert pipeline.extraction_loop(config, api_client=object())
@@ -83,7 +83,7 @@ def test_snapshot_result_contains_page_size_and_runs_both_fetchers(mock_db, monk
     monkeypatch.setattr(pipeline, "extract_players", lambda *args, **kwargs: calls.append("players") or 123)
     monkeypatch.setattr(pipeline, "extract_masteries", lambda *args, **kwargs: calls.append("masteries"))
     config = {
-        "version": "test", "mastery_task_limit": 400, "region": "na1", "queue": "solo",
+        "mastery_task_limit": 400, "region": "na1", "queue": "solo",
         "freshness_threshold_minutes": 10080, "tiers": ["GOLD"], "divisions": ["I"],
     }
 
@@ -117,11 +117,9 @@ def test_runner_passes_final_limit_and_scope_to_worker_once(mock_db, monkeypatch
 
     monkeypatch.setattr(pipeline.refresh_stale, "run", fetch)
     config = {
-        "version": "test",
         "region": "na1",
         "queue": "solo",
         "freshness_threshold_minutes": 10080,
-        "stale_claim_timeout_minutes": 30,
     }
     assert pipeline.run_stale_refresh(config, 0, "today", object(), 150)["status"]
     assert received["limit"] == 150
@@ -146,8 +144,7 @@ def test_refresh_scale_configuration_has_default_and_accepts_decimal(tmp_path, m
     util._clear_pipeline_env(monkeypatch)
     overrides = {"MAX_REFRESH_SCALE": configured} if configured else None
     config_path = util.EnvFactory.create(tmp_path, "refresh", overrides=overrides)
-    config, success = pipeline.get_configs(config_path)
-    assert success
+    config = pipeline.get_configs(config_path)
     assert ExtractionConfigManifest.model_validate(config).max_refresh_scale == expected
 
 
@@ -155,6 +152,6 @@ def test_refresh_scale_configuration_has_default_and_accepts_decimal(tmp_path, m
 def test_refresh_scale_configuration_rejects_nonpositive_or_nonfinite_values(value):
     with pytest.raises(ValidationError):
         ExtractionConfigManifest(
-            api_key="test", version="test", players_fetch_depth=1, mastery_task_limit=400,
+            api_key="test", players_fetch_depth=1, mastery_task_limit=400,
             full_check=False, region="na1", queue="solo", max_refresh_scale=value,
         )

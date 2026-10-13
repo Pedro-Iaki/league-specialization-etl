@@ -30,7 +30,7 @@ def run(
     api_client: APIClient,
     limit: int,
     freshness_minutes: int,
-    claim_timeout_minutes: int,
+    claim_timeout_minutes: int = player_registry.CLAIM_TIMEOUT_MINUTES,
     *,
     region: str | None = None,
     queue: str | None = None,

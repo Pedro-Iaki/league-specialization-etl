@@ -31,7 +31,6 @@ def runner(tmp_path, monkeypatch):
         "region": "na1",
         "queue": "solo",
         "freshness_threshold_minutes": 10080,
-        "stale_claim_timeout_minutes": 30,
         "max_refresh_scale": 4,
     }
 
