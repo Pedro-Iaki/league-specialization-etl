@@ -81,4 +81,4 @@ maintenance workflow and remaining scientific limits.
 
 In retrospect, a simpler source dataset could have demonstrated many of the same engineering skills faster. This project took roughly three months because answering the original question with sparse game data required much more collection and modeling work than expected. The difficulty also produced the most valuable learning: working through state boundaries, request economics, historical grain, and honest analytical limits.
 
-The immediate plans are [Airflow orchestration, a post-load commit boundary, and public dashboard snapshots](../TODO.md). Containerized setup and more regular collection follow. The current result is an implemented pipeline and an exploratory dashboard, with a clear record of where the evidence remains thin.
+The immediate plans are evaluating the Python orchestration and publishing dashboard snapshots. Containerized setup and more regular collection follow. The current result is an implemented pipeline and an exploratory dashboard, with a clear record of where the evidence remains thin.

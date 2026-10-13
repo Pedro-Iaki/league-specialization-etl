@@ -52,6 +52,7 @@ def no_live_player_registry(monkeypatch: pytest.MonkeyPatch):
     )
     monkeypatch.setattr(get_players.player_registry, "complete_rank_page", lambda token, count: 2)
     monkeypatch.setattr(get_players.player_registry, "release_rank_page", lambda token: 1)
+    monkeypatch.setattr(get_players.player_registry, "get_staleness_fraction", lambda *args, **kwargs: 0)
 
 
 @pytest.fixture

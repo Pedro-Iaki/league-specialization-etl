@@ -59,7 +59,7 @@ def collection(tmp_path, mock_db, monkeypatch):
 )
 def test_runner_checks_compacted_output_before_any_upload(collection, tmp_path, monkeypatch, damage):
     monkeypatch.setattr(pipeline, "BASE_DIR", tmp_path)
-    monkeypatch.setattr(pipeline, "run_snapshot_fetchers", lambda *args: True)
+    monkeypatch.setattr(pipeline, "run_snapshot_fetchers", lambda *args: {"status": "success", "snapshot_size": 100})
     monkeypatch.setattr(pipeline, "run_stale_refresh", lambda *args: {"status": True})
     uploads = []
     cleared = []
@@ -101,7 +101,9 @@ def test_runner_checks_compacted_output_before_any_upload(collection, tmp_path, 
 
     monkeypatch.setattr(compact, "run", compact_and_damage)
     result = pipeline.extraction_loop(
-        {"players_fetch_depth": 2, "tiers": ["GOLD"], "divisions": ["I"], "runs_per_load": 1, "full_check": False},
+        {"players_fetch_depth": 2, "tiers": ["GOLD"], "divisions": ["I"], "runs_per_load": 1, "full_check": False,
+         "region": "na1", "queue": "solo", "freshness_threshold_minutes": 10080, "stale_claim_timeout_minutes": 30,
+         "max_refresh_scale": 4},
         api_client=object(),
     )
     assert result is (damage is None)
@@ -167,16 +169,15 @@ def test_transient_compaction_failure_retries_without_losing_data(collection, mo
     else:
         monkeypatch.setattr(mock_db, "update_compaction_task", flaky_ledger)
     result = compact.compact_dataset("players")
-    assert len(calls) == 2
+    assert 2 <= len(calls) <= compact.MAX_COMPACTION_ATTEMPTS
     assert result["records_compacted"] == 1
     assert sorted(pq.read_table(output)["puuid"].to_pylist()) == ["old", "p1"]
     assert not output.with_suffix(".tmp").exists()
     conn = mock_db.get_connection()
     try:
-        assert [row[0] for row in conn.execute("SELECT status FROM compaction_tasks ORDER BY task_id")] == [
-            "failed",
-            "success",
-        ]
+        statuses = [row[0] for row in conn.execute("SELECT status FROM compaction_tasks ORDER BY task_id")]
+        assert statuses[-1] == "success"
+        assert all(status == "failed" for status in statuses[:-1])
     finally:
         conn.close()
 

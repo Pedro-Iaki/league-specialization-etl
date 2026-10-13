@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
+from time import monotonic
 
 from loguru import logger
 
@@ -29,8 +30,8 @@ def run(
     freshness_minutes: int = 10080,
     tiers: list[str] | None = None,
     divisions: list[str] | None = None,
-):
-    """Fetch one page, using shared pagination for the general tier/division crawl."""
+) -> int | None:
+    """Fetch one page and return its total player count before freshness filtering."""
     if not region or not queue:
         logger.error("Player extractor not supplied with vital parameters, make sure to assign it.")
         return
@@ -38,6 +39,8 @@ def run(
         logger.error("Invalid run id supplied to player extractor, cancelling operation.")
         return
 
+    started_at = monotonic()
+    logger.info("Fetching player snapshot... Rough ETA: under 1 minute.")
     time = datetime.now(
         timezone.utc
     ).strftime(
@@ -51,8 +54,8 @@ def run(
         region, queue, patch, eligible_tiers, eligible_divisions
     )
     if page_claim is None:
-        logger.info("No rank page is available for {} {} {}.", region, queue, patch)
-        return
+        logger.info(f"No player snapshot available for {region} {queue}.")
+        return 0
     tier = str(page_claim["tier"])
     division = str(page_claim["division"])
     try:
@@ -75,6 +78,7 @@ def run(
         )
         if players is None:
             return
+        snapshot_size = len(players)
         claim_pending = bool(players)
 
         # Remove players that are fresh in our player registry.
@@ -93,19 +97,23 @@ def run(
                 player_registry.complete_rank_page(str(page_claim["claim_token"]), len(players))
                 claim_pending = False
             db.update_player_task(task_id, "success", file_path=None)
-            return
+            logger.info(
+                f"Snapshot contains {snapshot_size} players; no new files needed. "
+                f"Elapsed: {monotonic() - started_at:.1f}s."
+            )
+            return snapshot_size
 
         recorded_players_ids = set(
             db.get_players_recorded(patch=patch, region=region, queue=queue, tier=tier, division=division)
         )
         if {p["puuid"] for p in snapshot_viable_players}.issubset(recorded_players_ids):
-            logger.info(f"Players already recorded locally for {region} {queue} {tier} {division}; awaiting load.")
+            logger.info(
+                f"Snapshot contains {snapshot_size} players already awaiting load. "
+                f"Elapsed: {monotonic() - started_at:.1f}s."
+            )
             db.update_player_task(task_id, "success", file_path=None)
-            return
+            return snapshot_size
 
-        logger.info(
-            f"Fetched {len(snapshot_viable_players)}/{len(players)} (unique/total) players for {region} {queue} {tier} {division}."
-        )
         output_path = save_players(
             snapshot_viable_players,
             output_path=OUTPUT_PATH,
@@ -133,6 +141,11 @@ def run(
         db.set_rank_page_claim(task_id, {"claim_token": str(page_claim["claim_token"]), "player_count": len(players)})
         db.update_player_task(task_id, "success", file_path=str(output_path))
         saved = True
+        logger.info(
+            f"Player snapshot saved: {len(snapshot_viable_players)} new or stale players "
+            f"out of {snapshot_size} observed. Elapsed: {monotonic() - started_at:.1f}s."
+        )
+        return snapshot_size
     finally:
         if not saved and claim_pending:
             player_registry.release_rank_page(str(page_claim["claim_token"]))
@@ -180,7 +193,7 @@ def fetch_players(
         validated_players = [models.RiotPlayerEntry.model_validate(p).model_dump() for p in raw_payload]
         if len(validated_players) == 0:
             player_registry.complete_rank_page(str(page_claim["claim_token"]), 0)
-            logger.info("No players found for {} {} {} {}; page cursor reset.", region, queue, tier, division)
+            logger.debug(f"Empty page for {region} {queue} {tier} {division}; cursor reset.")
         page_received = True
         return validated_players
     except (RuntimeError, ValueError) as e:

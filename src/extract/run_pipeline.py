@@ -1,8 +1,6 @@
-"""Python script to run the local extraction pipeline.\n
-Fetches players and their masteries from the Riot API and stores them in raw data folders.\n
-The pipeline is designed to be run in a loop, fetching players snapshots of 200+ and then their masteries in batches.\n
-Outputs orchestration metadata, as well as the records of each player and mastery fetched, to a local sqlite database for tracking and verification.\n
-After running for the designated amount of loops, the pipeline will verify the integrity of the files and database, and log any issues found.
+"""Collect snapshots and masteries, verify and compact files, then ingest and build.
+
+SQLite records collection tasks and file/load status throughout the pipeline.
 """
 
 import json
@@ -10,6 +8,7 @@ import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from math import ceil
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -25,12 +24,30 @@ import pydantic_models as models
 from extract.get_masteries import run as extract_masteries
 from extract.get_players import run as extract_players
 from extract.reset_extraction_state import reset_local_data
+from load import player_registry
 from load.build_dbt import run_dbt
 from load.load_champions_to_databricks import load_champions
 from load.load_compacted_to_databricks import load_compacted
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = BASE_DIR / "config" / "EXTRACTION_CONFIG.env"
+# Give stale-player work three times its observed share of the registry.
+STALENESS_INTENSITY = 3
+# Estimated full page, used when discovery is skipped or returns no players.
+FALLBACK_SNAPSHOT_SIZE = 205
+
+
+@dataclass
+class run_result:
+    run_number: int
+    run_date: str
+    job_date: str
+    snapshot_result: dict
+    refresh_result: dict
+    integrity_result: dict
+    load_result: dict
+    refresh_scale: float
+    refresh_snapshot_size: int
 
 
 def run_pipeline(config_path: Path = CONFIG_PATH) -> bool:
@@ -59,17 +76,6 @@ def run_pipeline(config_path: Path = CONFIG_PATH) -> bool:
     return extraction_loop(validated_manifest, api_client=api_client)
 
 
-@dataclass
-class run_result:
-    run_number: int
-    run_date: str
-    job_date: str
-    snapshot_result: bool
-    refresh_result: dict
-    integrity_result: dict
-    load_result: dict
-
-
 def extraction_loop(config_manifest: dict, api_client) -> bool:
     """Run the local pipeline."""
 
@@ -77,6 +83,7 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
     target_tier = config_manifest["tiers"]
     target_division = config_manifest["divisions"]
     runs_per_load = int(config_manifest["runs_per_load"])
+    max_refresh_scale = float(config_manifest["max_refresh_scale"])
     runs_remaining = pages_per_division * len(target_tier) * len(target_division)
     job_date = datetime.now(timezone.utc).isoformat()
     job_results: list[run_result] = []
@@ -86,11 +93,33 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
         while runs_remaining > run_n:
             run_date = datetime.now(timezone.utc).isoformat()
 
+            staleness = player_registry.get_staleness_fraction(
+                config_manifest["region"], config_manifest["queue"],
+                int(config_manifest["freshness_threshold_minutes"]),
+                int(config_manifest["stale_claim_timeout_minutes"]),
+            )
+            refresh_scale = get_refresh_scale(staleness, max_refresh_scale)
+            should_fetch_snapshot = refresh_scale < max_refresh_scale
             # Get new players and their missing masteries
-            snapshot_result = run_snapshot_fetchers(config_manifest, run_n, run_date, api_client)
+            snapshot_size = FALLBACK_SNAPSHOT_SIZE
+            if should_fetch_snapshot:
+                snapshot_result = run_snapshot_fetchers(config_manifest, run_n, run_date, api_client)
+                observed_size = snapshot_result["snapshot_size"]
+                if observed_size:
+                    snapshot_size = observed_size
+                else:
+                    logger.debug(f"Using fallback snapshot size {snapshot_size} for refresh allocation.")
+            else:
+                snapshot_result = {
+                    "status": "skipped",
+                    "snapshot_size": None,
+                    "reason": "Refresh scale reached MAX_REFRESH_SCALE; both snapshot fetchers skipped.",
+                }
+                logger.info("Skipping new-player collection to refresh previously collected players.")
 
             # Fetch stale players and their masteries based on postgresql loaded database
-            refresh_result = run_stale_refresh(config_manifest, run_n, run_date, api_client)
+            refresh_limit = get_refresh_limit(snapshot_size, refresh_scale)
+            refresh_result = run_stale_refresh(config_manifest, run_n, run_date, api_client, refresh_limit)
 
             # Compact and load data into the database
             load_result = {}
@@ -124,6 +153,8 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
                     refresh_result=refresh_result,
                     integrity_result=integrity_result,
                     load_result=load_result,
+                    refresh_scale=refresh_scale,
+                    refresh_snapshot_size=snapshot_size,
                 )
             )
 
@@ -141,11 +172,11 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
     return True
 
 
-def run_snapshot_fetchers(config_manifest: dict, run_n, date, api_client) -> bool:
+def run_snapshot_fetchers(config_manifest: dict, run_n, date, api_client) -> dict:
     try:
         run_id = db.start_run(f"fetch_{config_manifest['version']}_{run_n}_{date}")
-        logger.info(f"Starting new pipeline run with ID: {run_id}.")
-        extract_players(
+        logger.debug(f"Starting snapshot run {run_id}.")
+        snapshot_size = extract_players(
             run_id,
             api_client=api_client,
             region=config_manifest["region"],
@@ -154,31 +185,38 @@ def run_snapshot_fetchers(config_manifest: dict, run_n, date, api_client) -> boo
             tiers=[str(getattr(tier, "value", tier)) for tier in config_manifest["tiers"]],
             divisions=[str(getattr(division, "value", division)) for division in config_manifest["divisions"]],
         )
+        if snapshot_size is None:
+            raise RuntimeError("Player snapshot fetch failed.")
         extract_masteries(
             run_id,
             api_client=api_client,
             limit=int(config_manifest["mastery_task_limit"]),
             run_n=run_n,
-        )  # set a higher than the limit riot gives us (205 at the time of writing) but thats so we can find some extra masteries if we missed some players in the last run, while not freezing the application searching through potentially thousands of players for masteries
+        )
         db.finish_run(run_id, "success")
-        return True
+        return {"status": "success", "snapshot_size": snapshot_size}
     except RuntimeError as err:
         logger.exception(f"An error occurred during the pipeline run: {err}")
         db.finish_run(run_id, "failed")
         db.cleanup_failed_run(run_id)
-        return False
+        return {"status": "failed", "snapshot_size": None, "error": str(err)}
 
 
-def run_stale_refresh(config_manifest: dict, run_n, date, api_client) -> dict:
+def run_stale_refresh(config_manifest: dict, run_n, date, api_client, limit: int) -> dict:
+    if not limit:
+        logger.info("Refresh skipped: the calculated player limit is zero.")
+        return {"status": True, "claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0}
     run_id = db.start_run(f"refresh_{config_manifest['version']}_{run_n}_{date}")
-    logger.info(f"Starting stale-player refresh run with ID: {run_id}.")
+    logger.debug(f"Starting refresh run {run_id} with a limit of {limit} players.")
     try:
         summary = refresh_stale.run(
             run_id,
             api_client=api_client,
-            limit=int(config_manifest["stale_refresh_limit"]),
+            limit=limit,
             freshness_minutes=int(config_manifest["freshness_threshold_minutes"]),
             claim_timeout_minutes=int(config_manifest["stale_claim_timeout_minutes"]),
+            region=config_manifest["region"],
+            queue=config_manifest["queue"],
         )
         db.finish_run(run_id, "success")
         return summary
@@ -197,17 +235,33 @@ def run_load() -> dict:
         "dbt_build_result": None,
     }
     try:
+        logger.info("Loading champion reference data...")
         result["champion_load_result"] = load_champions()
-        logger.info(f"Champion load result: {result['champion_load_result']}")
+        logger.info("Uploading and loading collected player files...")
         result["compacted_load_result"] = load_compacted()
-        logger.info(f"Compacted load result: {result['compacted_load_result']}")
         if result["compacted_load_result"]:
+            logger.info("Building analytical tables...")
             result["dbt_build_result"] = run_dbt()
             result["status"] = result["dbt_build_result"]
-            logger.info(f"dbt build result: {result['dbt_build_result']}")
+            if result["status"]:
+                logger.info("Player files loaded and analytical tables built.")
     except Exception as e:  # noqa: BLE001 - preserve local files after any load-stage failure
         logger.exception(f"Load or dbt build failed: {e}")
     return result
+
+
+def get_refresh_scale(staleness_fraction: float, max_refresh_scale: float) -> float:
+    """Convert weighted staleness into a capped refresh-to-snapshot scale."""
+    staleness_proportion = STALENESS_INTENSITY * staleness_fraction
+    if staleness_proportion >= 1:
+        return max_refresh_scale
+    refresh_scale = staleness_proportion / (1 - staleness_proportion)
+    return min(max_refresh_scale, refresh_scale)
+
+
+def get_refresh_limit(snapshot_size: int, refresh_scale: float) -> int:
+    """Round the snapshot-relative allocation up to a whole number of players."""
+    return ceil(snapshot_size * refresh_scale)
 
 
 def get_configs(config_path: Path) -> tuple[dict, bool]:
@@ -223,7 +277,7 @@ def get_configs(config_path: Path) -> tuple[dict, bool]:
     divisions = os.getenv("DIVISIONS", "I,II,III,IV").split(",")
     freshness_threshold_minutes = os.getenv("FRESHNESS_THRESHOLD_MINUTES", "10080")
     stale_claim_timeout_minutes = os.getenv("STALE_CLAIM_TIMEOUT_MINUTES", "30")
-    stale_refresh_limit = os.getenv("STALE_REFRESH_LIMIT", "50")
+    max_refresh_scale = os.getenv("MAX_REFRESH_SCALE", "4")
     runs_per_load = os.getenv("RUNS_PER_LOAD", "10")
     if not api_key or not version or not players_fetch_depth or not mastery_task_limit or not region or not queue:
         logger.error("Missing required environment variables.")
@@ -240,7 +294,7 @@ def get_configs(config_path: Path) -> tuple[dict, bool]:
         "divisions": divisions,
         "freshness_threshold_minutes": freshness_threshold_minutes,
         "stale_claim_timeout_minutes": stale_claim_timeout_minutes,
-        "stale_refresh_limit": stale_refresh_limit,
+        "max_refresh_scale": max_refresh_scale,
         "runs_per_load": runs_per_load,
     }, True
 

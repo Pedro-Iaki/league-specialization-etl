@@ -8,6 +8,7 @@ access pattern than the bulk division scan.
 """
 
 from datetime import datetime, timezone
+from time import monotonic
 from uuid import uuid4
 
 from loguru import logger
@@ -16,6 +17,7 @@ import extract.extraction_db_helper as db
 import pydantic_models as models
 from extract import get_masteries, get_players
 from extract.api_client_protocol import APIClient
+from extract.progress_helper import get_eta_minutes
 from load import player_registry
 
 
@@ -29,6 +31,9 @@ def run(
     limit: int,
     freshness_minutes: int,
     claim_timeout_minutes: int,
+    *,
+    region: str | None = None,
+    queue: str | None = None,
 ) -> dict:
     """Claim a batch of stale puuids, refresh their rank + masteries, and release the claim.
 
@@ -41,24 +46,35 @@ def run(
         logger.warning(f"Reaped {released_expired} expired refresh claim(s).")
 
     worker = f"refresh_{run_id}_{uuid4().hex}"
-    players = player_registry.claim_stale_players(limit, run_id=worker, threshold_minutes=freshness_minutes)
+    players = player_registry.claim_stale_players(
+        limit, run_id=worker, threshold_minutes=freshness_minutes, region=region, queue=queue
+    )
     if not players or len(players) == 0:
         logger.info("No stale players to refresh.")
         return {"claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0}
 
-    logger.info(f"Claimed {len(players)} stale player(s) for refresh.")
-    patch = str(api_client.get_patch())
-    now = datetime.now(timezone.utc)
-    date = now.strftime("%y%m%d")
-    time = now.strftime("%H%M%S")
-
+    goal = len(players)
+    started_at = monotonic()
+    logger.info(
+        f"Refreshing {goal} stale players and their masteries... Rough ETA: {get_eta_minutes(2 * goal):.1f} min "
+        f"(development-key estimate)."
+    )
     masteries_refreshed = 0
     players_refreshed = 0
     players_attempted = 0
     try:
+        patch = str(api_client.get_patch())
+        now = datetime.now(timezone.utc)
+        date = now.strftime("%y%m%d")
+        time = now.strftime("%H%M%S")
         for player in players:
+            player_registry.heartbeat_claims(worker)
             players_attempted += 1
-            logger.info(f"Refreshing player {players_attempted}/{len(players)}.")
+            remaining = goal - players_attempted + 1
+            logger.info(
+                f"Refreshing player {players_attempted}/{goal}. Rough ETA: {get_eta_minutes(2 * remaining):.1f} min. "
+                f"Elapsed: {(monotonic() - started_at) / 60:.1f} min."
+            )
             try:
                 player_entry = handle_player_extraction(
                     info={
@@ -84,7 +100,6 @@ def run(
                 continue
             players_refreshed += 1
 
-            logger.info("Refreshing mastery for player...")
             if handle_mastery_extraction(
                 info={
                     "puuid": player["puuid"],
@@ -100,17 +115,15 @@ def run(
                 api_client=api_client,
             ):
                 masteries_refreshed += 1
-                logger.info(f"Successfully refreshed mastery. Failures: {players_refreshed - masteries_refreshed}")
             else:
                 logger.warning(f"Failed to refresh mastery. Failures: {players_refreshed - masteries_refreshed}")
 
     finally:
-        logger.info("Releasing player claims...")
         player_registry.release_claims([player["puuid"] for player in players], claimed_by=worker)
 
     logger.info(
-        f"Stale refresh complete: {players_refreshed} player rank(s) and {masteries_refreshed} "
-        f"mastery snapshot(s) refreshed out of {len(players)} claimed."
+        f"Refreshed ranks for {players_refreshed}/{goal} players and saved masteries for {masteries_refreshed}. "
+        f"Elapsed: {(monotonic() - started_at) / 60:.1f} min."
     )
     return {
         "status": True,

@@ -61,7 +61,7 @@ class ExtractionConfigManifest(BaseModel):
     divisions: list[Division] = Field(default_factory=list)
     freshness_threshold_minutes: int = Field(default=10080, ge=1)
     stale_claim_timeout_minutes: int = Field(default=30, ge=1)
-    stale_refresh_limit: int = Field(default=50, ge=0)
+    max_refresh_scale: float = Field(default=4, gt=0, allow_inf_nan=False)
     runs_per_load: int = Field(default=10, ge=1)
 
 

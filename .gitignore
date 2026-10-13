@@ -234,6 +234,11 @@ config/*
 
 # TODO
 TODO
+# Local planning notes and agent handoffs
+**/TODO*.md
+**/todo*.md
+**/*_plan.md
+**/*_handoff.md
 .neon
 .env.local
 node_modules/

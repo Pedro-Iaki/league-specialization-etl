@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import psycopg
 from dotenv import load_dotenv
+from loguru import logger
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 ENV_PATH = BASE_DIR / ".env.local"
@@ -116,7 +117,9 @@ def record_refresh_result(
             (queue_games_total, queue_games_total, queue_games_total, puuid, region, queue, claimed_by),
         )
         if cur.rowcount != 1:
-            raise RuntimeError(f"Refresh claim no longer belongs to {claimed_by} for {region}/{queue}/{puuid}")
+            logger.warning(
+                f"Refresh claim no longer belongs to {claimed_by} for {region}/{queue}/{puuid}; result skipped."
+            )
         if own_conn:
             conn.commit()
         return cur.rowcount
@@ -212,11 +215,46 @@ def get_player_state(
             conn.close()
 
 
+def get_staleness_fraction(
+    region: str,
+    queue: str,
+    threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
+    claim_timeout_minutes: int = 30,
+    conn: psycopg.Connection | None = None,
+) -> float:
+    """Weighted claimable stale players divided by all tracked players in this scope."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT COALESCE(SUM(
+                CASE WHEN last_updated_at < now() - (%s * interval '1 minute')
+                     AND (claim_status = 'idle' OR claimed_at < now() - (%s * interval '1 minute'))
+                THEN power(2.0, -greatest(
+                    inactive_streak - floor(extract(epoch FROM (now() - last_updated_at)) / (%s * 60))::integer,
+                    0
+                )) ELSE 0 END
+            ) / NULLIF(COUNT(*), 0), 0)
+            FROM player_state_registry WHERE region = %s AND queue = %s
+            """,
+            (threshold_minutes, claim_timeout_minutes, threshold_minutes, region, queue),
+        ).fetchone()
+        return float(row[0])
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def claim_stale_players(
     limit: int,
     run_id: str,
     threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
     conn: psycopg.Connection | None = None,
+    *,
+    region: str | None = None,
+    queue: str | None = None,
 ) -> list[dict[str, str]]:
     """Atomically claim up to `limit` stale players' 'players' rows for a refresh job.
 
@@ -238,6 +276,8 @@ def claim_stale_players(
                 FROM player_state_registry
                 WHERE claim_status = 'idle'
                   AND last_updated_at < (now() - (%s * interval '1 minute'))
+                  AND (%s::text IS NULL OR region = %s)
+                  AND (%s::text IS NULL OR queue = %s)
                 ORDER BY
                     greatest(
                         inactive_streak - floor(
@@ -258,7 +298,7 @@ def claim_stale_players(
               AND registry.queue = candidates.queue
             RETURNING registry.puuid, registry.region, registry.queue
             """,
-            (threshold_minutes, threshold_minutes, limit, run_id),
+            (threshold_minutes, region, region, queue, queue, threshold_minutes, limit, run_id),
         ).fetchall()
         stale_players = [{"puuid": str(row[0]), "region": str(row[1]), "queue": str(row[2])} for row in rows]
         if own_conn:
@@ -286,6 +326,25 @@ def release_claims(puuids: list[str], claimed_by: str, conn: psycopg.Connection 
             WHERE puuid = ANY(%s::text[]) AND claimed_by = %s
             """,
             (puuids, claimed_by),
+        )
+        if own_conn:
+            conn.commit()
+        return cur.rowcount
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def heartbeat_claims(claimed_by: str, conn: psycopg.Connection | None = None) -> int:
+    """Renew only the refresh claims this worker still owns."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            """UPDATE player_state_registry SET claimed_at = now()
+               WHERE claimed_by = %s AND claim_status = 'claimed'""",
+            (claimed_by,),
         )
         if own_conn:
             conn.commit()

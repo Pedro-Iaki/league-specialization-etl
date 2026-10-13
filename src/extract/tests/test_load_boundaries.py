@@ -9,7 +9,7 @@ import load.load_compacted_to_databricks as loader
 @pytest.mark.parametrize("load_status,pending_count", [(False, 0), (True, 1)])
 def test_legacy_runner_retains_files_when_load_is_incomplete(tmp_path, monkeypatch, load_status, pending_count):
     monkeypatch.setattr(pipeline, "BASE_DIR", tmp_path)
-    monkeypatch.setattr(pipeline, "run_snapshot_fetchers", lambda *args: True)
+    monkeypatch.setattr(pipeline, "run_snapshot_fetchers", lambda *args: {"status": "success", "snapshot_size": 100})
     monkeypatch.setattr(pipeline, "run_stale_refresh", lambda *args: {"status": True})
     monkeypatch.setattr(pipeline.verify, "run_integrity_check", lambda full: {"database": {"faulty_records_count": 0}})
     monkeypatch.setattr(pipeline.compact, "run", lambda: None)
@@ -23,7 +23,9 @@ def test_legacy_runner_retains_files_when_load_is_incomplete(tmp_path, monkeypat
     monkeypatch.setattr(pipeline, "reset_local_data", lambda: cleared.append(True))
 
     result = pipeline.extraction_loop(
-        {"players_fetch_depth": 2, "tiers": ["GOLD"], "divisions": ["I"], "runs_per_load": 1, "full_check": False},
+        {"players_fetch_depth": 2, "tiers": ["GOLD"], "divisions": ["I"], "runs_per_load": 1, "full_check": False,
+         "region": "na1", "queue": "solo", "freshness_threshold_minutes": 10080, "stale_claim_timeout_minutes": 30,
+         "max_refresh_scale": 4},
         api_client=object(),
     )
 

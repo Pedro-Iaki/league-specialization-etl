@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+from time import monotonic
 
 from loguru import logger
 
@@ -7,6 +8,7 @@ import extract.extraction_db_helper as db
 import pydantic_models as models
 from extract import output_helper
 from extract.api_client_protocol import APIClient
+from extract.progress_helper import get_eta_minutes
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 OUTPUT_PATH = BASE_DIR / "data" / "raw" / "masteries"
@@ -14,24 +16,31 @@ OptStr = str | None
 
 
 def run(run_id: int, api_client: APIClient, limit: int, run_n: int | None = None) -> None:
+    started_at = monotonic()
     players = db.claim_players_missing_masteries(include_stale_success=True, limit=limit)
     if players is None or len(players) == 0:
-        logger.error("No players missing masteries found.")
+        logger.info("No player masteries to fetch.")
         return
-    else:
-        logger.info(f"{len(players)} players missing masteries found.")
+    goal = len(players)
+    logger.info(
+        f"Fetching masteries for up to {goal} players... Rough ETA: {get_eta_minutes(goal):.1f} min "
+        f"(development-key estimate)."
+    )
 
     patch = str(api_client.get_patch())
-    # Add the mastery tasks for each player before creating them
-    logger.info("Adding mastery task for players.")
+    # Record tasks before requests so interrupted work remains visible.
     task_ids = []
     for puuid in players:
         if puuid:
             task_ids.append(db.add_mastery_task(run_id, puuid))
 
     processed = 0
-    for puuid in players:
-        logger.info("Fetching mastery data for new player...")
+    for player_number, puuid in enumerate(players, start=1):
+        remaining = goal - player_number + 1
+        logger.info(
+            f"Fetching mastery {player_number}/{goal}. Rough ETA: {get_eta_minutes(remaining):.1f} min. "
+            f"Elapsed: {(monotonic() - started_at) / 60:.1f} min."
+        )
         player_info = get_player_info(puuid)
         task_id = db.get_mastery_id_from_list(task_ids, puuid)
         if not task_id:
@@ -58,16 +67,12 @@ def run(run_id: int, api_client: APIClient, limit: int, run_n: int | None = None
             continue
 
         processed += 1
-        logger.info(
-            f"Saved new mastery data. Remaining: {min(limit, len(players)) - processed}. Runs done: {run_n if run_n is not None else 'N/A'}."
-        )
         if processed >= limit:
             break
 
-    if len(players) > limit:
-        logger.info(f"Reached the limit of {limit} processed players. Stopping.")
-    else:
-        logger.info(f"Processed all {len(players)} players missing masteries.")
+    logger.info(
+        f"Masteries saved for {processed}/{goal} players. Elapsed: {(monotonic() - started_at) / 60:.1f} min."
+    )
 
 
 def get_player_info(puuid: str) -> dict:
@@ -135,7 +140,7 @@ def fetch_player_masteries(
 
 
 def save_masteries(mastery_rows: list[dict], info: dict, patch: str, output_path: Path = OUTPUT_PATH) -> Path | None:
-    """Persist all fetched masteries as raw JSON."""
+    """Persist all fetched masteries as partitioned Parquet."""
 
     region = info.get("region")
     queue = info.get("queue")

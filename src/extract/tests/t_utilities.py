@@ -70,6 +70,7 @@ def _clear_pipeline_env(monkeypatch: pytest.MonkeyPatch):
         "QUEUE",
         "TIERS",
         "DIVISIONS",
+        "MAX_REFRESH_SCALE",
     ]
     for key in keys:
         monkeypatch.delenv(key, raising=False)

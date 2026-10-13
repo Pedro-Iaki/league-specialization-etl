@@ -111,7 +111,7 @@ The active pool uses a 60-day reference window. For players tracked for less tha
 | Keep playstyle rules deterministic and configurable | Lets the full analytical path remain in dbt and makes exploratory definitions inspectable without claiming a trained or validated classifier. |
 | Export fixed, identifier-free dashboard datasets | Makes the public app independent of warehouse uptime and removes player and interval identifiers from its serving files. |
 
-SQLite holds temporary job and file evidence, Neon holds durable operational coordination, and Databricks holds analytical observations. These separate jobs explain the three databases. The design prepares for a larger API allowance and future marts, even though the current personal key does not demand multiple collector machines. The operational ledger and validation checks make failures easier to diagnose; the remaining cross-stage commit work is recorded in the [roadmap](TODO.md#airflow-orchestration-and-load-commit).
+SQLite holds temporary job and file evidence, Neon holds durable operational coordination, and Databricks holds analytical observations. These separate jobs explain the three databases. The design prepares for a larger API allowance and future marts, even though the current personal key does not demand multiple collector machines. The operational ledger and validation checks make failures easier to diagnose; live failure and recovery behavior still needs evaluation.
 
 ## What the current data suggests
 
@@ -167,7 +167,7 @@ Use this route for a 60–90 second demo:
 2. In **Overview** and **Population Analysis**, compare active and all-time playstyles by tier. The Master active-pool contrast is a finding; lower-tier specialization, 59 Master profiles, and the short observation window are its immediate caveats.
 3. Open one champion in **Champion Explorer**, then compare it with the champion universe in **Cross Champion View**. The separate pages keep the individual profile and the cross-champion baseline readable. Explain that role mix describes inferred player roles and that mastery-weighted rank outcomes are estimates.
 
-A recording and public app link are planned in [TODO.md](TODO.md#dashboard-publication-and-reviewer-presentation).
+A recording and public app link are planned.
 
 ## Work on the pipeline
 
@@ -203,6 +203,61 @@ raw files and keep records awaiting compaction. The report is saved to
 `data/logs/compaction_integrity_check.json`.
 
 ### Confirm ingestion before marking a load complete
+
+Each round measures weighted staleness for the configured region and queue.
+Claimable stale players contribute `1 / 2^penalty`, where
+`penalty = max(0, inactive_streak - floor(elapsed_time / freshness_period))`;
+the denominator is every tracked player in that scope. Expired claims count as
+claimable, so crashed workers do not prevent refresh scheduling.
+`run_pipeline` owns the allocation math. Its documented `STALENESS_INTENSITY = 3`
+amplifies that measured share before converting it to a refresh-to-snapshot ratio:
+
+```text
+staleness_proportion = STALENESS_INTENSITY * weighted_staleness
+refresh_scale = staleness_proportion / (1 - staleness_proportion)
+refresh_players = ceil(snapshot_size * capped_refresh_scale)
+```
+
+When the proportion reaches 1, the scale is set directly to the configured cap;
+division by zero or a negative denominator is never used.
+
+Set `MAX_REFRESH_SCALE` in `config/EXTRACTION_CONFIG.env` (positive finite decimal,
+default **4**). This is a multiplier, not a fixed player count. It replaces both
+`STALE_REFRESH_LIMIT` and the separate discovery cutoff. Below the cap, both
+snapshot fetchers run; at or above it, both discovery and missing-mastery fetching
+are skipped for that round. Stale-player refresh still fetches its players' masteries.
+Lower caps pause discovery sooner and allow fewer refreshes; higher caps permit
+larger refresh rounds. Keep the existing freshness threshold to determine when a
+registry observation becomes stale.
+
+The snapshot size is the total count in the latest validated discovery page,
+before removing fresh or already-recorded players. It is not the registry size or
+the number of newly saved players. For a skipped or empty snapshot, the runner uses
+its documented `FALLBACK_SNAPSHOT_SIZE = 205`, an estimated full page. No additional
+checkpoint or persistent snapshot-size state is created.
+
+| Weighted staleness | Refresh scale with cap 4 | Snapshot behavior | Refresh allocation |
+| --- | --- | --- | --- |
+| 0% | 0x | Fetch | 0 |
+| 10% | About 0.429x | Fetch | 43 for an observed 100-player page |
+| 20% | About 1.5x | Fetch | About 150 for an observed 100-player page |
+| 26.67% or more | 4x | Skip both fetchers | 820 using the 205-player fallback |
+
+`math.ceil` rounds fractional player allocations upward; Python's built-in
+`round` does not guarantee that direction. Ordinary floating-point arithmetic may
+allocate one extra player near a whole-number boundary; this small difference is
+accepted. `job_results.json` records an explicit skipped
+snapshot reason, the observed page count when available, and the size used for
+refresh allocation. The refresh worker receives the final player limit once;
+it does not calculate a limit that the runner passes back to it.
+
+Collection logs report the current work, progress, saved-player counts and elapsed
+time. Rough mastery/refresh ETAs assume a development key capable of **50 requests
+per minute at 95% efficiency**: about 47.5 mastery players/minute or 23.75 players/minute
+when refreshing both rank and mastery. These are static estimates, not measured
+throughput or predictions. Retries, latency, startup and other key limits can make
+the real duration longer. Snapshot fetching is shown as roughly under a minute;
+the API client's existing rate limiter still controls requests.
 
 The loader uploads both available compacted inputs, starts an ingestion-only
 Databricks job, and waits for its result. Auto Loader and its existing checkpoints
@@ -248,6 +303,11 @@ used, preserving their records. After ingestion, a page advances only when all o
 its tracked player rows have `load_success`; the saved claim details are then cleared.
 Claims retain their existing expiry behavior. An expired or already-completed claim
 is logged and skipped without rejecting ingested data.
+Refresh workers renew their own Neon claims before each player. The existing
+SQLite task helpers update the run heartbeat when player/mastery tasks are added.
+Expired claims are released before claiming stale players; the normal `finally`
+cleanup releases surviving claims even when patch lookup or fetching fails.
+Heartbeats and cleanup do not touch claims reassigned to another worker.
 
 Refresh observations use their SQLite task completion time for Neon freshness.
 Loading the same observation again does not increase inactivity or replace a newer
