@@ -86,7 +86,7 @@ def db_factory():
 
 @pytest.fixture
 def mock_db(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    """Patch pipeline_db.get_connection so any module using it reads/writes an isolated test database file."""
+    """Patch extraction_db_helper.get_connection to use a temporary SQLite ledger."""
     db_path = tmp_path / "test_pipeline.db"
     logger.info(f"Creating test database at: {db_path}")
     conn = sqlite3.connect(db_path)
@@ -121,7 +121,6 @@ class PropagateHandler(logging.Handler):
         logging.getLogger(record.name).handle(record)
 
 
-# seeds for the random and faker modules, and a way to log it
 SUITE_SEED = random.randint(0, 2**32 - 1)
 logger.info(f"Seed: {SUITE_SEED}")
 

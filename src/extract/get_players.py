@@ -41,11 +41,7 @@ def run(
 
     started_at = monotonic()
     logger.info("Fetching player snapshot... Rough ETA: under 1 minute.")
-    time = datetime.now(
-        timezone.utc
-    ).strftime(
-        "%H%M%S"
-    )  # Although it seems overkill, we should still store the time first so we avoid any race conditions with the date changing between the date and time fetches
+    time = datetime.now(timezone.utc).strftime("%H%M%S")
     date = datetime.now(timezone.utc).strftime("%y%m%d")
     patch = str(api_client.get_patch())
     eligible_tiers = [tier] if tier else (tiers or DEFAULT_TIERS)
@@ -81,7 +77,6 @@ def run(
         snapshot_size = len(players)
         claim_pending = bool(players)
 
-        # Remove players that are fresh in our player registry.
         snapshot_player_ids = {player["puuid"] for player in players if player.get("puuid")}
         fresh_players = get_fresh_players(
             freshness_minutes,

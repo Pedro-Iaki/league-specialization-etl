@@ -88,7 +88,6 @@ def test_run_pipeline_env_matrix(
     assert pl.run_pipeline(config_path=env_path) is expected
 
 
-# test if on a valid configuration, the correct data reaches extraction_loop, including the API key and the config manifest
 def test_valid_case_passes_manifest_to_extraction_loop(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

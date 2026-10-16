@@ -76,7 +76,6 @@ def run(run_id: int, api_client: APIClient, limit: int, run_n: int | None = None
 
 
 def get_player_info(puuid: str) -> dict:
-    """Get the player info from the database."""
     info = db.get_player_info(puuid)
     if not info:
         logger.error(f"No player info found for {puuid}.")

@@ -57,12 +57,12 @@ class RiotAPIClient:
         before_sleep=_log_retry,
     )
     def get(self, url: str, **kwargs) -> requests.Response:
-        self._acquire()  # Access rate limit tokens before anything, skips if has not been setup yet
+        self._acquire()
 
         response = self.session.get(url, timeout=30, **kwargs)
 
         if not self.buckets:
-            self._initialize_buckets_from_response(response)  # setup bucket from response headers
+            self._initialize_buckets_from_response(response)
 
         if response.status_code == 429:
             logger.warning("429 Too Many Requests received, rate limited")
@@ -86,7 +86,7 @@ class RiotAPIClient:
             return
 
         with self._setup_lock:
-            if self.buckets:  # Race condition fail-safe
+            if self.buckets:  # Another thread may have initialized them while this one waited.
                 return
 
             self.buckets = self.setup_buckets(rate_limit_header)
@@ -112,15 +112,15 @@ class RiotAPIClient:
                 if not self.buckets:
                     return
 
-                available = all(bucket.peek() for bucket in self.buckets)  # All buckets have tokens
+                available = all(bucket.peek() for bucket in self.buckets)
 
                 if available:
                     for bucket in self.buckets:
-                        if not bucket.consume():  # Consume them all
+                        if not bucket.consume():
                             raise RuntimeError("Couldn't consume token from bucket.")
                     return
 
-                # Get max time from highest wait in buckets
+                # Every rate-limit window must permit the next request.
                 wait_time = max(bucket.time_until_available() for bucket in self.buckets)
 
             # Sleep outside the lock to avoid blocking others.
@@ -134,8 +134,8 @@ class RiotAPIClient:
         for limit_pair in rate_limit_header.split(","):
             limit, period = limit_pair.strip().split(":")
 
-            rate_limit = int(limit)  # Number of requests allowed in the period
-            period_seconds = int(period)  # Period in seconds
+            rate_limit = int(limit)
+            period_seconds = int(period)
 
             if rate_limit <= 0:
                 raise ValueError(f"Invalid rate limit: {rate_limit}")
@@ -173,14 +173,13 @@ class TokenBucket:
 
     def _refill(self) -> None:
         now = time.monotonic()
-        elapsed = now - self.last_checked  # Time since last refill
+        elapsed = now - self.last_checked
 
         if elapsed <= 0:
             return
 
-        self.tokens += elapsed * self.refill_rate  # How long its been multiplied by how many we get per second
+        self.tokens += elapsed * self.refill_rate
 
-        # Never allow the bucket to exceed capacity.
         self.tokens = min(self.capacity, self.tokens)
 
         # Eliminate microscopic floating-point residue around zero.
@@ -190,13 +189,11 @@ class TokenBucket:
         self.last_checked = now
 
     def peek(self) -> bool:
-        # Refill then see if at least one token is available
         with self.lock:
             self._refill()
             return self.tokens >= 1.0
 
     def consume(self) -> bool:
-        # Refill then try to consume
         with self.lock:
             self._refill()
 
@@ -209,14 +206,12 @@ class TokenBucket:
             if abs(self.tokens) < self.EPSILON:
                 self.tokens = 0.0
 
-            # Just in case it somehow becomes negative due to floating-point errors
             if self.tokens < 0:
                 self.tokens = 0.0
 
             return True
 
     def time_until_available(self) -> float:
-        # How long til the next token is available
         with self.lock:
             self._refill()
 

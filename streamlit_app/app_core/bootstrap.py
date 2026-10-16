@@ -21,7 +21,7 @@ def refresh_legacy_business_helpers() -> bool:
 
     A source update can leave an earlier business module in a running Streamlit
     process. Importing the new page then fails before a normal rerun can recover.
-    Fresh/current modules are left alone, including their caches and test patches.
+    Current modules keep their caches.
     """
     with _RELOAD_LOCK:
         business = sys.modules.get("app_core.business")

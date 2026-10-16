@@ -78,9 +78,6 @@ def test_failed_run_scenario(db_factory, mock_conn):
 
     db.cleanup_failed_run(failed_run_id, conn=mock_conn)
 
-    # assert
-    # all tasks for the failed run, that arent a success, should be set to failed
-    # all records for those tasks should be set to failed or deleted (only delete if player_task_ids has only one task, and that task is failed)
     run_player_tasks = mock_conn.execute(
         "SELECT task_id, status FROM player_tasks WHERE run_id = ?", (failed_run_id,)
     ).fetchall()
@@ -88,11 +85,9 @@ def test_failed_run_scenario(db_factory, mock_conn):
         "SELECT task_id, status FROM mastery_tasks WHERE run_id = ?", (failed_run_id,)
     ).fetchall()
 
-    # assert that all player tasks for the failed run, that are not success, are set to failed
     for task_id, status in run_player_tasks:
         if status != "success":
             assert status == "failed"
-            # assert that no record exists that only has this broken id as the player_task_ids
             assert (
                 len(
                     mock_conn.execute(
@@ -106,7 +101,6 @@ def test_failed_run_scenario(db_factory, mock_conn):
     for task_id, status in run_mastery_tasks:
         if status != "success":
             assert status == "failed"
-            # assert that the record corresponding to this mastery task id, has its mastery_status set to failed
             assert (
                 len(
                     mock_conn.execute(

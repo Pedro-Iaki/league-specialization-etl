@@ -262,7 +262,6 @@ class DBFactory:
                 "in_progress",
             ]
 
-        # run
         run_status = self._vary_choice(run_status_variation, "success")
         started = self._vary_datetime_range(
             datetime.now(timezone.utc), run_started_at_variation
@@ -292,7 +291,6 @@ class DBFactory:
         mastery_task_ids = []
         player_ids = []
 
-        # player task
         pt_status = self._vary_choice(player_task_status_variation, "success")
         pt_started = self._vary_datetime_range(
             datetime.now(timezone.utc), started_at_variation
@@ -319,7 +317,6 @@ class DBFactory:
         player_task_ids.append(player_task_id)
 
         for _ in range(players_per_task):
-            # mastery task
             mt_status = self._vary_choice(mastery_task_status_variation, "success")
             mt_started = self._vary_datetime_range(
                 datetime.now(timezone.utc), started_at_variation
@@ -347,7 +344,6 @@ class DBFactory:
             )
             mastery_task_ids.append(mastery_task_id)
 
-            # player recorded
             recorded_player_task_ids = [player_task_id]
             paths = [f"/tmp/player_{player_id}.parquet"]
             paths_logged_at = [datetime.now(timezone.utc).isoformat()]

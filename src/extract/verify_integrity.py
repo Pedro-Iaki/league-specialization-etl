@@ -17,8 +17,10 @@ LOGS_PATH = BASE_DIR / "data" / "logs"
 
 
 def run_integrity_check(full: bool = False):
-    """Run a full integrity check on the files and database.\n
-    Fast mode skips the file integrity check, which can be lengthy."""
+    """Check the ledger; full mode also scans raw files and current compaction outputs.
+
+    The runner checks compacted outputs again after compaction in either mode.
+    """
     results = {}
     compaction_log = {}
     logger.info(f"Starting integrity check. Full mode: {full}")
@@ -78,7 +80,6 @@ def verify_files_integrity() -> dict:
 
     db.cleanup_stale_runs()
 
-    # get all players
     player_files = set(PLAYERS_INPUT_PATH.rglob("*.parquet"))
     for player_file in tqdm(player_files, desc="Verifying player files", unit="file"):
         try:
@@ -96,7 +97,6 @@ def verify_files_integrity() -> dict:
             broken_files.append(player_file)
             continue
 
-    # get all masteries
     mastery_files = set(MASTERIES_PATH.rglob("*.parquet"))
     for mastery_file in tqdm(mastery_files, desc="Verifying mastery files", unit="file"):
         try:
@@ -115,11 +115,9 @@ def verify_files_integrity() -> dict:
             continue
 
     for puuid, mastery_file in tqdm(all_puuids_masteries.items(), desc="Verifying mastery records", unit="record"):
-        # if a puuid not present in players but present in masteries, add to missing_player_puuids
         if puuid not in all_puuids_players:
             missing_player_puuids[puuid] = str(mastery_file)
 
-        # if a puuid is present twice in masteries, add to duplicated_puuids
         uniques = sum(1 for player, file in all_puuids_masteries.items() if player == puuid)
         if uniques > 1 and puuid not in duplicated_masteries_puuids:
             duplicated_masteries_puuids[puuid] = [
@@ -127,11 +125,9 @@ def verify_files_integrity() -> dict:
             ]
 
     for puuid, paths in tqdm(all_puuids_players.items(), desc="Verifying player records", unit="record"):
-        # if a puuid is present in players but not present in masteries, add to missing_masteries_puuids
         if puuid not in all_puuids_masteries:
             missing_masteries_puuids[puuid] = ", ".join(str(p) for p in paths)
 
-        # if a puuid has more than one file, add to duplicated_puuids
         if len(paths) > 1:
             duplicated_player_puuids.append(puuid)
 
@@ -146,7 +142,7 @@ def verify_files_integrity() -> dict:
     )
     average_duplicity_per_player_file = (
         sum(len(v) for v in all_puuids_players.values()) / len(all_puuids_players) if len(all_puuids_players) else 0
-    )  # sum all puuid paths and divide by number of files
+    )  # Mean raw-file appearances per distinct player.
 
     conn = db.get_connection()
     db_players = [row["player_id"] for row in conn.execute("SELECT player_id FROM players_recorded")]

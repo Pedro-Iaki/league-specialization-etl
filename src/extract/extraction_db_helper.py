@@ -1,5 +1,7 @@
-"""Helper script to handle all local database operations for the pipeline.
-Most operations take an optional conn parameter, mostly for testing with mocked values, but keep in mind that whoever passes it must also handle the connection fully"""
+"""Own local pipeline SQL and transactions.
+
+Callers supplying a connection also own its commit, rollback and close.
+"""
 
 import json
 import sqlite3
@@ -12,7 +14,7 @@ OptStr = str | None
 
 
 def is_active(db_path: str = DB_PATH) -> bool:
-    """Check if the database is active and accessible."""
+    """Check that SQLite can open the path and execute a query, not that tables exist."""
     conn = None
     try:
         conn = sqlite3.connect(db_path)
@@ -397,10 +399,7 @@ def update_player_records(
 
 
 def get_mastery_id_from_list(task_ids: list[int], puuid: str, conn: sqlite3.Connection | None = None) -> int:
-    """
-    Given a list of task_ids and a puuid, return the task_id that matches the puuid.
-    \nIf no match is found, return None.
-    """
+    """Return the matching mastery task ID, or -1 if no supplied task matches."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -422,9 +421,9 @@ def get_mastery_id_from_list(task_ids: list[int], puuid: str, conn: sqlite3.Conn
 
 
 def cleanup_stale_runs(conn: sqlite3.Connection | None = None):
-    """
-    Clean up potential stalled runs. Fully clearing related tasks and records.
-    \nChecks if a run's heartbeat has been longer than an hour.
+    """Fail runs silent for over an hour and clean their unfinished work.
+
+    Older rows without a heartbeat use their start time. Successful tasks survive.
     """
     conn_supplied = conn
     if not conn_supplied:
@@ -456,8 +455,10 @@ def cleanup_stale_runs(conn: sqlite3.Connection | None = None):
 
 
 def cleanup_failed_run(run_id: int, conn: sqlite3.Connection | None = None):
-    """
-    Clear the tasks and associated player records of a failed run.
+    """Fail unfinished tasks while preserving successful work from this run.
+
+    Delete player records supported only by a failed player task; retain records
+    with other task history and mark failed mastery work for retry.
     """
     conn_supplied = conn
     if not conn_supplied:
@@ -524,11 +525,11 @@ def claim_players_missing_masteries(
     conn: sqlite3.Connection | None = None,
     claim: bool = True,
 ) -> list[str]:
-    """
-    Get list of player IDs (puuids) with mastery_status 'failed' or 'pending'.
-    \nIf include_stale_success is True, also include players with 'success' status that:
-    \n- Have mastery logged at least 1 week old
-    \n- AND the last logged player was added in the last 24 hours
+    """Select pending/failed mastery work, marking it in progress when claim=True.
+
+    Optional successful work fills the remaining limit only when its mastery is
+    over seven days old and its latest rank snapshot is less than 24 hours old.
+    These local retry windows are independent of the registry freshness setting.
     """
     own_conn = conn is None
     if own_conn:
@@ -571,10 +572,7 @@ def claim_players_missing_masteries(
 
 
 def get_mastery_status_for_player(player_id: str, conn: sqlite3.Connection | None = None) -> str:
-    """
-    Get the mastery status for a given player ID (puuid).
-    \nReturns 'pending', 'in_progress', 'success', or 'failed'.
-    """
+    """Return the stored mastery status, or the string 'None' for an unknown player."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -591,10 +589,7 @@ def get_mastery_status_for_player(player_id: str, conn: sqlite3.Connection | Non
 
 
 def get_player_info(player_id: str, conn: sqlite3.Connection | None = None) -> dict | None:
-    """
-    Get the player info for a given player ID (puuid).
-    \nReturns a dictionary with keys: region, queue, tier, division, latest log time.
-    """
+    """Return player scope and puuid with latest_logged_at parsed as a datetime."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -624,10 +619,7 @@ def get_players_in_timespan(
     division: OptStr = None,
     conn: sqlite3.Connection | None = None,
 ) -> list[dict]:
-    """
-    Get all players for a given timespan (in days), with optional region, queue, tier, and division parameters.
-    \nReturns a list of player strings.
-    """
+    """Return player ID strings whose latest rank snapshot falls within days_ago."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -669,10 +661,9 @@ def get_players_recorded(
     division: OptStr = None,
     conn: sqlite3.Connection | None = None,
 ) -> list[dict]:
-    """
-    Get all players, with optional region, queue, tier, and division parameters.
-    \nReturns a list of player dictionaries.
-    \nOnly considers players with masteries logged Meaning running an operation on a patch that has no masteries logged will return an empty list.
+    """Return player ID strings with successful mastery in the requested scope.
+
+    The patch argument is currently unused; results can include earlier patches.
     """
     own_conn = conn is None
     if own_conn:

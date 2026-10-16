@@ -9,7 +9,7 @@ from loguru import logger
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 ENV_PATH = BASE_DIR / ".env.local"
-DEFAULT_FRESHNESS_MINUTES = 10080  # A Week
+DEFAULT_FRESHNESS_MINUTES = 10080  # Seven days.
 CLAIM_TIMEOUT_MINUTES = 30
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "player_registry_schema.sql"
@@ -191,7 +191,7 @@ def get_player_state(
     threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
     conn: psycopg.Connection | None = None,
 ) -> dict[str, Any] | None:
-    """Return a single player's registry row for the given dataset, including a computed is_fresh boolean."""
+    """Return registry timestamps and freshness for one player in a region/queue."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -258,11 +258,10 @@ def claim_stale_players(
     queue: str | None = None,
     excluded_puuids: list[str] | None = None,
 ) -> list[dict[str, str]]:
-    """Atomically claim up to `limit` stale players' 'players' rows for a refresh job.
+    """Atomically claim up to `limit` stale player/region/queue rows for refresh.
 
-    Only the 'players' row is claimed; a mastery refresh for the same puuid piggybacks
-    on this same claim instead of taking its own, since both fetches happen together.
-    Uses SELECT ... FOR UPDATE SKIP LOCKED so concurrent claimers never grab the same row.
+    Rank and mastery share a claim because they are fetched together. Row locks
+    with SKIP LOCKED let concurrent workers select different unclaimed rows.
     """
     if limit <= 0:
         return []

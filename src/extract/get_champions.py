@@ -13,10 +13,8 @@ REQUEST_PARAMS = {
 
 def get_champion_positions() -> pd.DataFrame:
     lua = LuaRuntime(unpack_returned_tuples=True)
-    # Get Champions as a parsed json, read to lua table, then convert to a python dict
     champion_data = dict_from_lua(lua.execute(get_champions_lua()))
 
-    # Build a lookup table for champion positions based on the parsed champion data
     position_lookup = {}
     for info in champion_data.values():
         if not isinstance(info, dict):
@@ -65,40 +63,31 @@ def dict_from_lua(lua_table) -> dict:
 
 
 def lua_to_python(value):
-    """
-    Recursively convert Lua tables into Python dicts/lists.
-    Go through the table, then through each of its lists,
-    and each value recursively to convert them into Python types.
-    """
-    # If its not a table or list, return the value as-is
+    """Convert Lua tables recursively; contiguous one-based keys become lists."""
     if not hasattr(value, "items"):
         return value
     items = list(value.items())
 
-    # Empty Lua table
+    # Empty tables have no key pattern to distinguish a list from a mapping.
     if not items:
         return {}
 
-    # Check whether this is an array table
     keys = [key for key, _ in items]
     if all(isinstance(key, (int, float)) for key in keys):
         keys = sorted(keys)
         if keys == list(range(1, len(keys) + 1)):
             return [lua_to_python(value[i]) for i in keys]
 
-    # Otherwise it's a dictionary/table
     return {lua_to_python(key): lua_to_python(val) for key, val in items}
 
 
 def get_champions_dataframe():
-    """returns a df with name index, and columns: key, id, client_positions, external_positions"""
-    # get the data from ddragon
+    """Join Data Dragon names, IDs and patch with wiki reference positions by champion key."""
     with requests.Session() as session:
         latest_patch = session.get("https://ddragon.leagueoflegends.com/api/versions.json").json()[0]
         champions_url = f"https://ddragon.leagueoflegends.com/cdn/{latest_patch}/data/en_US/champion.json"
         champions_data = session.get(champions_url).json()
 
-    # create df from data
     champions_by_name = {c["key"]: {"name": c["name"], "id": c["id"]} for c in champions_data["data"].values()}
     champions_by_name_df = (
         pd.DataFrame.from_dict(champions_by_name, orient="index")
@@ -108,11 +97,9 @@ def get_champions_dataframe():
         .assign(patch=latest_patch)
     )
 
-    # get positions
     champions_positions = get_champion_positions()
     champions_positions["champion"] = champions_positions["champion"].astype(str)
 
-    # merge them both
     champions_clean_data = champions_by_name_df.merge(
         champions_positions, left_on="key", right_on="champion", how="left"
     ).drop(columns=["champion"])

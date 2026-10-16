@@ -32,10 +32,9 @@ def load_champions():
         logger.warning("No champion data to load. Exiting.")
         return 0
 
-    # Identify which columns are lists
     list_cols = [col for col in df.columns if _is_list_like_column(df[col])]
 
-    # Build SQL placeholders: from_json(?, 'ARRAY<STRING>') for lists, ? for standard values
+    # Bind arrays as JSON text and decode in SQL; scalar placeholders cannot bind lists.
     placeholders = []
     for col in df.columns:
         if col in list_cols:
@@ -43,7 +42,6 @@ def load_champions():
         else:
             placeholders.append("?")
 
-    # Convert Python lists in records to JSON strings for parameter binding
     records = []
     for row in df.itertuples(index=False):
         row_values = []

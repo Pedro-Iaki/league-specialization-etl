@@ -1,10 +1,7 @@
-"""Refresh players flagged stale in the Neon player_state_registry.\n
-Claims a batch of stale puuids, re-fetches their current rank (via the by-puuid league-entries
-endpoint) and their champion masteries, and writes both into the normal raw partitions so the
-existing compaction + Databricks load pipeline picks them up on its next pass.\n
-This is intentionally separate from get_players.run() (division-page scanning) and only reuses
-get_masteries.py's per-puuid helpers directly, since refreshing a known puuid is a different
-access pattern than the bulk division scan.
+"""Refresh known players through Riot's per-player rank and mastery endpoints.
+
+Both outputs use the normal raw partitions for compaction and ingestion. Unlike
+discovery's division-page scan, refresh revisits players claimed from the registry.
 """
 
 from datetime import datetime, timezone
@@ -35,11 +32,10 @@ def run(
     region: str | None = None,
     queue: str | None = None,
 ) -> dict:
-    """Claim a batch of stale puuids, refresh their rank + masteries, and release the claim.
+    """Claim stale players, refresh rank and mastery, then release owned claims.
 
-    Claims are always released in a `finally` block so an operational failure never leaves a
-    player permanently locked out of future refresh attempts (release_expired_claims is the
-    backstop for crashed workers that never reach the `finally`).
+    Release owned claims in finally; expiry cleanup handles workers that crash
+    before reaching it. Successful files remain valid even if ownership expires.
     """
     released_expired = player_registry.release_expired_claims(claim_timeout_minutes)
     if released_expired:

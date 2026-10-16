@@ -18,7 +18,7 @@ MAX_JOB_ATTEMPTS = 3
 
 
 def get_config() -> dict[str, str | None]:
-    """Resolve Databricks connection settings from env vars or explicit args."""
+    """Read config/DATABRICKS_CONFIG.env, preserving process environment overrides."""
     load_dotenv(CONFIG_PATH)
     return {
         "host": os.getenv("HOST"),
@@ -28,7 +28,7 @@ def get_config() -> dict[str, str | None]:
 
 
 def get_connection():
-    """Create a Databricks SQL connection from environment or explicit parameters."""
+    """Require host, warehouse HTTP path and token before opening a SQL connection."""
     config = get_config()
     missing = [key for key, value in config.items() if value in (None, "")]
     if missing:
@@ -43,7 +43,6 @@ def get_connection():
 
 
 def use_catalog_and_schema(cursor: Any, catalog: str, schema: str) -> None:
-    """Set the active catalog and schema on a Databricks cursor."""
     cursor.execute(f"USE CATALOG {catalog}")
     cursor.execute(f"USE SCHEMA {schema}")
 
