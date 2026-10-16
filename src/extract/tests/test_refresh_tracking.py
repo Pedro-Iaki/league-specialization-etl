@@ -98,14 +98,39 @@ def test_claims_are_released_when_patch_lookup_fails(monkeypatch):
 def test_heartbeat_precedes_fetch_and_lost_claim_does_not_block_data(monkeypatch):
     _, released = _stub_claims(monkeypatch)
     events = []
+    clock = [0]
+    monkeypatch.setattr(refresh, "monotonic", lambda: clock[0])
+
+    class SlowPatchClient(PatchClient):
+        def get_patch(self):
+            clock[0] = 600
+            return super().get_patch()
+
     monkeypatch.setattr(refresh.player_registry, "heartbeat_claims", lambda worker: events.append("heartbeat") or 0)
     monkeypatch.setattr(refresh, "handle_player_extraction", lambda **kwargs: events.append("rank") or {
         "wins": 12, "losses": 8, "tier": "GOLD", "rank": "I"})
     monkeypatch.setattr(refresh, "handle_mastery_extraction", lambda **kwargs: events.append("mastery") or True)
-    result = refresh.run(1, PatchClient(), 1, 10080, 30)
+    result = refresh.run(1, SlowPatchClient(), 1, 10080, 30)
     assert events == ["heartbeat", "rank", "mastery"]
     assert result["players_refreshed"] == result["masteries_refreshed"] == 1
     assert len(released) == 1
+
+
+def test_claim_heartbeat_is_periodic_during_a_large_refresh(monkeypatch):
+    _stub_claims(monkeypatch)
+    players = [{"puuid": str(n), "region": "na1", "queue": "solo"} for n in range(820)]
+    monkeypatch.setattr(refresh.player_registry, "claim_stale_players", lambda *args, **kwargs: players)
+    clock = [0]
+    renewed_at = []
+    monkeypatch.setattr(refresh, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(refresh.player_registry, "heartbeat_claims", lambda worker: renewed_at.append(clock[0]) or 820)
+
+    def fetch(**kwargs):
+        clock[0] += 2
+
+    monkeypatch.setattr(refresh, "handle_player_extraction", fetch)
+    refresh.run(1, PatchClient(), 820, 10080, 30)
+    assert renewed_at == [600, 1200]
 
 
 def test_pending_local_player_is_not_refetched_before_ingestion(mock_db, monkeypatch):

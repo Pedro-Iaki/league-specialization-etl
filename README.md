@@ -309,7 +309,8 @@ used, preserving their records. After ingestion, a page advances only when all o
 its tracked player rows have `load_success`; the saved claim details are then cleared.
 Claims retain their existing expiry behavior. An expired or already-completed claim
 is logged and skipped without rejecting ingested data.
-Refresh workers renew their own Neon claims before each player. The existing
+Refresh workers renew their own Neon claims between fetches at one third of the
+claim timeout (10 minutes with the current default). The existing
 SQLite task helpers update the run heartbeat when player/mastery tasks are added.
 Expired claims are released before claiming stale players; the normal `finally`
 cleanup releases surviving claims even when patch lookup or fetching fails.

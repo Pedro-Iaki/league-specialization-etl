@@ -63,13 +63,19 @@ def run(
     masteries_refreshed = 0
     players_refreshed = 0
     players_attempted = 0
+    last_heartbeat = started_at
+    # Renew well before expiry, at one third of the claim timeout.
+    heartbeat_interval_seconds = claim_timeout_minutes * 60 / 3
     try:
         patch = str(api_client.get_patch())
         now = datetime.now(timezone.utc)
         date = now.strftime("%y%m%d")
         time = now.strftime("%H%M%S")
         for player in players:
-            player_registry.heartbeat_claims(worker)
+            heartbeat_time = monotonic()
+            if heartbeat_time - last_heartbeat >= heartbeat_interval_seconds:
+                player_registry.heartbeat_claims(worker)
+                last_heartbeat = heartbeat_time
             players_attempted += 1
             remaining = goal - players_attempted + 1
             logger.info(

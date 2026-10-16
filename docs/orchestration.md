@@ -59,7 +59,8 @@ python -m extract.run_pipeline
 - An integrity failure prevents upload. Ingestion failure prevents load-success,
   freshness/inactivity and page-completion updates. Valid no-file outcomes can
   update immediately.
-- Refresh heartbeats renew only claims still owned by that worker. Existing
+- Refresh heartbeats renew only claims still owned by that worker, at one third
+  of the claim timeout (10 minutes with the current default). Existing
   expiry cleanup runs before refresh claiming. Lost claims do not invalidate files.
   Only fresh local collections awaiting rank ingestion, without a current failure,
   are excluded from refresh claims. Stale or failed work passes this local filter;
