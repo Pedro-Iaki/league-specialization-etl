@@ -239,6 +239,7 @@ TODO
 **/todo*.md
 **/*_plan.md
 **/*_handoff.md
+/next_steps.md
 .neon
 .env.local
 node_modules/

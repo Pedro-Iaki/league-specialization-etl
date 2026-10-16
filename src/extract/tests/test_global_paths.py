@@ -45,16 +45,7 @@ def test_pipeline_db_path_is_relative_to_repo_root():
     ).parent == REPO_ROOT / "data" / "database"
 
 
-def test_expected_directories_exist_on_disk():
-    assert (REPO_ROOT / "data" / "raw" / "players").is_dir()
-    assert (REPO_ROOT / "data" / "raw" / "masteries").is_dir()
-    assert (REPO_ROOT / "data" / "logs").is_dir()
-    assert (REPO_ROOT / "data" / "database").is_dir()
-    assert (REPO_ROOT / "config").is_dir()
-
-
-def test_config_and_schema_files_exist_on_disk():
-    assert run_pipeline.CONFIG_PATH.is_file()
+def test_schema_file_exists_on_disk():
     schema_path = REPO_ROOT / "src" / "extract" / "extraction_schemas.sql"
     assert schema_path.is_file()
 

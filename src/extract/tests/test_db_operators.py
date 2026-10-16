@@ -7,10 +7,11 @@ import extract.tests.t_utilities as util
 util.set_path_for_extract_modules()
 
 
-def test_connection_helpers_and_now():
-    assert db.is_active()
+def test_connection_helpers_and_now(tmp_path):
+    db_path = str(tmp_path / "connections.db")
+    assert db.is_active(db_path)
 
-    conn = db.get_connection()
+    conn = db.get_connection(db_path)
     foreign_keys_enabled = conn.execute("PRAGMA foreign_keys").fetchone()[0]
     assert foreign_keys_enabled == 1
     conn.close()

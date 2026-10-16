@@ -153,7 +153,7 @@ def test_verify_db_integrity_flags_expected_faulty_records(
 
 
 def test_verify_files_integrity_detects_missing_and_duplicated_puuids(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, mock_db
 ):
     players_dir = tmp_path / "players"
     masteries_dir = tmp_path / "masteries"
@@ -165,6 +165,10 @@ def test_verify_files_integrity_detects_missing_and_duplicated_puuids(
     monkeypatch.setattr(verify_integrity, "PLAYERS_INPUT_PATH", players_dir)
     monkeypatch.setattr(verify_integrity, "MASTERIES_PATH", masteries_dir)
     monkeypatch.setattr(verify_integrity, "LOGS_PATH", logs_dir)
+    run_id = mock_db.start_run("file_integrity_test")
+    task_id = mock_db.add_player_task(run_id)
+    mock_db.add_player_records("p1", str(players_dir / "file1.parquet"), task_id,
+                               "na1", "RANKED_SOLO_5x5", "GOLD", "I", "15.1")
 
     # p1 appears in two player files (duplicated); p2 only in players (missing mastery)
 
@@ -209,6 +213,8 @@ def test_verify_files_integrity_detects_missing_and_duplicated_puuids(
 
     assert "p1" in result["duplicated_players"]
     assert len(result["faulty_files"]) == 1
+    assert result["unregistered_players"] == ["p2"]
+    assert result["wrongfully_registered_players"] == []
 
     log_file = logs_dir / "integrity_check.json"
     assert log_file.is_file()
