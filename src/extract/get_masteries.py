@@ -8,7 +8,7 @@ import extract.extraction_db_helper as db
 import pydantic_models as models
 from extract import output_helper
 from extract.api_client_protocol import APIClient
-from extract.progress_helper import get_eta_minutes
+from extract.progress_helper import PROGRESS_INTERVAL, get_eta_minutes
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 OUTPUT_PATH = BASE_DIR / "data" / "raw" / "masteries"
@@ -37,10 +37,11 @@ def run(run_id: int, api_client: APIClient, limit: int, run_n: int | None = None
     processed = 0
     for player_number, puuid in enumerate(players, start=1):
         remaining = goal - player_number + 1
-        logger.info(
-            f"Fetching mastery {player_number}/{goal}. Rough ETA: {get_eta_minutes(remaining):.1f} min. "
-            f"Elapsed: {(monotonic() - started_at) / 60:.1f} min."
-        )
+        if player_number == 1 or player_number % PROGRESS_INTERVAL == 0:
+            logger.info(
+                f"Fetching mastery {player_number}/{goal}. Rough ETA: {get_eta_minutes(remaining):.1f} min. "
+                f"Elapsed: {(monotonic() - started_at) / 60:.1f} min."
+            )
         player_info = get_player_info(puuid)
         task_id = db.get_mastery_id_from_list(task_ids, puuid)
         if not task_id:

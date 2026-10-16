@@ -275,7 +275,7 @@ def run_load(config_manifest: dict) -> dict:
             )
             result["status"] = result["dbt_build_result"]
             if result["status"]:
-                logger.info("Player files loaded and analytical tables built.")
+                logger.info("Load and build stages completed.")
     except Exception as e:  # noqa: BLE001 - preserve local files after any load-stage failure
         result["error"] = str(e)
         logger.exception(f"Load or dbt build failed: {e}")

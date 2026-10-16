@@ -22,8 +22,7 @@ def run_integrity_check(full: bool = False):
     The runner checks compacted outputs again after compaction in either mode.
     """
     results = {}
-    compaction_log = {}
-    logger.info(f"Starting integrity check. Full mode: {full}")
+    logger.info(f"Checking collected data (raw-file scan: {'on' if full else 'off'}).")
     if full:
         files_log = verify_files_integrity()
         compaction_log = verify_compaction_integrity()
@@ -32,7 +31,8 @@ def run_integrity_check(full: bool = False):
     database_log = verify_db_integrity()
     results["database"] = database_log
     logger.info(
-        f"\nIntegrity check completed, check ./data/logs for in-depth results. Summary: \nTotal players in database: {database_log.get('total_player_records', 0)}\nFaulty or incomplete records: {database_log.get('faulty_records_count', 0)}\nDuplicated player rate: {database_log.get('duplicated_players', 0)}\nDiscarded duplicated snapshots: {database_log.get('discarded_player_tasks', 0)}\nPlayer task error rate: {database_log.get('player_task_error_rate', 0)}\nMastery task error rate: {database_log.get('mastery_task_error_rate', 0)}\nUncompacted files: {compaction_log.get('unaccounted_raw_files_count', 0)}"
+        f"Integrity check completed: {database_log.get('total_player_records', 0)} player records, "
+        f"{database_log.get('faulty_records_count', 0)} faulty or incomplete. Reports: data/logs."
     )
     return results
 
@@ -44,14 +44,14 @@ def is_compaction_ready(results: dict) -> bool:
     has_faulty_records_key = "faulty_records_count" in database
     faulty_count = database.get("faulty_records_count", 0)
     if not has_faulty_records_key or faulty_count > 0:
-        logger.error("Database integrity check failed: faulty record count {}.", database.get("faulty_records_count"))
+        logger.error(f"Database integrity check failed: faulty record count {database.get('faulty_records_count')}.")
         return False
 
     files = results.get("files")
     if files:
         total_errors = files.get("total_errors_or_missing", 0)
         if total_errors > 0:
-            logger.error("Raw file integrity check failed: {} error(s).", total_errors)
+            logger.error(f"Raw file integrity check failed: {total_errors} error(s).")
             return False
     return True
 
@@ -64,7 +64,7 @@ def is_load_ready(results: dict) -> bool:
     issues = compaction.get("task_level_issues_count")
     pending = compaction.get("pending_compaction_records_count")
     if issues is None or pending is None or issues > 0 or any(pending.values()):
-        logger.error("Compaction integrity check failed: issues {}, uncompacted records {}.", issues, pending)
+        logger.error(f"Compaction integrity check failed: issues {issues}, uncompacted records {pending}.")
         return False
     return True
 
@@ -454,7 +454,11 @@ def verify_compaction_integrity() -> dict:
     log_file = LOGS_PATH / "compaction_integrity_check.json"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     log_file.write_text(json.dumps(log_data, indent=2), encoding="utf-8")
-    logger.info("Compaction check: {} issue(s), uncompacted records {}.", len(task_level_issues), pending)
+    logger.info(
+        f"Compaction check completed: {len(task_level_issues)} issues, "
+        f"{sum(pending.values())} player records awaiting compaction."
+    )
+    logger.debug(f"Compaction check pending records by dataset: {pending}")
     return log_data
 
 

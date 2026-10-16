@@ -294,7 +294,12 @@ refresh allocation. The refresh worker receives the final player limit once;
 it does not calculate a limit that the runner passes back to it.
 
 Collection logs report the current work, progress, saved-player counts and elapsed
-time. Rough mastery/refresh ETAs assume a development key capable of **50 requests
+time. Progress is shown on the first attempt and every 25 players, followed by
+actual saved counts. Set `$env:LOGURU_LEVEL = "INFO"` before starting Python for
+the concise console view; Loguru's default also shows DEBUG diagnostics. The
+[complete log inventory](docs/log_inventory.md) lists every repository log call,
+notebook message and progress label, with an illustrative round and failure cases.
+Rough mastery/refresh ETAs assume a development key capable of **50 requests
 per minute at 95% efficiency**: about 47.5 mastery players/minute or 23.75 players/minute
 when refreshing both rank and mastery. These are static estimates, not measured
 throughput or predictions. Retries, latency, startup and other key limits can make

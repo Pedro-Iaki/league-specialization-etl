@@ -44,6 +44,7 @@ def load_dataset(dataset: str) -> dict:
 
     table = pq.read_table(compacted_path)
     if table.num_rows == 0:
+        logger.info(f"No {dataset} rows to upload.")
         return {"dataset": dataset, "status": "skipped", "rows": 0, "players": 0}
 
     try:
@@ -71,7 +72,9 @@ def load_dataset(dataset: str) -> dict:
         status = "load_failed"
 
     db.update_load_status(dataset, players, "pending_load" if status == "uploaded" else "load_failed")
-    logger.info(f"{dataset}: {table.num_rows} row(s), {len(players)} player(s); upload {status}, ingestion not confirmed.")
+    if status == "uploaded":
+        logger.info(f"Uploaded {dataset}: {table.num_rows} rows for {len(players)} players; awaiting ingestion.")
+    logger.debug(f"{dataset} upload status: {status}; local input: {compacted_path}.")
 
     return {"dataset": dataset, "status": status, "rows": table.num_rows, "players": len(players), "records": players}
 
@@ -93,6 +96,7 @@ def load_compacted(config_manifest: dict) -> bool:
         logger.error("Upload failed; ingestion was not started. Retaining local files.")
         return False
     if all(result["status"] == "skipped" for result in results):
+        logger.info("No collected files to ingest.")
         return True
     if not run_job(config_manifest["ingest_job_id"], config_manifest["ingestion_timeout_seconds"], "Ingestion"):
         db.mark_load_status(results, "load_failed")
@@ -114,7 +118,7 @@ def load_compacted(config_manifest: dict) -> bool:
         db.mark_load_status(results, "load_failed")
         logger.error(f"Ingestion succeeded but registry/ledger updates failed: {error}. Retaining local files.")
         return False
-    logger.info("Ingestion confirmed; Neon freshness and SQLite load status updated.")
+    logger.info("Ingestion confirmed; collection state updated.")
     return True
 
 

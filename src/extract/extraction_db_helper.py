@@ -443,7 +443,10 @@ def cleanup_stale_runs(conn: sqlite3.Connection | None = None):
         )
         stalled_run_ids = [row["run_id"] for row in cur.fetchall()]
 
-        logger.info(f"Found {len(stalled_run_ids)} stalled runs to clean up.")
+        if stalled_run_ids:
+            logger.warning(f"Cleaning up {len(stalled_run_ids)} stalled runs.")
+        else:
+            logger.debug("No stalled runs to clean up.")
         for run in stalled_run_ids:
             cleanup_failed_run(run, conn)
 
@@ -464,7 +467,7 @@ def cleanup_failed_run(run_id: int, conn: sqlite3.Connection | None = None):
     if not conn_supplied:
         conn = get_connection()
     try:
-        logger.info(f"Cleaning up failed run {run_id}.")
+        logger.debug(f"Cleaning up failed run {run_id}.")
         failed_player_tasks = conn.execute(
             "SELECT task_id FROM player_tasks WHERE run_id = ? AND status != 'success'",
             (run_id,),

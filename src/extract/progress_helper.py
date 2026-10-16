@@ -3,6 +3,8 @@
 # Assumed throughput, not a measured rate or a replacement for the API limiter.
 REQUESTS_PER_MINUTE = 50
 REQUEST_EFFICIENCY = 0.95
+# Report long collection loops every 25 attempted players, plus the first attempt.
+PROGRESS_INTERVAL = 25
 
 
 def get_eta_minutes(request_count: int) -> float:

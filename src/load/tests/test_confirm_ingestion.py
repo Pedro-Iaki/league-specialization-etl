@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -67,4 +68,4 @@ def test_notebook_landing_access_failure_is_not_swallowed():
         raise PermissionError("landing volume inaccessible")
 
     with pytest.raises(PermissionError, match="landing volume inaccessible"):
-        exec(source, {"dbutils": SimpleNamespace(fs=SimpleNamespace(ls=inaccessible))})  # noqa: S102 - trusted notebook regression test
+        exec(source, {"dbutils": SimpleNamespace(fs=SimpleNamespace(ls=inaccessible)), "logging": logging})  # noqa: S102 - trusted notebook regression test

@@ -109,7 +109,10 @@ def _is_transient_compaction_error(error: BaseException) -> bool:
 )
 def compact_dataset(dataset: str) -> dict:
     rows = db.get_uncompacted_players() if dataset == "players" else db.get_uncompacted_masteries()
-    logger.info(f"Found {len(rows)} pending_compaction record(s) for dataset {dataset}.")
+    if rows:
+        logger.info(f"Compacting {dataset}: {len(rows)} pending player records.")
+    else:
+        logger.info(f"No {dataset} records to compact.")
 
     path_to_player_ids: dict[Path, list[str]] = {}
     for row in rows:
@@ -155,9 +158,10 @@ def compact_dataset(dataset: str) -> dict:
     summary["rows_written"] = result["rows_written"]
 
     logger.info(
-        f"Compacted {len(result['compacted_files'])} file(s) ({result['rows_written']} rows) for "
-        f"{len(player_ids)} player(s) -> {result['output_path']}"
+        f"Compacted {dataset}: {len(result['compacted_files'])} files, {result['rows_written']} rows, "
+        f"{len(player_ids)} players."
     )
+    logger.debug(f"Compacted {dataset} output: {result['output_path']}")
 
     return summary
 
@@ -180,7 +184,7 @@ def _dedup_merged_table(merged: pa.Table, dataset: str) -> pa.Table:
     df = df.drop_duplicates(subset=keys, keep="last")
     dropped = before - len(df)
     if dropped:
-        logger.info(f"Dropped {dropped} duplicate row(s) for {dataset} during compaction.")
+        logger.debug(f"Dropped {dropped} duplicate row(s) for {dataset} during compaction.")
 
     return pa.Table.from_pandas(df, preserve_index=False)
 
@@ -192,8 +196,8 @@ def run():
     except Exception as e:
         logger.exception(f"Compaction run failed: {e}")
         raise RuntimeError(f"Compaction failed; retaining local files: {e}") from e
-    logger.info(f"Players compaction summary: {players_summary}")
-    logger.info(f"Masteries compaction summary: {masteries_summary}")
+    logger.debug(f"Players compaction summary: {players_summary}")
+    logger.debug(f"Masteries compaction summary: {masteries_summary}")
 
 
 if __name__ == "__main__":

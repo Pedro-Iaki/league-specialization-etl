@@ -1,6 +1,6 @@
 import pandas as pd
-from lupa import LuaRuntime
 import requests
+from lupa import LuaRuntime
 
 WIKI_API = "https://wiki.leagueoflegends.com/en-us/api.php"
 REQUEST_PARAMS = {

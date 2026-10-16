@@ -13,11 +13,7 @@ from tenacity import (
 
 def _log_retry(retry_state) -> None:
     exception = retry_state.outcome.exception() if retry_state.outcome else None
-    logger.warning(
-        "Retrying request (attempt {}): {}",
-        retry_state.attempt_number,
-        exception,
-    )
+    logger.warning(f"Retrying request after attempt {retry_state.attempt_number}: {exception}")
 
 
 class RiotAPIClient:
@@ -96,15 +92,9 @@ class RiotAPIClient:
                     consumed = bucket.consume()
 
                     if not consumed:
-                        logger.warning(
-                            "Couldn't consume initial token in rate-limit bucket: {}",
-                            bucket,
-                        )
+                        logger.warning(f"Couldn't consume initial token in rate-limit bucket: {bucket}")
 
-            logger.info(
-                "Initialized Riot rate limits: {}",
-                rate_limit_header,
-            )
+            logger.debug(f"Initialized Riot rate limits: {rate_limit_header}")
 
     def _acquire(self) -> None:
         while True:

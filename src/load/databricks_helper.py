@@ -1,6 +1,7 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 import pandas as pd
@@ -67,11 +68,13 @@ def run_job(job_id: int, timeout_seconds: int, job_name: str) -> bool:
         try:
             waiting = workspace.jobs.run_now(job_id=job_id)
             run_id = waiting.run_id
-            logger.info(f"{job_name} job {job_id}, run {run_id}, attempt {attempt}/{MAX_JOB_ATTEMPTS} started.")
+            started_at = monotonic()
+            logger.info(f"{job_name} job started (attempt {attempt}/{MAX_JOB_ATTEMPTS}).")
+            logger.debug(f"{job_name} job {job_id}, run {run_id}.")
             run = waiting.result(timeout=timedelta(seconds=timeout_seconds))
             if run.state.result_state != RunResultState.SUCCESS:
                 raise RuntimeError(f"Job ended with {run.state.result_state}")
-            logger.info(f"{job_name} run {run_id} succeeded.")
+            logger.info(f"{job_name} job completed in {(monotonic() - started_at) / 60:.1f} min.")
             return True
         except (TimeoutError, Timeout) as error:
             logger.error(

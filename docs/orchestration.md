@@ -89,6 +89,11 @@ python -m extract.run_pipeline
 - Request progress logs include rough ETAs and elapsed time, assuming 50 requests
   per minute at 95% efficiency. A rank/mastery refresh uses about two requests per
   player; these estimates do not measure throughput or change rate limiting.
+  Progress appears on the first attempt and every 25 players, plus final saved
+  counts. See the [complete log inventory](log_inventory.md) for every message,
+  severity, source location, notebook output and progress label. Set the process
+  environment variable `LOGURU_LEVEL=INFO` before Python starts for concise output;
+  `DEBUG` includes diagnostic paths, IDs and compaction summaries.
 - Pending and stale mastery work share the configured task limit. Patch lookup
   happens before claiming, so a lookup failure leaves that work available.
 - A dbt failure preserves confirmed ingestion status and local files.

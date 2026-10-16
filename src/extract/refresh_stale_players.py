@@ -14,7 +14,7 @@ import extract.extraction_db_helper as db
 import pydantic_models as models
 from extract import get_masteries, get_players
 from extract.api_client_protocol import APIClient
-from extract.progress_helper import get_eta_minutes
+from extract.progress_helper import PROGRESS_INTERVAL, get_eta_minutes
 from load import player_registry
 
 
@@ -75,10 +75,11 @@ def run(
                 last_heartbeat = heartbeat_time
             players_attempted += 1
             remaining = goal - players_attempted + 1
-            logger.info(
-                f"Refreshing player {players_attempted}/{goal}. Rough ETA: {get_eta_minutes(2 * remaining):.1f} min. "
-                f"Elapsed: {(monotonic() - started_at) / 60:.1f} min."
-            )
+            if players_attempted == 1 or players_attempted % PROGRESS_INTERVAL == 0:
+                logger.info(
+                    f"Refreshing player {players_attempted}/{goal}. Rough ETA: {get_eta_minutes(2 * remaining):.1f} min. "
+                    f"Elapsed: {(monotonic() - started_at) / 60:.1f} min."
+                )
             try:
                 player_entry = handle_player_extraction(
                     info={
@@ -129,7 +130,7 @@ def run(
 
     logger.info(
         f"Refreshed ranks for {players_refreshed}/{goal} players and saved masteries for {masteries_refreshed}. "
-        f"Failed requests: {failures}. Elapsed: {(monotonic() - started_at) / 60:.1f} min."
+        f"Failed refreshes: {failures}. Elapsed: {(monotonic() - started_at) / 60:.1f} min."
     )
     return {
         "status": failures == 0,
@@ -195,7 +196,7 @@ def handle_player_extraction(info: dict, task_id: int, api_client: APIClient) ->
 
     entry = fetch_player_rank(puuid, region=region, queue=queue, task_id=task_id, api_client=api_client)
     if entry is None:
-        logger.info(f"Failed to fetch rank for player {puuid} in {region} {queue}.")
+        logger.warning(f"Failed to fetch rank for player {puuid} in {region} {queue}.")
         return None
 
     player_info = {
@@ -246,7 +247,7 @@ def handle_mastery_extraction(info: dict, task_id: int, api_client: APIClient) -
         api_client=api_client,
     )
     if not mastery_payload:
-        logger.info(f"failed to fetch mastery data for player {puuid} in {region} {queue}.")
+        logger.warning(f"Failed to fetch mastery data for player {puuid} in {region} {queue}.")
         return False
 
     mastery_path = get_masteries.save_masteries(

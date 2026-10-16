@@ -1,4 +1,3 @@
-import argparse
 import json
 
 from loguru import logger
@@ -63,7 +62,8 @@ def load_champions():
 
         cursor.executemany(insert_query, records)
 
-    logger.info(f"Successfully loaded {len(records)} rows into {CATALOG}.{SCHEMA}.{TABLE_NAME}.")
+    logger.info(f"Loaded {len(records)} champion reference rows.")
+    logger.debug(f"Champion reference table: {CATALOG}.{SCHEMA}.{TABLE_NAME}.")
     return len(records)
 
 
