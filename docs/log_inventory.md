@@ -289,10 +289,10 @@ Found **245 output sites**: 18 DEBUG, 52 ERROR, 5 ERROR + traceback, 40 INFO, 6 
 
 | Source and context | Level | Message template |
 | --- | --- | --- |
-| [streamlit_app/scripts/export_data.py:113](../streamlit_app/scripts/export_data.py#L113) · `export_snapshots` | STDOUT | `Exporting {name}...` |
-| [streamlit_app/scripts/export_data.py:120](../streamlit_app/scripts/export_data.py#L120) · `export_snapshots` | STDOUT | `  Optional business sample is not built; skipping.` |
-| [streamlit_app/scripts/export_data.py:139](../streamlit_app/scripts/export_data.py#L139) · `export_snapshots` | STDOUT | `  {len(frame):,} rows -> {destination.name}` |
-| [streamlit_app/scripts/export_data.py:152](../streamlit_app/scripts/export_data.py#L152) · `main` | STDOUT | `Export complete: {total_bytes / 1048576:.2f} MiB` |
+| [streamlit_app/scripts/export_data.py:114](../streamlit_app/scripts/export_data.py#L114) · `export_snapshots` | STDOUT | `Exporting {name}...` |
+| [streamlit_app/scripts/export_data.py:121](../streamlit_app/scripts/export_data.py#L121) · `export_snapshots` | STDOUT | `  Optional business sample is not built; skipping.` |
+| [streamlit_app/scripts/export_data.py:140](../streamlit_app/scripts/export_data.py#L140) · `export_snapshots` | STDOUT | `  {len(frame):,} rows -> {destination.name}` |
+| [streamlit_app/scripts/export_data.py:153](../streamlit_app/scripts/export_data.py#L153) · `main` | STDOUT | `Export complete: {total_bytes / 1048576:.2f} MiB` |
 | [streamlit_app/scripts/export_population_estimates.py:158](../streamlit_app/scripts/export_population_estimates.py#L158) · `module` | STDOUT | `<json.dumps(result, indent=2)>` |
 | [streamlit_app/scripts/export_population_estimates.py:159](../streamlit_app/scripts/export_population_estimates.py#L159) · `module` | STDOUT | `Analyst bundle: {args.output_dir.resolve() / 'population_estimates.zip'}` |
 

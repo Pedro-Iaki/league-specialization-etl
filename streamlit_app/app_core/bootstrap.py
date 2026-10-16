@@ -12,7 +12,7 @@ _BUSINESS_API = (
     "audience_summary", "experience_summary", "cosmetic_summary", "discount_summary",
 )
 _DEPENDENTS = (
-    "app_core.business", "app_core.queries", "app_core.data", "app_core.business_charts", "app_core.ui",
+    "app_core.business", "app_core.contracts", "app_core.data", "app_core.business_charts", "app_core.ui",
 )
 
 

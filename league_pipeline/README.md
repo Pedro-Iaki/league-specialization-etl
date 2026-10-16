@@ -45,7 +45,7 @@ The two added raw sources contain generated events and frozen scenario players, 
 
 The cohort includes every current ranked player with complete valid core profile inputs, without a row cap: classified role/playstyle, champion and mastery/pool context. Ranked-mastery share and recent games/day are optional and remain null when unobserved; missing ranked share uses a neutral generation offset. Individual snapshot dates may differ; all rows share one frozen as-of date. Generator version 1.2 records required/optional features, their coverage and the snapshot date range.
 
-The sample loader clears the cohort completion marker before replacing transactions, then writes the cohort last. The exporter/live sample reader require matching raw/Gold scenario IDs, row counts and cash totals, so an interrupted load or stale build cannot publish a business snapshot. Existing gameplay snapshots and models remain independent.
+The sample loader clears the cohort completion marker before replacing transactions, then writes the cohort last. The manual snapshot exporter requires matching raw/Gold scenario IDs, row counts and cash totals, so an interrupted load or stale build cannot publish a business snapshot. Existing gameplay snapshots and models remain independent.
 
 ### Verified sample run
 

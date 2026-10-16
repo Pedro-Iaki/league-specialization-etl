@@ -5,7 +5,6 @@ import math
 import pandas as pd
 
 from app_core.config import PLAYSTYLE_LABELS
-from app_core.data import configured_data_mode
 from app_core.i18n import st
 
 GLOBAL_CSS = """
@@ -254,9 +253,7 @@ def source_pills(*models: str) -> None:
 
 
 def data_source_caption(freshness: str) -> None:
-    mode = configured_data_mode()
-    label = "versioned Parquet snapshot" if mode == "snapshot" else "live Databricks SQL"
-    st.sidebar.caption(f"Data source: {label}\n\nLatest profile date: {freshness}")
+    st.sidebar.caption(f"Data source: versioned Parquet snapshot\n\nLatest profile date: {freshness}")
 
 
 def support_warning(message: str, key: str) -> bool:
@@ -313,7 +310,7 @@ def render_load_error(error: Exception) -> None:
     st.error("The dashboard data could not be loaded.")
     st.code(str(error), language=None)
     st.info(
-        "Snapshot mode is the default. Generate the local extracts with "
+        "The dashboard uses local snapshots. Generate the extracts with "
         "`python scripts/export_data.py` from the `streamlit_app` directory."
     )
     st.stop()

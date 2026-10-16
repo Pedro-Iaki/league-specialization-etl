@@ -83,7 +83,7 @@ This took roughly three months of self-directed work. The main lesson was that t
 
 The extractor scans configured ranked tiers and divisions, fetches mastery for discovered players, and revisits stale players. It records runs, tasks, files, and failures in local SQLite. Postgres keeps rank-page cursors, the durable player registry, and refresh claims across collection cycles and machines. SQLite player tasks retain the page claim details until ingestion succeeds; Postgres remains the source of the cursor. Before upload, raw Parquet files are compacted. Python waits for the Databricks ingestion job to load landed player and mastery files into raw tables, applies collection-state updates, then runs the separate dbt build job. Champion names and reference positions are loaded separately.
 
-dbt preserves useful history and produces current records, rank periods, champion activity, player profiles, and champion marts. Fixed export queries create the public dashboard datasets and exclude player and interval identifiers. The optional live dashboard mode reads the Gold schema directly. See the [model reference](league_pipeline/docs/model_reference.md) for model grains, lineage, metric definitions, and interpretation edge cases.
+dbt preserves useful history and produces current records, rank periods, champion activity, player profiles, and champion marts. Fixed export queries create the public dashboard datasets and exclude player and interval identifiers. See the [model reference](league_pipeline/docs/model_reference.md) for model grains, lineage, metric definitions, and interpretation edge cases.
 
 ## Analytical method
 
@@ -130,7 +130,7 @@ cd streamlit_app
 ..\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-See the [dashboard README](streamlit_app/README.md) for the business opening and five real gameplay/analyst pages, snapshot refresh, optional Databricks mode, and dashboard tests.
+See the [dashboard README](streamlit_app/README.md) for the business opening and five real gameplay/analyst pages, manual snapshot exports and dashboard tests.
 
 The dashboard includes an **EN / PT** selector at the top. All six pages share centralized [English](streamlit_app/locales/en.json) and [Brazilian Portuguese](streamlit_app/locales/pt.json) dictionaries. Language selection persists across navigation and changes displayed copy without changing filters, stored data or USD amounts. See the [localization guide](streamlit_app/README.md#language-selection-and-translation-catalogs) for maintenance and verification.
 

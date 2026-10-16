@@ -38,7 +38,7 @@ After the local Pandas exploration, I chose to build the planned transformation 
 
 The source observations remain separate from the analytical interpretation. Bronze ingests landed records; Silver resolves current and historical player and mastery states; Gold derives rank periods, active pools, role estimates, playstyles, and champion summaries. dbt makes model dependencies and business-rule tests explicit. A configured heuristic classifies playstyles inside SQL because the early cluster exploration was enough to define useful, inspectable profiles, while a more elaborate predictive model would have diverted effort from the pipeline goal. The labels are analytical categories, not proof of distinct player behavior.
 
-The [dashboard](../streamlit_app/README.md) uses fixed, identifier-free Parquet exports by default. This lets a reader explore the snapshot without a warehouse account or live SQL warehouse and keeps player identifiers out of the public serving files. Its optional live mode is for a configured private environment. I separated Champion Explorer from Cross Champion View so one champion's profile can be read alongside a broader champion-universe baseline without crowding one page with both tasks.
+The [dashboard](../streamlit_app/README.md) uses fixed, identifier-free Parquet exports. This lets a reader explore the snapshot without a warehouse account or live SQL warehouse and keeps player identifiers out of the public serving files. Snapshot updates are exported manually after a warehouse build. I separated Champion Explorer from Cross Champion View so one champion's profile can be read alongside a broader champion-universe baseline without crowding one page with both tasks.
 
 ## Limits learned from the data
 

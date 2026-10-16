@@ -19,8 +19,9 @@ if str(REPO_ROOT) not in sys.path:
 
 from app_core.business import BUSINESS_PUBLIC_COLUMNS
 from app_core.config import DATASET_FILES
+from app_core.contracts import REQUIRED_COLUMNS
 from app_core.population import population_weights
-from app_core.queries import DATASET_QUERIES, REQUIRED_COLUMNS
+from app_core.queries import DATASET_QUERIES
 
 from src.load.databricks_helper import get_connection
 from src.sample.validation import warehouse_metadata

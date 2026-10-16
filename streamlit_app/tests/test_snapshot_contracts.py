@@ -4,7 +4,7 @@ import json
 
 import pandas as pd
 from app_core.config import DATA_DIR, DATASET_FILES, MANIFEST_PATH
-from app_core.queries import REQUIRED_COLUMNS
+from app_core.contracts import REQUIRED_COLUMNS
 
 FORBIDDEN_PUBLIC_COLUMNS = {
     "player_id",

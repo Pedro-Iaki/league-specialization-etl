@@ -4,7 +4,7 @@ A Streamlit dashboard built on the `league_pipeline.gold` dbt marts. It explores
 
 The default **Business Sample** opening page adds a small purchase reporting example. Purchases, spending patterns, ownership and customer types are synthetic; player traits come from a frozen real Riot API cohort. A prominent link leads into the real gameplay pages. No scenario relationship is presented as a real customer finding.
 
-The app uses identifier-free Parquet snapshots by default; a public deployment is planned. Player identifiers and rank-interval identifiers are excluded from every exported dataset. An optional Databricks mode runs the same fixed, read-only queries against the live gold schema.
+The app reads identifier-free local Parquet snapshots; a public deployment is planned. Player identifiers and rank-interval identifiers are excluded from every exported dataset. Updates are prepared manually with the snapshot exporter; the running app needs no warehouse credentials or connection.
 
 ## Run with the included snapshot
 
@@ -19,11 +19,11 @@ Install the focused app dependencies first when needed:
 ..\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-After updating a running dashboard, rerun or refresh the page. The app shell detects an older cached business-helper API (for example, one missing `CASH_DISCOUNT_COLUMNS`) and reloads that helper and its dependent query/data/chart/UI modules before importing the page. Current modules are left alone. If the server does not pick up source changes, stop it with Ctrl+C and start it again using the command above.
+After updating a running dashboard, rerun or refresh the page. The app shell detects an older cached business-helper API (for example, one missing `CASH_DISCOUNT_COLUMNS`) and reloads that helper and its dependent contract/data/chart/UI modules before importing the page. Current modules are left alone. If the server does not pick up source changes, stop it with Ctrl+C and start it again using the command above.
 
 ## Refresh the snapshot
 
-The exporter reads the existing ignored `config/DATABRICKS_CONFIG.env` through the project's Databricks helper.
+Install the repository-root `requirements.txt` to run the manual exporter. It reads the existing ignored `config/DATABRICKS_CONFIG.env` through the project's Databricks helper. These credentials and pipeline dependencies are needed only on the machine preparing the snapshots.
 
 ```powershell
 cd streamlit_app
@@ -34,7 +34,7 @@ For a single extract, pass `--dataset champion_tier_mastery`. The exporter prese
 
 For the business branch, first follow the [generation/load/tagged-build workflow](../README.md#generate-the-business-sample), then run `python scripts/export_data.py --dataset business_players` here. Its explicit column allowlist excludes player, event and SKU IDs. Metadata records scenario ID, seed/version, cohort/config fingerprints, frozen profile date, generated history range, recent window, counts and synthetic provenance. The exporter checks raw completion and Gold reconciliation before writing. A failed load or stale mart blocks this export; older snapshots without it still open the real gameplay pages. A full export skips the business dataset if its warehouse tables have never been created.
 
-The included business snapshot was refreshed from the successfully built sample Gold mart on 2026-10-09: **24,990 players with complete core context**, 42 columns, 2,117,210 bytes. The three added columns summarize recent fiat-only discounts. It includes every eligible current ranked profile, without a row cap. Ranked share and recent games/day are optional; observed values are retained for 1,066 and 1,074 players, and missing values remain null. Actual profile dates span 2026-09-16 through 2026-09-29, frozen as of 2026-09-29, and the recent synthetic window is 2026-08-01 through 2026-09-29. The existing gameplay files and their dataset manifest entries were preserved. Snapshot and live mode both label spending as synthetic; live scenario metadata comes from the matching warehouse completion marker, not the local snapshot manifest.
+The included business snapshot was refreshed from the successfully built sample Gold mart on 2026-10-09: **24,990 players with complete core context**, 42 columns, 2,117,210 bytes. The three added columns summarize recent fiat-only discounts. It includes every eligible current ranked profile, without a row cap. Ranked share and recent games/day are optional; observed values are retained for 1,066 and 1,074 players, and missing values remain null. Actual profile dates span 2026-09-16 through 2026-09-29, frozen as of 2026-09-29, and the recent synthetic window is 2026-08-01 through 2026-09-29. The existing gameplay files and their dataset manifest entries were preserved. The dashboard labels spending as synthetic and reads scenario metadata from the exported snapshot manifest.
 
 The business page now implements four question-led comparisons:
 
@@ -47,22 +47,11 @@ The business page now implements four question-led comparisons:
 
 Tier and inferred-role filters apply to all four business views. Champion-level comparisons and filters have been removed from the business page; the existing real gameplay pages retain their champion analyses. The default support minimum is three players; per-purchaser and conditional-discount outcomes additionally require their corresponding purchaser support. Sparse groups keep counts in hovers/support tables and can be revealed with the existing Show omitted control. Lines break at omitted groups. Every chart labels spending/patterns synthetic and player traits real; account age is explicitly simulated. Ranked-focus cadence remains a possible fifth view for the observed ranked-share subset; none of the four current views needs either optional period field. Older business snapshots without cash-discount columns still show the first three views with an availability notice.
 
-To refresh only the spending-mart change and its reconciliation tests, run from `league_pipeline`: `dbt build --select mart_player_spending assert_business_sample_reconciles`, then run the business-only exporter above. The 2026-10-09 focused build passed all five resources (one table and four tests); live mode rendered all four charts against the matching warehouse scenario.
+To refresh only the spending-mart change and its reconciliation tests, run from `league_pipeline`: `dbt build --select mart_player_spending assert_business_sample_reconciles`, then run the business-only exporter above. The 2026-10-09 focused build passed all five resources (one table and four tests).
 
 The optional `champion_player_mastery_share` extract powers the Cross Champion View mastery-share boxes. It contains one row per player and champion with at least 15K champion mastery points, with tier and mastery ratios but no player identifier. When absent from a snapshot, that chart explains which extract is needed.
 
 Build the retained dbt models before refreshing the export. Champion growth and tier/style heatmaps now use saved SQL queries over the period-attribution view, rendered directly from the same macro used by the champion-profile model. The unused champion-playstyle and raw rank-growth extracts are omitted. Each Parquet file is replaced atomically in `data/`, followed by a manifest recording row counts, file sizes, date coverage, and export time. The included snapshot contains historical growth extracts. Older snapshots without those extracts remain supported: the app identifies unavailable views and labels older champion estimates explicitly.
-
-## Optional live mode
-
-Set the data mode before starting Streamlit:
-
-```powershell
-$env:LEAGUE_DASHBOARD_DATA_MODE = "databricks"
-..\.venv\Scripts\python.exe -m streamlit run app.py
-```
-
-Snapshot mode remains the recommended public deployment because it starts quickly, does not expose warehouse credentials, and does not depend on SQL warehouse availability.
 
 ## Language selection and translation catalogs
 

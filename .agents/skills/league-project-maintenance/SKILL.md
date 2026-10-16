@@ -61,6 +61,7 @@ Preserve the maintainer's existing design while making the smallest change that 
 - Distinguish lifetime profiles, recent active pools, ranked-observed follow-up and rank periods/observations/deltas when explaining metrics. The default/name redesign remains a maintainer decision; do not silently mix or reorganize these cohorts during unrelated fixes.
 - Keep the synthetic business sample recognizable through folders, names and labels. Do not impose elaborate quarantine or publication controls on a portfolio placeholder.
 - Dashboard compatibility is not a reason to retain an unnecessary dbt model: update its consumers with an approved model change. Keep documentation and captions aligned with the final behavior.
+- Streamlit serves local Parquet snapshots only. Keep Databricks queries, credentials and connection dependencies in the manual export/pipeline path; do not restore live warehouse mode or automatic warehouse refresh.
 - Exports are manually run and can overwrite their existing files. Do not add automatic public S3 updates, versioned publication, or new lineage/recovery systems to solve a manually rerunnable export.
 
 ## Verification and handoff
