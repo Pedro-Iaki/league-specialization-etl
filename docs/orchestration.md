@@ -72,6 +72,10 @@ python -m extract.run_pipeline
 - Snapshot outcomes always have a result object. Refresh scheduling details stay
   inside `refresh_result`; top-level status/stage/error summarize the round for
   the operator. Detailed errors stay with their stage results.
+- Snapshot success requires all extraction tasks in that SQLite run to succeed.
+  Refresh success requires no failed rank/mastery requests. Failed or unfinished
+  collection stops the round and retains successful files; empty snapshots,
+  missing queue entries and no work to refresh remain valid outcomes.
 - Request progress logs include rough ETAs and elapsed time, assuming 50 requests
   per minute at 95% efficiency. A rank/mastery refresh uses about two requests per
   player; these estimates do not measure throughput or change rate limiting.

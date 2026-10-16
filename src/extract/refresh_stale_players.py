@@ -52,7 +52,7 @@ def run(
     )
     if not players or len(players) == 0:
         logger.info("No stale players to refresh.")
-        return {"claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0}
+        return {"status": True, "claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0, "failures": 0}
 
     goal = len(players)
     started_at = monotonic()
@@ -63,6 +63,7 @@ def run(
     masteries_refreshed = 0
     players_refreshed = 0
     players_attempted = 0
+    failures = 0
     last_heartbeat = started_at
     # Renew well before expiry, at one third of the claim timeout.
     heartbeat_interval_seconds = claim_timeout_minutes * 60 / 3
@@ -101,8 +102,9 @@ def run(
                 )
                 continue
             if not player_entry:
+                failures += 1
                 logger.warning(
-                    f"Failed to refresh player, Failures: {players_attempted - players_refreshed}. Skipping."
+                    f"Failed to refresh player, Failures: {failures}. Skipping."
                 )
                 continue
             players_refreshed += 1
@@ -123,20 +125,22 @@ def run(
             ):
                 masteries_refreshed += 1
             else:
-                logger.warning(f"Failed to refresh mastery. Failures: {players_refreshed - masteries_refreshed}")
+                failures += 1
+                logger.warning(f"Failed to refresh mastery. Failures: {failures}")
 
     finally:
         player_registry.release_claims([player["puuid"] for player in players], claimed_by=worker)
 
     logger.info(
         f"Refreshed ranks for {players_refreshed}/{goal} players and saved masteries for {masteries_refreshed}. "
-        f"Elapsed: {(monotonic() - started_at) / 60:.1f} min."
+        f"Failed requests: {failures}. Elapsed: {(monotonic() - started_at) / 60:.1f} min."
     )
     return {
-        "status": True,
+        "status": failures == 0,
         "claimed": len(players),
         "players_refreshed": players_refreshed,
         "masteries_refreshed": masteries_refreshed,
+        "failures": failures,
     }
 
 

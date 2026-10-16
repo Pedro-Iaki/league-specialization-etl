@@ -125,7 +125,7 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
             result.refresh_result["refresh_snapshot_size"] = snapshot_size
             refresh_limit = get_refresh_limit(snapshot_size, refresh_scale)
             result.refresh_result.update(run_stale_refresh(config_manifest, run_n, run_date, api_client, refresh_limit))
-            if not result.refresh_result.get("status", True):
+            if not result.refresh_result["status"]:
                 result.error = "Previously collected players could not be refreshed; local files retained."
                 return False
 
@@ -207,8 +207,15 @@ def run_snapshot_fetchers(config_manifest: dict, run_n, date, api_client) -> dic
             limit=int(config_manifest["mastery_task_limit"]),
             run_n=run_n,
         )
-        db.finish_run(run_id, "success")
-        return {"status": "success", "snapshot_size": snapshot_size}
+        succeeded = db.run_tasks_succeeded(run_id)
+        result = {"status": "success" if succeeded else "failed", "snapshot_size": snapshot_size}
+        error = None if succeeded else "One or more extraction tasks failed or did not finish."
+        db.finish_run(run_id, result["status"], error_message=error)
+        if not succeeded:
+            result["error"] = error
+            logger.error(error)
+            db.cleanup_failed_run(run_id)
+        return result
     except (Exception, KeyboardInterrupt) as err:
         error = "Interrupted by operator" if isinstance(err, KeyboardInterrupt) else str(err)
         logger.exception(f"An error occurred during the pipeline run: {err}")
@@ -222,7 +229,7 @@ def run_snapshot_fetchers(config_manifest: dict, run_n, date, api_client) -> dic
 def run_stale_refresh(config_manifest: dict, run_n, date, api_client, limit: int) -> dict:
     if not limit:
         logger.info("Refresh skipped: the calculated player limit is zero.")
-        return {"status": True, "claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0}
+        return {"status": True, "claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0, "failures": 0}
     run_id = db.start_run(f"refresh_{run_n}_{date}")
     logger.debug(f"Starting refresh run {run_id} with a limit of {limit} players.")
     try:
@@ -234,7 +241,12 @@ def run_stale_refresh(config_manifest: dict, run_n, date, api_client, limit: int
             region=config_manifest["region"],
             queue=config_manifest["queue"],
         )
-        db.finish_run(run_id, "success")
+        error = None if summary["status"] else "One or more player refreshes failed."
+        db.finish_run(run_id, "success" if summary["status"] else "failed", error_message=error)
+        if not summary["status"]:
+            summary["error"] = error
+            logger.error(error)
+            db.cleanup_failed_run(run_id)
         return summary
     except (Exception, KeyboardInterrupt) as e:
         error = "Interrupted by operator" if isinstance(e, KeyboardInterrupt) else str(e)

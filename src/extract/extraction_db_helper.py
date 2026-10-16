@@ -115,6 +115,26 @@ def add_player_task(run_id: int, is_refresh: bool = False, conn: sqlite3.Connect
     return int_id
 
 
+def run_tasks_succeeded(run_id: int, conn: sqlite3.Connection | None = None) -> bool:
+    """Check this run's extraction tasks, including failed or unfinished work."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        row = conn.execute(
+            """SELECT NOT EXISTS (
+                SELECT 1 FROM player_tasks WHERE run_id = ? AND status != 'success'
+                UNION ALL
+                SELECT 1 FROM mastery_tasks WHERE run_id = ? AND status != 'success'
+            )""",
+            (run_id, run_id),
+        ).fetchone()
+        return bool(row[0])
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def update_player_task(
     task_id: int,
     status: str,
