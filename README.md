@@ -173,6 +173,42 @@ A recording and public app link are planned.
 
 The full collection and warehouse path needs a Riot API key, a Databricks workspace and SQL warehouse, and Postgres connection URLs for the player registry. Set `DATABASE_URL_UNPOOLED` for the one-time schema setup; routine registry queries use `DATABASE_URL` when available. The code reads local configuration from `config/EXTRACTION_CONFIG.env`, `config/DATABRICKS_CONFIG.env`, and `.env.local`; the first two have [extraction](config/EXTRACTION_CONFIG.env.example) and [Databricks](config/DATABRICKS_CONFIG.env.example) examples. Keep credentials out of Git.
 
+Every setting in the examples is commented with its purpose, units or format,
+default or requirement, bounds, and workflow effect. Omitted optional keys use
+defaults; blank values do not select defaults. Extraction process environment
+values override the file, and all extraction/job options are validated together
+before collection. Replace the example key and both zero job IDs before running.
+
+All settings in this table belong in `config/EXTRACTION_CONFIG.env`:
+
+| Setting | Default and bounds | Effect |
+| --- | --- | --- |
+| `RIOT_API_KEY` | Required non-empty credential; no default | Authenticates Riot collection. |
+| `PLAYERS_FETCH_DEPTH` | Required integer, 1–1000 rounds per tier/division pair | Total rounds = depth × tier count × division count; advances the existing shared page cursor rather than resetting it. Example: 30. |
+| `MASTERY_TASK_LIMIT` | Required integer, 1–1000 players per discovery round | Caps local missing-mastery work; higher values use more requests. Does not cap stale-player refresh. Example: 400. |
+| `FULL_VERIFICATION` | Boolean, default false; example true | Also scans raw files before compaction; adds local I/O. Compacted outputs are always checked. |
+| `REGION` | Required non-empty Riot platform code; no default | Routes API requests and scopes the registry. Example: `na1`; supported platform names are not model-validated. |
+| `QUEUE` | Required non-empty queue name; no default | Scopes discovery and refresh. Use `RANKED_SOLO_5x5` or `RANKED_FLEX_SR`; names are not model-validated. |
+| `TIERS` | Non-empty comma-separated list; default DIAMOND, EMERALD, PLATINUM, GOLD, SILVER, BRONZE, IRON; only these values accepted | Limits discovery and changes total rounds. Tier order breaks page-depth ties within a division. Refresh can revisit other known tiers. |
+| `DIVISIONS` | Non-empty comma-separated list; default I, II, III, IV; only these values accepted | Limits discovery and changes total rounds. Division order breaks page-depth ties before tier order; refresh is not division-filtered. |
+| `FRESHNESS_THRESHOLD_MINUTES` | Integer minutes, default 10080 (7 days), minimum 1; no upper bound | Larger values reduce repeat collection. Inactivity penalties can defer registry refresh further. Also used by local awaiting-load exclusions. |
+| `MAX_REFRESH_SCALE` | Finite unitless multiplier, default 4, greater than 0; no upper bound | Caps refreshes relative to snapshot size, rounded up. At the cap both snapshot fetchers are skipped. Empty/skipped snapshots use 205 players, allowing 820 refreshes at the default. |
+| `RUNS_PER_LOAD` | Integer rounds, default 10, minimum 1; no upper bound | Controls verification, compaction, ingestion and build cadence. Final leftovers always load; lower values deliver sooner with more job overhead. |
+| `INGEST_JOB_ID` | Required positive integer ID; no default or upper bound | Selects the deployed ingestion-only job. Example 0 must be replaced; registry/load updates wait for success. |
+| `INGESTION_TIMEOUT_SECONDS` | Integer seconds per attempt, default 900, minimum 1; no upper bound | Limits the local ingestion wait; timeout retains files and does not cancel the remote job. |
+| `DBT_JOB_ID` | Required positive integer ID; no default or upper bound | Selects the separate deployed build job run after confirmed ingestion. Example 0 must be replaced. |
+| `DBT_TIMEOUT_SECONDS` | Integer seconds per attempt, default 1800, minimum 1; no upper bound | Limits the local build wait; timeout retains files and confirmed ingestion state without cancelling the remote job. |
+
+`config/DATABRICKS_CONFIG.env` holds `HOST` (workspace hostname without a scheme),
+`HTTP_PATH` (SQL warehouse path) and `TOKEN` (access token). These are text values
+with no defaults. All three are required for SQL; uploads and job calls use
+`HOST` and `TOKEN`. Select the workspace/warehouse containing the project's data
+and jobs, with a token permitted to access them. `.env.local` holds Postgres URL
+strings: `DATABASE_URL_UNPOOLED` is required for schema setup; normal registry
+operations prefer `DATABASE_URL` and fall back to the unpooled URL. Neither has
+a default. Use connection strings for the intended registry with credentials and
+the provider's connection parameters.
+
 Install the pipeline and development dependencies with `python -m pip install -r requirements.txt`. This file lists direct dependencies for extraction, loading, shared data analysis, dbt, tests, and linting; pip resolves their transitive dependencies. Install `streamlit_app/requirements.txt` as well to run the dashboard and its tests. The exploratory `sandbox/transform_and_plot.py` script additionally uses Matplotlib, Seaborn, SciPy, scikit-learn, Statsmodels, and Plotly. After preparing the dependencies and configuration, apply the idempotent registry schema for a new Neon database or an existing database that has not received this migration. A database already migrated does not need this step on every run. Then run the extractor with `src` on the Python path:
 
 ```powershell

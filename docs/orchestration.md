@@ -8,8 +8,12 @@ script is run manually after a successful build.
 
 Fill in `config/EXTRACTION_CONFIG.env` using its example. Files are read directly;
 explicit process environment values can override them. Pydantic validates the
-extraction settings before collection, and the job settings before their use.
+extraction and job settings together before collection.
 Credentials remain in local ignored files.
+
+The [configuration reference](../README.md#work-on-the-pipeline) covers every
+setting's units, defaults, bounds and workflow effects. The linked examples
+include those details beside each value.
 
 | File | What belongs here |
 | --- | --- |
