@@ -6,6 +6,7 @@ numpy>=2,<3
 python-dotenv>=1,<2
 databricks-sql-connector>=4,<5
 databricks-sdk>=0.68,<0.118
+loguru==0.7.3
 
 
 # Render the shared dbt growth SQL used by dashboard queries.
