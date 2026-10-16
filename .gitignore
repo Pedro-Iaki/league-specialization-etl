@@ -152,6 +152,11 @@ activemq-data/
 
 # Environments
 .env
+.env.*
+*.env
+!.env.example
+!.env.*.example
+!*.env.example
 .envrc
 .venv
 env/
@@ -225,12 +230,28 @@ data/
 sandbox/Cleaned_Data/
 sandbox/Plots/
 
-# Public, anonymized Streamlit serving snapshots
-!streamlit_app/data/
-!streamlit_app/data/**
+# Public serving assets are tracked explicitly; other files here stay local.
+!/streamlit_app/data/
+/streamlit_app/data/*
+!/streamlit_app/data/.gitkeep
+!/streamlit_app/data/manifest.json
+!/streamlit_app/data/business_players.parquet
+!/streamlit_app/data/champion_cooccurrence.parquet
+!/streamlit_app/data/champion_growth_players.parquet
+!/streamlit_app/data/champion_player_mastery_share.parquet
+!/streamlit_app/data/champion_population_activity.parquet
+!/streamlit_app/data/champion_population_pairs.parquet
+!/streamlit_app/data/champion_profiles.parquet
+!/streamlit_app/data/champion_tier_growth.parquet
+!/streamlit_app/data/champion_tier_mastery.parquet
+!/streamlit_app/data/growth_player_styles.parquet
+!/streamlit_app/data/growth_players.parquet
+!/streamlit_app/data/player_profiles.parquet
+!/streamlit_app/data/ranked_mastery_cohorts.parquet
 
-# Config
-config/*
+# Local configuration; sanitized examples belong in Git.
+/config/*
+!/config/*.env.example
 
 # TODO
 TODO
@@ -240,6 +261,31 @@ TODO
 **/*_plan.md
 **/*_handoff.md
 /next_steps.md
+# Local service and developer state
 .neon
-.env.local
+.databricks/
+.aws/
+.dbt/
+.codex/
+profiles.yml
 node_modules/
+/start_dbt_local.ps1
+
+# Runtime reports, databases and temporary copies
+logs/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.bak
+*.tmp
+
+# Operating system and editor artifacts
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~

@@ -19,7 +19,7 @@ Install the focused app dependencies first when needed:
 ..\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-After updating a running dashboard, rerun or refresh the page. The app shell detects an older cached business-helper API (for example, one missing `CASH_DISCOUNT_COLUMNS`) and reloads that helper and its dependent contract/data/chart/UI modules before importing the page. Current modules are left alone. If the server does not pick up source changes, stop it with Ctrl+C and start it again using the command above.
+After updating a running dashboard, rerun or refresh the page. If the server does not pick up source changes, stop it with Ctrl+C and start it again using the command above.
 
 ## Refresh the snapshot
 

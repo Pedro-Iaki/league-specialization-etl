@@ -171,6 +171,16 @@ A recording and public app link are planned.
 
 ## Work on the pipeline
 
+Git tracks source, documentation, sanitized configuration examples, dbt seeds and
+its dependency lockfile, project guidance, the ingestion notebook, the diagram,
+and the anonymized dashboard serving snapshots. Local credentials, databases,
+reports, tool state and temporary files stay ignored. The snapshot exceptions in
+[.gitignore](.gitignore) name the serving files explicitly; add a new dataset
+there when adding it to `DATASET_FILES` in
+[dashboard configuration](streamlit_app/app_core/config.py). Other exports belong
+in the ignored `data/` directory. Clear notebook outputs and transient execution
+metadata before committing. Ignore rules do not remove files already in the Git index.
+
 The full collection and warehouse path needs a Riot API key, a Databricks workspace and SQL warehouse, and a Postgres connection URL for the player registry. Routine registry queries prefer `DATABASE_URL` and fall back to `DATABASE_URL_UNPOOLED`. The code reads local configuration from `config/EXTRACTION_CONFIG.env`, `config/DATABRICKS_CONFIG.env`, and `.env.local`; the first two have [extraction](config/EXTRACTION_CONFIG.env.example) and [Databricks](config/DATABRICKS_CONFIG.env.example) examples. Keep credentials out of Git.
 
 Every setting in the examples is commented with its purpose, units or format,
