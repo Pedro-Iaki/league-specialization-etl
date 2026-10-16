@@ -52,10 +52,14 @@ python -m extract.run_pipeline
 ## State and failure behavior
 
 - SQLite `data/database/extraction.db` records runs, tasks, files and load status.
+  Ordinary startup creates missing storage without resetting existing work.
+  New runs have an initial heartbeat; stale cleanup also handles older null
+  heartbeats. Explicit development reset remains a separate destructive action.
 - Neon `player_state_registry` and `rank_page_progress` coordinate freshness,
   inactivity, refresh claims and discovery cursors.
 - Databricks `league_pipeline.raw` receives files; one dbt build produces the
-  Bronze, Silver and Gold layers.
+  Bronze, Silver and Gold layers. Upload filenames include a unique suffix so
+  collectors uploading within the same second retain separate files.
 - An integrity failure prevents upload. Ingestion failure prevents load-success,
   freshness/inactivity and page-completion updates. Valid no-file outcomes can
   update immediately.
@@ -71,6 +75,8 @@ python -m extract.run_pipeline
 - Request progress logs include rough ETAs and elapsed time, assuming 50 requests
   per minute at 95% efficiency. A rank/mastery refresh uses about two requests per
   player; these estimates do not measure throughput or change rate limiting.
+- Pending and stale mastery work share the configured task limit. Patch lookup
+  happens before claiming, so a lookup failure leaves that work available.
 - A dbt failure preserves confirmed ingestion status and local files. Retry the
   build with `python -m load.build_dbt`.
 - A job timeout stops the local stage and logs its remote run ID when available.
@@ -87,6 +93,7 @@ All commands below run local tests without calling live Riot, Neon or Databricks
 python -m pytest src/extract/tests/test_compaction_gate.py -q
 python -m pytest src/extract/tests/test_adaptive_refresh.py src/load/tests/test_player_registry.py -q
 python -m pytest src/extract/tests/test_refresh_tracking.py -q
+python -m pytest src/extract/tests/test_fetch_status.py src/extract/tests/test_cleanup_behavior.py src/extract/tests/test_startup_state.py src/extract/tests/test_mastery_claim_limits.py -q
 python -m pytest src/extract/tests/test_pipeline_reporting.py -q
 python -m pytest src/extract/tests/test_load_boundaries.py src/load/tests/test_confirm_ingestion.py src/load/tests/test_build_dbt.py -q
 ```

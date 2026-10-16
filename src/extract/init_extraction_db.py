@@ -1,7 +1,4 @@
-"""
-Initializes the local database and clears the raw data directories for players and masteries.
-This script should be run before starting a new data extraction pipeline to ensure a clean slate.
-"""
+"""Initialize missing local storage, or explicitly reset the extraction state."""
 
 import os
 import shutil
@@ -26,7 +23,7 @@ def get_connection(db_path=DB_PATH):
 
 
 def db_exists():
-    return os.path.exists(DB_PATH) and os.path.exists(PLAYERS_DIR) and os.path.exists(MASTERIES_DIR)
+    return all(os.path.exists(path) for path in (DB_PATH, PLAYERS_DIR, MASTERIES_DIR, COMPACTED_DIR))
 
 
 def clear_directory_contents(dir_path: str):
@@ -51,18 +48,29 @@ def clear_raw_and_compacted_data():
     clear_directory_contents(COMPACTED_DIR)
 
 
+def initialize_database():
+    """Create missing folders and a new ledger without clearing existing data."""
+    for directory in (os.path.dirname(DB_PATH), PLAYERS_DIR, MASTERIES_DIR, COMPACTED_DIR):
+        os.makedirs(directory, exist_ok=True)
+    if os.path.exists(DB_PATH):
+        return
+    with open(SCHEMA_PATH, "r") as f:
+        schema = f.read()
+
+    conn = get_connection(DB_PATH)
+    try:
+        conn.executescript(schema)
+        conn.commit()
+    finally:
+        conn.close()
+    logger.info("Local extraction database initialized.")
+
+
 def reset_database():
-    """Executes the cleanup and schema initialization."""
+    """Explicitly back up the ledger, clear local files, and initialize fresh state."""
     if os.path.exists(DB_PATH):
         os.rename(DB_PATH, f"{DB_PATH}_{int(time.time())}.bak")
 
     clear_raw_and_compacted_data()
-
-    with open(SCHEMA_PATH, "r") as f:
-        schema = f.read()
-
-    conn = get_connection()
-    conn.executescript(schema)
-    conn.commit()
-    conn.close()
+    initialize_database()
     logger.info("Database and raw directories reset successfully.")

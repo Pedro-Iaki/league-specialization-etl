@@ -149,3 +149,25 @@ def test_cleanup_stale_runs(db_factory, mock_conn, monkeypatch):
         "SELECT status FROM runs WHERE run_id = ?", (active_run_id,)
     ).fetchone()[0]
     assert active_run_status == "running"
+
+
+def test_cleanup_preserves_existing_failure_diagnostics(mock_conn):
+    run_id = db.start_run("failure_diagnostics", conn=mock_conn)
+    player_task = db.add_player_task(run_id, conn=mock_conn)
+    mastery_task = db.add_mastery_task(run_id, "p1", conn=mock_conn)
+    pending_task = db.add_player_task(run_id, conn=mock_conn)
+    db.update_player_task(player_task, "failed", error_message="HTTP 500", conn=mock_conn)
+    db.update_mastery_task(mastery_task, "failed", "15.1", error_message="HTTP 429", conn=mock_conn)
+    before = tuple(mock_conn.execute(
+        "SELECT error_message, finished_at FROM player_tasks WHERE task_id = ?", (player_task,)
+    ).fetchone())
+    db.cleanup_failed_run(run_id, conn=mock_conn)
+    assert tuple(mock_conn.execute(
+        "SELECT error_message, finished_at FROM player_tasks WHERE task_id = ?", (player_task,)
+    ).fetchone()) == before
+    assert mock_conn.execute(
+        "SELECT error_message FROM mastery_tasks WHERE task_id = ?", (mastery_task,)
+    ).fetchone()[0] == "HTTP 429"
+    assert mock_conn.execute(
+        "SELECT status FROM player_tasks WHERE task_id = ?", (pending_task,)
+    ).fetchone()[0] == "failed"

@@ -60,7 +60,7 @@ def run_pipeline(config_path: Path = CONFIG_PATH) -> bool:
         return False
 
     if not init_db.db_exists():
-        init_db.reset_database()
+        init_db.initialize_database()
 
     db.cleanup_stale_runs()
     if not db.is_active():
@@ -187,8 +187,8 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
 
 
 def run_snapshot_fetchers(config_manifest: dict, run_n, date, api_client) -> dict:
+    run_id = db.start_run(f"fetch_{run_n}_{date}")
     try:
-        run_id = db.start_run(f"fetch_{run_n}_{date}")
         logger.debug(f"Starting snapshot run {run_id}.")
         snapshot_size = extract_players(
             run_id,
@@ -209,11 +209,14 @@ def run_snapshot_fetchers(config_manifest: dict, run_n, date, api_client) -> dic
         )
         db.finish_run(run_id, "success")
         return {"status": "success", "snapshot_size": snapshot_size}
-    except RuntimeError as err:
+    except (Exception, KeyboardInterrupt) as err:
+        error = "Interrupted by operator" if isinstance(err, KeyboardInterrupt) else str(err)
         logger.exception(f"An error occurred during the pipeline run: {err}")
-        db.finish_run(run_id, "failed")
+        db.finish_run(run_id, "failed", error_message=error)
         db.cleanup_failed_run(run_id)
-        return {"status": "failed", "snapshot_size": None, "error": str(err)}
+        if isinstance(err, KeyboardInterrupt):
+            raise
+        return {"status": "failed", "snapshot_size": None, "error": error}
 
 
 def run_stale_refresh(config_manifest: dict, run_n, date, api_client, limit: int) -> dict:
@@ -233,11 +236,14 @@ def run_stale_refresh(config_manifest: dict, run_n, date, api_client, limit: int
         )
         db.finish_run(run_id, "success")
         return summary
-    except RuntimeError as e:
+    except (Exception, KeyboardInterrupt) as e:
+        error = "Interrupted by operator" if isinstance(e, KeyboardInterrupt) else str(e)
         logger.exception(f"Stale-player refresh run failed: {e}")
-        db.finish_run(run_id, "failed")
+        db.finish_run(run_id, "failed", error_message=error)
         db.cleanup_failed_run(run_id)
-        return {"status": False, "claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0, "error": str(e)}
+        if isinstance(e, KeyboardInterrupt):
+            raise
+        return {"status": False, "claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0, "error": error}
 
 
 def run_load() -> dict:

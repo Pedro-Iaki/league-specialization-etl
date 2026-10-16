@@ -17,6 +17,7 @@ OptStr = str | None
 
 def run(run_id: int, api_client: APIClient, limit: int, run_n: int | None = None) -> None:
     started_at = monotonic()
+    patch = str(api_client.get_patch())
     players = db.claim_players_missing_masteries(include_stale_success=True, limit=limit)
     if players is None or len(players) == 0:
         logger.info("No player masteries to fetch.")
@@ -27,7 +28,6 @@ def run(run_id: int, api_client: APIClient, limit: int, run_n: int | None = None
         f"(development-key estimate)."
     )
 
-    patch = str(api_client.get_patch())
     # Record tasks before requests so interrupted work remains visible.
     task_ids = []
     for puuid in players:

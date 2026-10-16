@@ -206,6 +206,7 @@ def handle_player_extraction(info: dict, task_id: int, api_client: APIClient) ->
         "division": entry["rank"],
         "date": date,
         "time": time,
+        "task_id": task_id,
     }
     output_path = get_players.save_players(
         [entry], output_path=get_players.OUTPUT_PATH, player_info=player_info, patch=patch

@@ -3,6 +3,7 @@ import sys
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import pyarrow.parquet as pq
 from loguru import logger
@@ -31,7 +32,7 @@ MAX_UPLOAD_ATTEMPTS = 3
 )
 def _upload(dataset: str, compacted_path: Path) -> None:
     time = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S")
-    parquet_name = f"{dataset}_{time}.parquet"
+    parquet_name = f"{dataset}_{time}_{uuid4().hex}.parquet"
     upload_parquet(str(compacted_path), f"/Volumes/league_pipeline/landing_zone/{dataset}/{parquet_name}")
 
 

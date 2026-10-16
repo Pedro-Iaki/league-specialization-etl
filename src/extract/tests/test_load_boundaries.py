@@ -1,9 +1,39 @@
+from datetime import datetime, timezone
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
 import extract.run_pipeline as pipeline
 import load.load_compacted_to_databricks as loader
+
+
+def test_same_second_uploads_keep_both_collectors_files(tmp_path, monkeypatch):
+    instant = datetime(2026, 10, 12, 12, 0, 0, tzinfo=timezone.utc)
+
+    class Clock:
+        @staticmethod
+        def now(tz=None):
+            return instant
+
+    uploaded = {}
+
+    def upload(local_path, remote_path):
+        uploaded[remote_path] = pq.read_table(local_path).to_pylist()
+
+    monkeypatch.setattr(loader, "datetime", Clock)
+    monkeypatch.setattr(loader, "upload_parquet", upload)
+    for player_id in ("p1", "p2"):
+        source = tmp_path / f"{player_id}.parquet"
+        pq.write_table(pa.Table.from_pylist([{"puuid": player_id}]), source)
+        loader._upload("players", source)
+
+    assert len(uploaded) == 2
+    assert {rows[0]["puuid"] for rows in uploaded.values()} == {"p1", "p2"}
+    assert all(
+        path.startswith("/Volumes/league_pipeline/landing_zone/players/players_20261012120000_")
+        for path in uploaded
+    )
 
 
 @pytest.mark.parametrize("load_status,pending_count", [(False, 0), (True, 1)])

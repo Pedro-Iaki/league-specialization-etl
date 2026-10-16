@@ -124,6 +124,7 @@ def run(
                 "division": division,
                 "date": date,
                 "time": time,
+                "task_id": task_id,
             },
             patch=patch,
         )
@@ -215,16 +216,17 @@ def save_players(players: list[dict], output_path: Path, player_info: dict, patc
         ("date", player_info["date"]),
     ]
     output_path = output_helper.get_partitioned_path(output_path, partitions)
-    output_path = output_path / build_players_filename(player_info["time"])
+    output_path = output_path / build_players_filename(player_info["time"], player_info.get("task_id"))
 
     slim_players = drop_partitioned_player_columns(players)
     output_helper.write_parquet(slim_players, output_path)
     return output_path
 
 
-def build_players_filename(time: OptStr = None) -> str:
+def build_players_filename(time: OptStr = None, task_id: int | None = None) -> str:
     timestamp = time if time else datetime.now(timezone.utc).strftime("%H%M%S")
-    return f"players_{timestamp}.parquet"
+    suffix = f"_{task_id}" if task_id is not None else ""
+    return f"players_{timestamp}{suffix}.parquet"
 
 
 def drop_partitioned_player_columns(players: list[dict]) -> list[dict]:

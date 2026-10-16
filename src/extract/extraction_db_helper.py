@@ -43,9 +43,10 @@ def start_run(pipeline_name: str, conn: sqlite3.Connection | None = None) -> int
     if own_conn:
         conn = get_connection()
     try:
+        started_at = now()
         cur = conn.execute(
-            "INSERT INTO runs (pipeline_name, started_at, status) VALUES (?, ?, 'running')",
-            (pipeline_name, now()),
+            "INSERT INTO runs (pipeline_name, started_at, last_heartbeat, status) VALUES (?, ?, ?, 'running')",
+            (pipeline_name, started_at, started_at),
         )
         if own_conn:
             conn.commit()
@@ -408,7 +409,8 @@ def cleanup_stale_runs(conn: sqlite3.Connection | None = None):
 			SET status = 'failed',
 				finished_at = ?,
 				error_message = 'Run stalled or silent cancelled'
-			WHERE status = 'running' AND datetime(last_heartbeat) < datetime('now', '-1 hour')
+			WHERE status = 'running'
+              AND datetime(COALESCE(last_heartbeat, started_at)) < datetime('now', '-1 hour')
 			RETURNING run_id
 			""",
             (now(),),
@@ -470,7 +472,7 @@ def cleanup_failed_run(run_id: int, conn: sqlite3.Connection | None = None):
             """
 			UPDATE player_tasks
 			SET status='failed', finished_at=?, error_message='Run failed or cancelled'
-			WHERE run_id = ? AND status != 'success'
+			WHERE run_id = ? AND status IN ('pending', 'in_progress')
 			""",
             (now(), run_id),
         )
@@ -478,7 +480,7 @@ def cleanup_failed_run(run_id: int, conn: sqlite3.Connection | None = None):
             """
 			UPDATE mastery_tasks
 			SET status='failed', finished_at=?, error_message='Run failed or cancelled'
-			WHERE run_id = ? AND status != 'success'
+			WHERE run_id = ? AND status IN ('pending', 'in_progress')
 			""",
             (now(), run_id),
         )
@@ -514,7 +516,8 @@ def claim_players_missing_masteries(
         else:
             cur = conn.execute(pending_select, (limit if limit is not None else 1000000,))
         players_found = cur.fetchall()
-        if include_stale_success:
+        if include_stale_success and (limit is None or len(players_found) < limit):
+            remaining_limit = limit - len(players_found) if limit is not None else 1000000
             stale_select = """
                 SELECT player_id FROM players_recorded
                 WHERE json_array_length(paths_logged_at) > 0
@@ -526,10 +529,10 @@ def claim_players_missing_masteries(
             if claim:
                 cur_stale = conn.execute(
                     f"UPDATE players_recorded SET mastery_status='in_progress' WHERE player_id IN ({stale_select}) RETURNING player_id",
-                    (limit if limit is not None else 1000000,),
+                    (remaining_limit,),
                 )
             else:
-                cur_stale = conn.execute(stale_select, (limit if limit is not None else 1000000,))
+                cur_stale = conn.execute(stale_select, (remaining_limit,))
             players_found += cur_stale.fetchall()
         players = [row["player_id"] for row in players_found]
         if own_conn:
@@ -537,8 +540,6 @@ def claim_players_missing_masteries(
     finally:
         if own_conn:
             conn.close()
-    if limit is not None:
-        players = players[:limit]
     return players
 
 
