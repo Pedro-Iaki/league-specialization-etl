@@ -44,9 +44,12 @@ with source as (
     )
 
     {% if is_incremental() %}
-      and to_date(p.date, 'yyMMdd') >= (
-                    select date_sub(max(snapshot_date), {{ late_arrival_lookback_days }})
-          from {{ this }}
+      and (
+          (select max(snapshot_date) from {{ this }}) is null
+          or to_date(p.date, 'yyMMdd') >= (
+              select date_sub(max(snapshot_date), {{ late_arrival_lookback_days }})
+              from {{ this }}
+          )
       )
     {% endif %}
 
