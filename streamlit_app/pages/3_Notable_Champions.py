@@ -35,7 +35,7 @@ except DashboardDataError as error:
     render_load_error(error)
 
 data_source_caption(data_freshness([players, champions]))
-hero("Cross-champion view", "Which champions stand out in the selected population?", "Rank champions by player outcomes, mastery depth, ladder position, estimated ranked activity, and active-pool overlap.")
+hero("Cross-champion view", "Which champions stand out in the selected population?", "Rank champions by player outcomes, mastery depth, ladder position, estimated ranked activity, and recent-pool overlap.")
 try:
     players, population_diagnostics, use_population_weights = population_controls(players)
     if use_population_weights:
@@ -58,7 +58,7 @@ except ValueError as error:
 st.caption("Population mode weights pooled summaries before filters; individual points and support counts remain observations. Historical estimates describe represented player–tier observations with completed periods, not all ranked players.")
 st.caption("Champion overlap uses tier-preserving counts in population mode; support remains observed. Older snapshots without that export keep sample overlap.")
 if use_population_weights and population_activity is None:
-    st.info("Population estimates of active play rate and role mix need the champion_population_activity export. Refresh the snapshots to enable them.")
+    st.info("Population estimates of recent-pool membership rate and role mix need the champion_population_activity export. Refresh the snapshots to enable them.")
 
 table = champions.copy()
 if tier_mastery is not None:
@@ -84,16 +84,16 @@ if ranked is not None:
 
 metrics = {
     "Mastery/growth association (Pearson r)": ("mg_association", "association_players"),
-    "Mean player win rate": ("observed_win_rate", "observed_player_count"),
-    "LP/game above tier": ("climbing_efficiency", "observed_player_count"),
+    "Mean player win rate": ("observed_win_rate", "observed_player_tier_count"),
+    "LP/game above tier": ("climbing_efficiency", "observed_player_tier_count"),
     "Expert player share": ("expert_player_share", "mastery_player_count"),
-    "Active play rate": ("active_play_rate", "active_pool_player_count"),
+    "Recent-pool membership rate": ("recent_pool_membership_rate", "recent_pool_player_count"),
     "Mean mastery (at least 15K)": ("mean_mastery_15k", "mastery_players_15k"),
     "Median mastery (at least 15K)": ("median_mastery_15k", "mastery_players_15k"),
-    "Mean current primary-player rank score": ("avg_current_rank_score", "primary_player_count"),
-    "Median current primary-player rank score": ("median_current_rank_score", "primary_player_count"),
+    "Mean current primary-player rank score": ("avg_current_rank_score", "recent_primary_player_count"),
+    "Median current primary-player rank score": ("median_current_rank_score", "recent_primary_player_count"),
     "Mean estimated ranked mastery share": ("mean_ranked_share", "ranked_share_players"),
-    "Mean conditional active-pool overlap": ("conditional_overlap", "overlap_pairs"),
+    "Mean conditional recent-pool overlap": ("conditional_overlap", "overlap_pairs"),
 }
 available = {label: pair for label, pair in metrics.items() if pair[0] in table and pair[1] in table}
 section("Rankings", "Compare champions by one measure")
@@ -107,7 +107,7 @@ if ranking.empty:
     st.info("No champions meet this support threshold.")
 else:
     fig = px.bar(ranking.sort_values(metric), x=metric, y="champion_name", orientation="h", custom_data=[support])
-    fig.update_xaxes(title=chosen, tickformat=".0%" if chosen in {"Expert player share", "Active play rate", "Mean estimated ranked mastery share", "Mean conditional active-pool overlap", "Mean player win rate"} else None)
+    fig.update_xaxes(title=chosen, tickformat=".0%" if chosen in {"Expert player share", "Recent-pool membership rate", "Mean estimated ranked mastery share", "Mean conditional recent-pool overlap", "Mean player win rate"} else None)
     fig.update_yaxes(title="")
     st.plotly_chart(fig, width="stretch")
 st.caption("The ranked-share measure includes only players with completed ranked observation periods. Pool overlap is a shared-player-weighted conditional probability across retained champion pairs. Rank score combines tier, division and LP; it is a ladder position measure, not money or performance.")
@@ -115,7 +115,7 @@ st.caption("The ranked-share measure includes only players with completed ranked
 section("Champion comparison", "Mastery preference and rank growth by champion")
 minimum_champion_players = st.slider("Minimum historical players per champion", 1, 100, getattr(dashboard_config, "MIN_SUPPORT_PLAYERS", 3), 1)
 landscape, x_label = champion_landscape_data(champions, players)
-hidden_champions = int(landscape["observed_player_count"].fillna(0).lt(minimum_champion_players).sum())
+hidden_champions = int(landscape["observed_player_tier_count"].fillna(0).lt(minimum_champion_players).sum())
 if hidden_champions:
     show_thin_champions = support_warning(
         f"Insufficient data: {hidden_champions} champion(s) have fewer than "
@@ -123,16 +123,16 @@ if hidden_champions:
         "cross_champions",
     )
     if not show_thin_champions:
-        landscape = landscape.loc[landscape["observed_player_count"].fillna(0) >= minimum_champion_players]
+        landscape = landscape.loc[landscape["observed_player_tier_count"].fillna(0) >= minimum_champion_players]
 if "mean_commitment" not in champions:
-    st.caption("This snapshot combines current primary players' active concentration with an older historical growth estimate. The axes describe different cohorts and time windows.")
+    st.caption("This snapshot combines current primary players' recent concentration with an older historical growth estimate. The axes describe different cohorts and time windows.")
 if landscape.empty:
     st.info("No champions meet the selected player threshold.")
 else:
     y_label = "LP/game above starting-tier baseline" if "climbing_efficiency" in champions else "LP/game above tier baseline (older estimate)"
     champion_display = st.segmented_control("Champion plot", ["2D", "3D with rank score"], default="2D")
     if champion_display == "3D with rank score" and "avg_end_rank_score" in landscape:
-        fig = px.scatter_3d(landscape.dropna(subset=["specialization_axis", "outcome", "avg_end_rank_score"]), x="specialization_axis", y="outcome", z="avg_end_rank_score", size="observed_player_count", color="observed_win_rate", hover_name="champion_name", labels={"specialization_axis": x_label, "outcome": y_label, "avg_end_rank_score": "Mean observed ending rank score"})
+        fig = px.scatter_3d(landscape.dropna(subset=["specialization_axis", "outcome", "avg_end_rank_score"]), x="specialization_axis", y="outcome", z="avg_end_rank_score", size="observed_player_tier_count", color="observed_win_rate", hover_name="champion_name", labels={"specialization_axis": x_label, "outcome": y_label, "avg_end_rank_score": "Mean observed ending rank score"})
         st.plotly_chart(fig, width="stretch")
     else:
         st.plotly_chart(champion_efficiency_landscape(landscape, x_label, y_label), width="stretch")
@@ -189,7 +189,7 @@ else:
         st.plotly_chart(style_figure(fig, height=520), width="stretch")
         st.caption("Each champion's mastery points are distributed across tiers using the selected analysis denominator. A point divides that champion's tier share by the tier's share of all champion mastery. 1× matches the selected denominator; 2× means twice the expected share. The mastery filter applies before both distributions.")
 
-section("One-trick mains", "Where concentrated active mains sit on the ladder")
+section("One-trick mains", "Where concentrated recent mains sit on the ladder")
 if tier_mastery is None:
     st.info("One-trick tier comparisons require the champion_tier_mastery extract.")
 else:
@@ -205,15 +205,15 @@ else:
     )
     otp_support = otp_controls[2].number_input("Minimum one-tricks per tier", min_value=1, value=getattr(dashboard_config, "MIN_SUPPORT_PLAYERS", 3))
     otp_thresholds = st.columns(2, gap="small")
-    otp_share = otp_thresholds[0].slider("Minimum active main share", 0.0, 1.0, 0.8, 0.05)
-    otp_hhi = otp_thresholds[1].slider("Minimum active HHI", 0.0, 1.0, 0.65, 0.05)
+    otp_share = otp_thresholds[0].slider("Minimum recent main share", 0.0, 1.0, 0.8, 0.05)
+    otp_hhi = otp_thresholds[1].slider("Minimum recent HHI", 0.0, 1.0, 0.65, 0.05)
     otp_view = st.segmented_control("One-trick tier view", ["Tier shares", "Relative representation"], default="Tier shares")
     otp = one_trick_tier_distribution(players, tier_mastery, otp_mastery, otp_share, otp_hhi, otp_criterion)
     otp = otp.loc[otp["champion_name"].isin(otp_selected)].copy()
-    st.caption("One-tricks are assigned to their active primary champion. The mastery minimum applies to total account mastery; concentration uses active main share or active HHI. Each player counts once. These are current tiers, not observed final career ranks.")
+    st.caption("One-tricks are assigned to their recent primary champion. The mastery minimum applies to total account mastery; concentration uses recent main share or recent HHI. Each player counts once. These are current tiers, not observed final career ranks.")
     st.caption("The baseline is each champion's distribution of all mastery holders across tiers, counted as players at the zero mastery threshold. It includes one-tricks and uses no concentration or account-mastery filter. Both distributions sum to 100% before support filtering.")
     if otp.empty:
-        st.info("No active mains meet the selected one-trick filters.")
+        st.info("No recent mains meet the selected one-trick filters.")
     else:
         thin = otp["one_trick_total"].lt(otp_support) | (
             otp["one_trick_players"].gt(0) & otp["one_trick_players"].lt(otp_support)

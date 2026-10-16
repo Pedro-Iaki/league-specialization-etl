@@ -9,13 +9,13 @@ with pool_metrics as (
         max(case when points_rank = 1 then champion_key end) as primary_champion_key,
         max(case when points_rank = 1 then champion_name end) as primary_champion_name,
         max(case when points_rank = 1 then points_gained end) as primary_champion_points,
-        max(champion_share) as top1_share,
-        max(favoured_champion_count) as favoured_champion_count,
+        max(champion_share) as rank_period_top1_share,
+        max(favoured_champion_count) as rank_period_favoured_champion_count,
         least(greatest(sum(case when is_favoured then champion_share else 0 end), 0.0), 1.0)
-            as favoured_champions_share,
+            as rank_period_favoured_champions_share,
         max(favoured_log_gap) as favoured_log_gap,
-        sum(pow(champion_share, 2)) as hhi,
-        -sum(champion_share * log2(champion_share)) as entropy
+        sum(pow(champion_share, 2)) as rank_period_hhi,
+        -sum(champion_share * log2(champion_share)) as rank_period_entropy
     from {{ ref('fct_players_period_champion_activity') }}
     group by rank_period_id
 
@@ -28,10 +28,10 @@ normalized as (
         case
             when champion_count = 1 then 0
             else least(greatest(
-                {{ dbt_utils.safe_divide('entropy', 'log2(champion_count)') }},
+                {{ dbt_utils.safe_divide('rank_period_entropy', 'log2(champion_count)') }},
                 0.0
             ), 1.0)
-        end as normalized_entropy
+        end as rank_period_normalized_entropy
     from pool_metrics
 
 ),
@@ -40,10 +40,10 @@ scored as (
 
     select
         *,
-        {{ playstyle_score('specialist', 'top1_share', 'favoured_champions_share', 'hhi', 'normalized_entropy', 'favoured_champion_count') }} as specialist_score,
-        {{ playstyle_score('multispecialist', 'top1_share', 'favoured_champions_share', 'hhi', 'normalized_entropy', 'favoured_champion_count') }} as multispecialist_score,
-        {{ playstyle_score('versatile', 'top1_share', 'favoured_champions_share', 'hhi', 'normalized_entropy', 'favoured_champion_count') }} as versatile_score,
-        {{ playstyle_score('generalist', 'top1_share', 'favoured_champions_share', 'hhi', 'normalized_entropy', 'favoured_champion_count') }} as generalist_score
+        {{ playstyle_score('specialist', 'rank_period_top1_share', 'rank_period_favoured_champions_share', 'rank_period_hhi', 'rank_period_normalized_entropy', 'rank_period_favoured_champion_count') }} as specialist_score,
+        {{ playstyle_score('multispecialist', 'rank_period_top1_share', 'rank_period_favoured_champions_share', 'rank_period_hhi', 'rank_period_normalized_entropy', 'rank_period_favoured_champion_count') }} as multispecialist_score,
+        {{ playstyle_score('versatile', 'rank_period_top1_share', 'rank_period_favoured_champions_share', 'rank_period_hhi', 'rank_period_normalized_entropy', 'rank_period_favoured_champion_count') }} as versatile_score,
+        {{ playstyle_score('generalist', 'rank_period_top1_share', 'rank_period_favoured_champions_share', 'rank_period_hhi', 'rank_period_normalized_entropy', 'rank_period_favoured_champion_count') }} as generalist_score
     from normalized
 
 )
@@ -60,5 +60,5 @@ select
         when s.multispecialist_score then 'multispecialist'
         when s.versatile_score then 'versatile'
         when s.generalist_score then 'generalist'
-    end as playstyle
+    end as rank_period_playstyle
 from scored s

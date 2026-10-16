@@ -281,9 +281,9 @@ Found **245 output sites**: 18 DEBUG, 52 ERROR, 5 ERROR + traceback, 40 INFO, 6 
 | [src/load/load_business_sample.py:21](../src/load/load_business_sample.py#L21) · `main` | STDOUT | `Validated {players.num_rows:,} players and {events.num_rows:,} transactions; no warehouse writes` |
 | [src/load/load_business_sample.py:46](../src/load/load_business_sample.py#L46) · `load_sample` | STDOUT | `INCOMPLETE business sample load; dashboard export is blocked until both tables reconcile.` |
 | [src/load/load_business_sample.py:48](../src/load/load_business_sample.py#L48) · `load_sample` | STDOUT | `Loaded {result['player_count']:,} sample players and {result['transaction_count']:,} sample transactions` |
-| [src/sample/generate_transactions.py:50](../src/sample/generate_transactions.py#L50) · `main` | STDOUT | `Frozen {cohort.num_rows:,} complete real players at one as-of date` |
-| [src/sample/generate_transactions.py:61](../src/sample/generate_transactions.py#L61) · `main` | STDOUT | `{manifest['scenario_id']}: {players.num_rows:,} players, {transactions.num_rows:,} transactions, USD {manifest['cash_spent_usd_alltime']} hypothetical source cash` |
-| [src/sample/generate_transactions.py:98](../src/sample/generate_transactions.py#L98) · `fetch_cohort` | STDOUT | `Selected {complete.num_rows:,} complete players from {table.num_rows:,} current profiles; excluded {table.num_rows - complete.num_rows:,} incomplete/invalid profiles; no row cap` |
+| [src/sample/generate_transactions.py:62](../src/sample/generate_transactions.py#L62) · `main` | STDOUT | `Frozen {cohort.num_rows:,} complete real players at one as-of date` |
+| [src/sample/generate_transactions.py:73](../src/sample/generate_transactions.py#L73) · `main` | STDOUT | `{manifest['scenario_id']}: {players.num_rows:,} players, {transactions.num_rows:,} transactions, USD {manifest['cash_spent_usd_alltime']} hypothetical source cash` |
+| [src/sample/generate_transactions.py:113](../src/sample/generate_transactions.py#L113) · `fetch_cohort` | STDOUT | `Selected {complete.num_rows:,} complete players from {table.num_rows:,} current profiles; excluded {table.num_rows - complete.num_rows:,} incomplete/invalid profiles; no row cap` |
 
 ### Manual dashboard export output
 

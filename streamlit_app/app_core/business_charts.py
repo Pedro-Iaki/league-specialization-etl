@@ -19,19 +19,19 @@ from app_core.config import (
 )
 
 DIMENSION_LABELS = {
-    "main_role": "Inferred role", "active_playstyle": "Real active playstyle",
+    "main_role": "Inferred role", "recent_playstyle": "Real recent playstyle",
     "tier": "Current real tier", "tenure_band": "Account age (simulated)",
     "playtime_band": "Total playtime (estimated)",
 }
 
 
 def audience_chart(frame: pd.DataFrame, dimension: str) -> go.Figure:
-    colors = ROLE_COLORS if dimension == "main_role" else PLAYSTYLE_COLORS if dimension == "active_playstyle" else None
+    colors = ROLE_COLORS if dimension == "main_role" else PLAYSTYLE_COLORS if dimension == "recent_playstyle" else None
     fig = px.scatter(
         frame, x="cash_purchaser_share", y="usd_per_purchaser", size="players", size_max=48,
         color=dimension, color_discrete_map=colors, custom_data=["audience", "players", "cash_purchasers", "usd_per_player"],
         category_orders={"tier": [*TIER_ORDER, "GRANDMASTER", "CHALLENGER"], "main_role": ROLE_ORDER,
-                         "active_playstyle": PLAYSTYLE_ORDER, "tenure_band": TENURE_ORDER,
+                         "recent_playstyle": PLAYSTYLE_ORDER, "tenure_band": TENURE_ORDER,
                          "playtime_band": [*PLAYTIME_ORDER, "Similar playtime"]},
         labels={"cash_purchaser_share": "Synthetic cash purchaser share · 60 days",
                 "usd_per_purchaser": "Synthetic mean USD per cash purchaser · 60 days", dimension: DIMENSION_LABELS[dimension]},
@@ -71,7 +71,7 @@ def cosmetic_chart(frame: pd.DataFrame, dimension: str, axis_label: str) -> go.F
     for index, (name, group) in enumerate(frame.groupby(dimension, observed=True)):
         color = PLAYSTYLE_COLORS.get(name, palette[index % len(palette)])
         shade = f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.10)"
-        label = PLAYSTYLE_LABELS.get(name, name) if dimension == "active_playstyle" else name
+        label = PLAYSTYLE_LABELS.get(name, name) if dimension == "recent_playstyle" else name
         fig.add_trace(go.Scatter(x=group["pool_value"], y=group["q1"], mode="lines", line={"width": 0},
                                 showlegend=False, hoverinfo="skip", legendgroup=str(name), connectgaps=False))
         fig.add_trace(go.Scatter(x=group["pool_value"], y=group["q3"], mode="lines", line={"width": 0},
@@ -92,7 +92,7 @@ def cosmetic_chart(frame: pd.DataFrame, dimension: str, axis_label: str) -> go.F
 
 
 def discount_chart(frame: pd.DataFrame, dimension: str) -> go.Figure:
-    colors = ROLE_COLORS if dimension == "main_role" else PLAYSTYLE_COLORS if dimension == "active_playstyle" else None
+    colors = ROLE_COLORS if dimension == "main_role" else PLAYSTYLE_COLORS if dimension == "recent_playstyle" else None
     fig = px.scatter(
         frame, x="cash_discount_share", y="cash_discount_mean", size="cash_purchasers", size_max=48,
         color=dimension, color_discrete_map=colors,

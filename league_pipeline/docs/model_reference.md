@@ -9,16 +9,16 @@ The transformation layer is designed to answer four related questions:
 1. What does each player's current and lifetime champion specialization look like?
 2. How does a player's rank change during periods associated with different champions and playstyles?
 3. How high and how quickly do players associated with each champion tend to climb?
-4. Which champions commonly appear together in active player pools?
+4. Which champions commonly appear together in recent player pools?
 
 The final marts are intentionally separated by grain:
 
 | Mart | Grain | Primary purpose |
 |---|---|---|
 | `mart_player_profile` | Player | Current player profile with rank, form, role, and specialization |
-| `mart_player_delta_history` | Player and completed rank period | Rank growth associated with the champions used during a period |
+| `mart_player_rank_periods` | Player and completed rank period | Rank growth associated with the champions used during a period |
 | `mart_champion_profile` | Champion | Overall champion population, rank, growth, mastery, and role profile |
-| `mart_champion_cooccurrence` | Unordered champion pair | Strength and frequency of active-pool overlap |
+| `mart_champion_cooccurrence` | Unordered champion pair | Strength and frequency of recent-pool overlap |
 | `mart_player_spending` | Frozen sample player | Synthetic purchase history joined to real profile context; optional separate business branch |
 
 ## Overview
@@ -28,7 +28,7 @@ The final marts are intentionally separated by grain:
     Sources["Raw players, masteries, champions"]
     State["Bronze and canonical history/current models"]
     Roles["Player role distributions and champion role weights"]
-    Activity["Champion activity, active pools, lifetime mastery"]
+    Activity["Champion activity, recent pools, lifetime mastery"]
     Periods["Rank history and completed rank periods"]
     PeriodPools["Champion activity and pool profiles by period"]
     Growth["Champion growth attribution and player-level summaries"]
@@ -44,7 +44,7 @@ The final marts are intentionally separated by grain:
     Player["mart_player_profile"]
     PopulationReference["reference.rank_population_reference (manual seed)"]
     PopulationWeights["Python population weights (local CSV)"]
-    Delta["mart_player_delta_history"]
+    Delta["mart_player_rank_periods"]
     Champion["mart_champion_profile"]
     Tier["champion_tier_growth (saved query)"]
     Playstyle["Playstyle summaries (saved query)"]
@@ -95,7 +95,7 @@ This is an analytical convenience, not a Riot-provided rating. In the apex tiers
 
 ### Champion-pool concentration
 
-The same concentration vocabulary is used for active, lifetime, and period-specific pools:
+The same concentration vocabulary is used for recent, lifetime, and rank-period pools:
 
 | Metric | Meaning |
 |---|---|
@@ -140,7 +140,7 @@ Role inference is a two-stage, non-recursive process:
 1. `dim_players_naive_role_distribution` uses the expected positions of a player's recently used champions to create an initial player-role distribution.
 2. `dim_champion_role_weights` averages the role distributions of players associated with each champion, producing empirical champion-role weights.
 
-`dim_players_active_pool` then weights those empirical champion roles by current pool activity. This helps resolve ambiguous metadata positions using observed player associations. It does not identify the lane played in a specific match, because match-level position data is not available.
+`dim_players_recent_pool` then weights those empirical champion roles by current pool activity. This helps resolve ambiguous metadata positions using observed player associations. It does not identify the lane played in a specific match, because match-level position data is not available.
 
 ## Complete Lineage
 
@@ -169,13 +169,13 @@ Role inference is a two-stage, non-recursive process:
         NR["dim_players_naive_role_distribution"]
         CR["dim_champion_role_weights"]
         CA["fct_players_champion_activity"]
-        AP["dim_players_active_pool"]
-        MP["fct_players_mastery_profile"]
+        AP["dim_players_recent_pool"]
+        MP["fct_players_lifetime_mastery_profile"]
     end
 
     subgraph Periods["Historical movement and period attribution"]
-        CD["fct_players_champion_delta_history"]
-        RH["fct_players_rank_history"]
+        CD["fct_players_champion_mastery_deltas"]
+        RH["fct_players_rank_deltas"]
         RPeriods["fct_players_rank_periods"]
         PCA["fct_players_period_champion_activity"]
         PP["fct_players_period_pool_profile"]
@@ -184,7 +184,7 @@ Role inference is a two-stage, non-recursive process:
     subgraph PlayerMarts["Published player marts"]
         PProfile["mart_player_profile"]
         PWeights["Python population weights (local CSV)"]
-        PDelta["mart_player_delta_history"]
+        PDelta["mart_player_rank_periods"]
     end
     RankReference["reference.rank_population_reference (manual seed)"]
 
@@ -343,7 +343,7 @@ Role inference is a two-stage, non-recursive process:
 
 **Grain and materialization.** One row per player, champion, and snapshot date; incremental Delta table using merge.
 
-**Lineage.** Upstream: `bronze_masteries`, `dim_players_history`. Downstream: `fct_masteries_current`, `fct_players_champion_delta_history`.
+**Lineage.** Upstream: `bronze_masteries`, `dim_players_history`. Downstream: `fct_masteries_current`, `fct_players_champion_mastery_deltas`.
 
 | Column | Meaning |
 |---|---|
@@ -370,7 +370,7 @@ Role inference is a two-stage, non-recursive process:
 
 ## Gold supporting models
 
-### `fct_players_champion_delta_history`
+### `fct_players_champion_mastery_deltas`
 
 **Purpose.** Convert cumulative mastery snapshots into observed mastery movement by player and champion.
 
@@ -391,25 +391,25 @@ Role inference is a two-stage, non-recursive process:
 
 ### `fct_players_champion_activity`
 
-**Purpose.** Decide which mastered champions belong to each player's current active pool.
+**Purpose.** Decide which mastered champions belong to each player's current recent pool.
 
 **Grain and materialization.** One row per player and champion present in current mastery data; Delta table.
 
-**Lineage.** Upstream: `dim_players_current`, `dim_players_history`, `fct_masteries_current`, `fct_players_champion_delta_history`, `dim_champions`. Downstream: active-pool profile, champion profile, and co-occurrence mart.
+**Lineage.** Upstream: `dim_players_current`, `dim_players_history`, `fct_masteries_current`, `fct_players_champion_mastery_deltas`, `dim_champions`. Downstream: recent-pool profile, champion profile, and co-occurrence mart.
 
 | Column | Meaning |
 |---|---|
 | `player_champion_activity_id` | Surrogate player-champion key |
 | `player_id`, `champion_key`, `champion_name` | Identity fields |
 | `as_of_date` | Latest player snapshot date in the dataset |
-| `recent_champion_points` | Positive mastery gained by this champion inside the activity window |
-| `recent_total_points` | Positive mastery gained by the player across champions |
-| `recent_share` | Champion share of recent mastery gains |
+| `recent_champion_mastery_points` | Positive mastery gained by this champion inside the activity window |
+| `recent_mastery_points` | Positive mastery gained by the player across champions |
+| `recent_champion_share` | Champion share of recent mastery gains |
 | `days_tracked` | Span between the player's first and latest rank snapshots |
 | `days_since_last_play` | Days between `as_of_date` and the champion's last-play timestamp |
-| `is_active` | Whether the champion passes the mature or immature-player rule |
+| `is_recent_pool_champion` | Whether the champion passes the mature or immature-player rule |
 
-**Technical notes and edge cases.** Mature players must pass recency plus the greater of an absolute, tracking-adjusted threshold and a relative-share threshold. Players tracked for less than half the activity window (under 30 days with current settings) use a recency-only rule because insufficient delta history would otherwise exclude their pool. This fallback bypasses the mastery-gain threshold: one game in another mode can mark a champion active, which can distort active-pool and champion-population summaries when many players have short tracking histories. The model includes only champions present in mastery data and does not create a player-by-all-champions Cartesian product.
+**Technical notes and edge cases.** Mature players must pass recency plus the greater of an absolute, tracking-adjusted threshold and a relative-share threshold. Players tracked for less than half the activity window (under 30 days with current settings) use a recency-only rule because insufficient delta history would otherwise exclude their pool. This fallback bypasses the mastery-gain threshold: one game in another mode can mark a champion active, which can distort recent-pool and champion-population summaries when many players have short tracking histories. The model includes only champions present in mastery data and does not create a player-by-all-champions Cartesian product.
 
 ### `dim_players_naive_role_distribution`
 
@@ -435,7 +435,7 @@ Role inference is a two-stage, non-recursive process:
 
 **Grain and materialization.** One row per champion; Delta table.
 
-**Lineage.** Upstream: `dim_players_naive_role_distribution`, `dim_champions`. Downstream: `dim_players_active_pool`, `mart_champion_profile`.
+**Lineage.** Upstream: `dim_players_naive_role_distribution`, `dim_champions`. Downstream: `dim_players_recent_pool`, `mart_champion_profile`.
 
 | Column | Meaning |
 |---|---|
@@ -445,9 +445,9 @@ Role inference is a two-stage, non-recursive process:
 
 **Technical notes and edge cases.** This is association-based inference, not direct match-position observation. Small `player_count` values imply unstable estimates. The model is not recursive: champion metadata seeds player roles once, after which player associations produce champion weights.
 
-### `dim_players_active_pool`
+### `dim_players_recent_pool`
 
-**Purpose.** Summarize each player's current active champions into an interpretable specialization, playstyle, and empirical role profile.
+**Purpose.** Summarize each player's current recent-pool champions into an interpretable specialization, playstyle, and empirical role profile.
 
 **Grain and materialization.** One row per current player; Delta table.
 
@@ -456,34 +456,34 @@ Role inference is a two-stage, non-recursive process:
 | Column group | Columns and meaning |
 |---|---|
 | Identity/freshness | `player_id`, `as_of_date`, `days_tracked` |
-| Activity | `recent_total_points`, `is_active`, `active_champion_names`, `active_champion_count` |
+| Activity | `recent_mastery_points`, `has_recent_pool`, `recent_champion_names`, `recent_champion_count` |
 | Primary champion | `primary_champion_key`, `primary_champion_name` |
-| Concentration | `pool_top1_share`, `pool_favoured_champion_count`, `pool_favoured_champions_share`, `pool_favoured_log_gap`, `pool_hhi`, `pool_entropy`, `pool_normalized_entropy` |
-| Classification audit | `specialist_score`, `multispecialist_score`, `versatile_score`, `generalist_score`, `playstyle` |
+| Concentration | `recent_top1_share`, `recent_favoured_champion_count`, `recent_favoured_champions_share`, `recent_favoured_log_gap`, `recent_hhi`, `recent_entropy`, `recent_normalized_entropy` |
+| Classification audit | `specialist_score`, `multispecialist_score`, `versatile_score`, `generalist_score`, `recent_playstyle` |
 | Role distribution | `role_top_pct`, `role_jungle_pct`, `role_middle_pct`, `role_bottom_pct`, `role_support_pct`, `role_purity`, `main_role`, `main_role_weight` |
 
-**Technical notes and edge cases.** Recent mastery gains weight both pool shares and role shares. For immature players with no observed positive delta, active champions receive equal weight. `role_purity` is the HHI of the five role shares. `main_role` uses alphabetical order only when empirical weights tie exactly. Players without an active pool remain in the model with zero active champions and null concentration/classification values.
+**Technical notes and edge cases.** Recent mastery gains weight both pool shares and role shares. For immature players with no observed positive delta, recent-pool champions receive equal weight. `role_purity` is the HHI of the five role shares. `main_role` uses alphabetical order only when empirical weights tie exactly. Players without a recent pool remain in the model with zero recent-pool champions and null concentration/classification values.
 
-### `fct_players_mastery_profile`
+### `fct_players_lifetime_mastery_profile`
 
 **Purpose.** Describe lifetime champion specialization and observed mastery accumulation for each current player.
 
 **Grain and materialization.** One row per current player; Delta table.
 
-**Lineage.** Upstream: `dim_players_current`, `fct_masteries_current`, `dim_champions`, `fct_players_champion_delta_history`, `dim_players_history`. Downstream: `mart_player_profile`.
+**Lineage.** Upstream: `dim_players_current`, `fct_masteries_current`, `dim_champions`, `fct_players_champion_mastery_deltas`, `dim_players_history`. Downstream: `mart_player_profile`.
 
 | Column group | Columns and meaning |
 |---|---|
 | Identity/freshness | `player_id`, `as_of_date` |
-| Breadth/scale | `champions_with_mastery`, `total_mastery_points` |
-| Primary champion | `top_champion_key`, `top_champion_name` |
-| Concentration | `mastery_top1_share`, `mastery_favoured_champion_count`, `mastery_favoured_champions_share`, `mastery_favoured_log_gap`, `mastery_hhi`, `mastery_entropy`, `mastery_normalized_entropy` |
-| Classification audit | `mastery_specialist_score`, `mastery_multispecialist_score`, `mastery_versatile_score`, `mastery_generalist_score`, `mastery_playstyle` |
-| Recency/tracking | `last_play_time`, `days_since_last_play`, `days_tracked`, `snapshot_count`, `mastery_points_per_day` |
+| Breadth/scale | `lifetime_champion_count`, `lifetime_mastery_points` |
+| Primary champion | `lifetime_primary_champion_key`, `lifetime_primary_champion_name` |
+| Concentration | `lifetime_top1_share`, `lifetime_favoured_champion_count`, `lifetime_favoured_champions_share`, `lifetime_favoured_log_gap`, `lifetime_hhi`, `lifetime_entropy`, `lifetime_normalized_entropy` |
+| Classification audit | `lifetime_specialist_score`, `lifetime_multispecialist_score`, `lifetime_versatile_score`, `lifetime_generalist_score`, `lifetime_playstyle` |
+| Recency/tracking | `last_play_time`, `days_since_last_play`, `days_tracked`, `snapshot_count`, `tracked_mastery_points_per_day` |
 
-**Technical notes and edge cases.** Only champions with positive current mastery points participate in the distribution. `mastery_points_per_day` uses all retained mastery deltas, including negative corrections, divided by the span between the first and last observed delta endpoints. It is null when only one accrual date exists because the denominator is zero.
+**Technical notes and edge cases.** Only champions with positive current mastery points participate in the distribution. `tracked_mastery_points_per_day` uses all retained mastery deltas, including negative corrections, divided by the span between the first and last observed delta endpoints. It is null when only one accrual date exists because the denominator is zero.
 
-### `fct_players_rank_history`
+### `fct_players_rank_deltas`
 
 **Purpose.** Convert cumulative rank snapshots into player-period rank and game movement.
 
@@ -507,7 +507,7 @@ Role inference is a two-stage, non-recursive process:
 
 **Grain and materialization.** One row per player, queue, and completed period with an endpoint in the preceding bucket; Delta table.
 
-**Lineage.** Upstream: `dim_players_history`, `fct_players_rank_history`. Downstream: `mart_player_profile`, `fct_players_period_pool_profile`, and `mart_player_delta_history`.
+**Lineage.** Upstream: `dim_players_history`, `fct_players_rank_deltas`. Downstream: `mart_player_profile`, `fct_players_period_pool_profile`, and `mart_player_rank_periods`.
 
 | Column group | Columns and meaning |
 |---|---|
@@ -525,7 +525,7 @@ Role inference is a two-stage, non-recursive process:
 
 **Grain and materialization.** One row per rank period and champion with positive observed mastery movement; Delta table.
 
-**Lineage.** Upstream: `fct_players_rank_periods`, `fct_players_champion_delta_history`. Downstream: `fct_players_period_pool_profile`, `fct_players_period_champion_growth`.
+**Lineage.** Upstream: `fct_players_rank_periods`, `fct_players_champion_mastery_deltas`. Downstream: `fct_players_period_pool_profile`, `fct_players_period_champion_growth`.
 
 | Column group | Columns and meaning |
 |---|---|
@@ -541,15 +541,15 @@ Role inference is a two-stage, non-recursive process:
 
 **Grain and materialization.** One row per rank period with positive champion mastery movement; Delta table.
 
-**Lineage.** Upstream: `fct_players_period_champion_activity`. Downstream: `mart_player_delta_history`.
+**Lineage.** Upstream: `fct_players_period_champion_activity`. Downstream: `mart_player_rank_periods`.
 
 | Column group | Columns and meaning |
 |---|---|
 | Key | `rank_period_id` |
 | Pool scale | `champion_count`, `mastery_points_gained` |
 | Primary champion | `primary_champion_key`, `primary_champion_name`, `primary_champion_points` |
-| Concentration | `top1_share`, `favoured_champion_count`, `favoured_champions_share`, `favoured_log_gap`, `hhi`, `entropy`, `normalized_entropy` |
-| Classification audit | `specialist_score`, `multispecialist_score`, `versatile_score`, `generalist_score`, `playstyle` |
+| Concentration | `rank_period_top1_share`, `rank_period_favoured_champion_count`, `rank_period_favoured_champions_share`, `favoured_log_gap`, `rank_period_hhi`, `rank_period_entropy`, `rank_period_normalized_entropy` |
+| Classification audit | `specialist_score`, `multispecialist_score`, `versatile_score`, `generalist_score`, `rank_period_playstyle` |
 
 **Technical notes and edge cases.** A mastery delta is assigned when its ending snapshot falls after the previous rank endpoint and on or before the current endpoint. Because mastery and rank collection schedules can differ, that delta may represent activity spanning beyond the rank period. Negative mastery movement is excluded. Periods without positive mastery movement have no pool row and remain present in the delta mart with null pool metrics.
 
@@ -591,25 +591,25 @@ The seed does not expire automatically or fetch external replacements.
 
 ### `mart_player_profile`
 
-**Purpose.** Provide the main current player-level analytical record. It combines rank height, recent form, empirical role usage, current active-pool specialization, and lifetime mastery without exposing internal classification scores.
+**Purpose.** Provide the main current player-level analytical record. It combines rank height, recent form, empirical role usage, current recent-pool specialization, and lifetime mastery without exposing internal classification scores.
 
 **Grain and materialization.** One row per current player; Delta table.
 
-**Lineage.** Upstream: `dim_players_current`, `dim_players_active_pool`, `fct_players_mastery_profile`, `fct_players_rank_periods`, `dim_players_naive_role_distribution`. Downstream: `mart_champion_profile` and Python population weighting.
+**Lineage.** Upstream: `dim_players_current`, `dim_players_recent_pool`, `fct_players_lifetime_mastery_profile`, `fct_players_rank_periods`, `dim_players_naive_role_distribution`. Downstream: `mart_champion_profile` and Python population weighting.
 
 | Column group | Columns and meaning |
 |---|---|
 | Identity/freshness | `player_id`, `as_of_date`, `snapshot_date`, `region`, `queue`, `patch` |
 | Current rank | `tier`, `tier_order`, `division`, `league_points`, `rank_score`, `total_games`, `win_rate` |
-| Recent form | `form_window_days`, `games_recent`, `lp_delta_recent`, `win_rate_recent`, `lp_per_game_recent`, `lp_per_day_recent`, `games_per_day_recent`, `form_days_covered` |
+| Recent form | `latest_rank_period_window_days`, `latest_rank_period_games`, `latest_rank_period_lp_delta`, `latest_rank_period_win_rate`, `latest_rank_period_lp_per_game`, `latest_rank_period_lp_per_day`, `latest_rank_period_games_per_day`, `latest_rank_period_days_covered` |
 | Empirical role | `role_top_pct`, `role_jungle_pct`, `role_middle_pct`, `role_bottom_pct`, `role_support_pct`, `role_purity`, `main_role`, `main_role_weight` |
 | Role seed/audit | `metadata_primary_roles`, `role_champions_sampled_count` |
-| Active pool | `active_champion_count`, `recent_total_points`, `active_primary_champion_key`, `active_primary_champion_name`, `active_playstyle`, `active_top1_share`, `active_favoured_champion_count`, `active_favoured_champions_share`, `active_hhi`, `active_normalized_entropy`, `active_champion_names` |
-| Lifetime mastery | `champions_with_mastery`, `total_mastery_points`, `top_champion_key`, `top_champion_name`, `alltime_top1_share`, `alltime_favoured_champion_count`, `alltime_favoured_champions_share`, `alltime_hhi`, `alltime_normalized_entropy`, `alltime_playstyle`, `alltime_points_per_day`, `days_since_last_play`, `days_tracked` |
+| Recent pool | `recent_champion_count`, `recent_mastery_points`, `recent_primary_champion_key`, `recent_primary_champion_name`, `recent_playstyle`, `recent_top1_share`, `recent_favoured_champion_count`, `recent_favoured_champions_share`, `recent_hhi`, `recent_normalized_entropy`, `recent_champion_names` |
+| Lifetime mastery | `lifetime_champion_count`, `lifetime_mastery_points`, `lifetime_primary_champion_key`, `lifetime_primary_champion_name`, `lifetime_top1_share`, `lifetime_favoured_champion_count`, `lifetime_favoured_champions_share`, `lifetime_hhi`, `lifetime_normalized_entropy`, `lifetime_playstyle`, `tracked_mastery_points_per_day`, `days_since_last_play`, `days_tracked` |
 
-**Technical notes and edge cases.** Active and all-time playstyles answer different questions and can legitimately disagree. `metadata_primary_roles` preserves ties from the first-stage role inference, while `main_role` is derived from empirically weighted active champions. Recent form uses the latest completed rank bucket available in the dataset. Its nominal window is seven days by default, while rates use the actual six-to-eight-day span between observed endpoints. The absolute LP-per-game bound nulls only LP-derived fields; games, games/day and win rate retain their independent observations. Players without a period in that latest bucket have null form values, not zero performance.
+**Technical notes and edge cases.** Recent and lifetime playstyles answer different questions and can legitimately disagree. `metadata_primary_roles` preserves ties from the first-stage role inference, while `main_role` is derived from empirically weighted recent-pool champions. Latest-rank-period outcomes use the latest completed rank bucket available in the dataset. Its nominal window is seven days by default, while rates use the actual six-to-eight-day span between observed endpoints. The absolute LP-per-game bound nulls only LP-derived fields; games, games/day and win rate retain their independent observations. Players without a period in that latest bucket have null latest-rank-period outcomes, not zero performance.
 
-### `mart_player_delta_history`
+### `mart_player_rank_periods`
 
 **Purpose.** Provide the main longitudinal dataset for studying how champion choice and playstyle relate to rank growth.
 
@@ -623,7 +623,7 @@ The seed does not expire automatically or fetch external replacements.
 | Starting rank | `previous_tier`, `previous_division`, `previous_league_points`, `previous_rank_score` |
 | Ending rank | `tier`, `division`, `league_points`, `rank_score` |
 | Interval/outcome | `previous_snapshot_date`, `snapshot_date`, `period_bucket_start`, `period_bucket_end`, `period_bucket_days`, `period_in_days`, `wins_delta`, `losses_delta`, `games_delta`, `lp_delta` |
-| Observed champion pool | `champion_count`, `mastery_points_gained`, `primary_champion_key`, `primary_champion_name`, `primary_champion_points`, `pool_top1_share`, `pool_favoured_champion_count`, `pool_favoured_champions_share`, `pool_hhi`, `pool_normalized_entropy`, `playstyle` |
+| Observed champion pool | `champion_count`, `mastery_points_gained`, `primary_champion_key`, `primary_champion_name`, `primary_champion_points`, `rank_period_top1_share`, `rank_period_favoured_champion_count`, `rank_period_favoured_champions_share`, `rank_period_hhi`, `rank_period_normalized_entropy`, `playstyle` |
 | Comparative rates | `is_lp_growth_eligible`, `tier_lp_per_game_baseline`, `lp_per_game`, `lp_per_day`, `period_win_rate`, `lp_per_game_lift_vs_tier` |
 | Estimated queue mix | `expected_ranked_mastery_points`, `estimated_ranked_mastery_share` |
 
@@ -635,7 +635,7 @@ The seed does not expire automatically or fetch external replacements.
 
 **Grain and materialization.** One row per rank period and favoured champion with games and a starting-tier baseline; view.
 
-**Lineage.** Upstream: `fct_players_period_champion_activity`, `mart_player_delta_history`. Downstream: `Shared player-first growth SQL (macro)`.
+**Lineage.** Upstream: `fct_players_period_champion_activity`, `mart_player_rank_periods`. Downstream: `Shared player-first growth SQL (macro)`.
 
 | Column group | Columns and meaning |
 |---|---|
@@ -649,7 +649,7 @@ The seed does not expire automatically or fetch external replacements.
 
 ### `mart_champion_profile`
 
-**Purpose.** Provide one concise overall profile per champion: current active-pool popularity, rank height among primary players, observed growth, mastery depth, and empirical role usage.
+**Purpose.** Provide one concise overall profile per champion: current recent-pool popularity, rank height among primary players, observed growth, mastery depth, and empirical role usage.
 
 **Grain and materialization.** One row per champion; Delta table.
 
@@ -658,17 +658,17 @@ The seed does not expire automatically or fetch external replacements.
 | Column group | Columns and meaning |
 |---|---|
 | Identity/freshness | `champion_key`, `champion_name`, `champion_patch`, `expected_positions`, `as_of_date` |
-| Active popularity | `active_player_count`, `active_pool_player_count`, `active_play_rate`, `avg_active_pool_share` |
-| Current primary players | `primary_player_count`, `recent_form_player_count`, `avg_current_rank_score`, `median_current_rank_score`, `avg_recent_lp_per_game`, `avg_recent_win_rate` |
-| Observed growth | `observed_player_count`, `observed_period_count`, `attributed_games`, `observed_games`, `observed_win_rate`, `expected_lp_per_game`, `expected_lp_per_day`, `climbing_efficiency`, `avg_end_rank_score`, `median_end_rank_score` |
+| Recent-pool membership | `recent_player_count`, `recent_pool_player_count`, `recent_pool_membership_rate`, `avg_recent_pool_share` |
+| Current primary players | `recent_primary_player_count`, `latest_rank_period_player_count`, `avg_current_rank_score`, `median_current_rank_score`, `avg_latest_rank_period_lp_per_game`, `avg_latest_rank_period_win_rate` |
+| Observed growth | `observed_player_tier_count`, `observed_period_count`, `attributed_games`, `observed_games`, `observed_win_rate`, `expected_lp_per_game`, `expected_lp_per_day`, `climbing_efficiency`, `avg_end_rank_score`, `median_end_rank_score` |
 | Mastery | `mastery_player_count`, `expert_player_count`, `expert_player_share`, `avg_mastery_points`, `median_mastery_points` |
 | Empirical roles | `role_sample_player_count`, `role_top_pct`, `role_jungle_pct`, `role_middle_pct`, `role_bottom_pct`, `role_support_pct` |
 
-**Technical notes and edge cases.** Active play rate uses players with at least one active champion and positive recent mastery as its population. Primary-player metrics describe players whose current active pool is led by the champion. Growth metrics include every favoured champion in a period and average player-level results equally. `climbing_efficiency` is the mean player median LP/game lift. The Streamlit query translates this field to its existing `lp_per_game_lift_vs_tier` contract. `observed_games` is a compatibility alias for the fractional `attributed_games`, not a count of confirmed champion games. Win rate and LP rates are estimates derived from shared period outcomes.
+**Technical notes and edge cases.** Recent-pool membership rate uses players with at least one recent-pool champion and positive recent mastery as its population. Primary-player metrics describe players whose current recent pool is led by the champion. Growth metrics include every favoured champion in a period and average player-level results equally. `climbing_efficiency` is the mean player median LP/game lift. The Streamlit query translates this field to its existing `lp_per_game_lift_vs_tier` contract. `observed_games` is a compatibility alias for the fractional `attributed_games`, not a count of confirmed champion games. Win rate and LP rates are estimates derived from shared period outcomes.
 
 ### `mart_champion_cooccurrence`
 
-**Purpose.** Measure which unordered champion pairs commonly coexist in current active player pools and whether that overlap is stronger than expected from their individual popularity.
+**Purpose.** Measure which unordered champion pairs commonly coexist in current recent player pools and whether that overlap is stronger than expected from their individual popularity.
 
 **Grain and materialization.** One row per unordered champion pair meeting the configured minimum player count; Delta table.
 
@@ -680,9 +680,9 @@ The seed does not expire automatically or fetch external replacements.
 | `as_of_date` | Activity reference date |
 | `champion_key_a`, `champion_name_a` | First champion; key is lower than B |
 | `champion_key_b`, `champion_name_b` | Second champion |
-| `pool_player_count` | Players with at least one active champion |
-| `player_count_a`, `player_count_b` | Active-pool player counts for each champion |
-| `pair_player_count` | Players whose active pool contains both champions |
+| `recent_pool_player_count` | Players with at least one recent-pool champion |
+| `player_count_a`, `player_count_b` | Recent-pool player counts for each champion |
+| `pair_player_count` | Players whose recent pool contains both champions |
 | `jaccard` | Intersection divided by union |
 | `prob_b_given_a`, `prob_a_given_b` | Directional conditional overlap probabilities |
 | `lift` | Observed pair support divided by expected support under independence |
@@ -692,7 +692,7 @@ The seed does not expire automatically or fetch external replacements.
 
 ## Synthetic business sample
 
-This optional branch reads the existing Gold profile and rank-period marts **once** through the Python cohort exporter. It freezes every current ranked player with complete valid core profile inputs at one common as-of date, with no row cap; actual per-player snapshot dates are preserved. Missing required core features or invalid observations exclude the player, including unclassified role/playstyle. Ranked-share estimates and recent games/day are optional; unobserved values remain null. This is a selected, well-observed cohort, not a random population sample. Its dbt lineage starts at dedicated sample raw tables, so `dbt build --select tag:business_sample` builds only the sample seeds, transaction models, spending mart and focused tests. All spending, inventory and customer-type relationships are generated. The public dashboard export uses an explicit allowlist and excludes private join/event/SKU identifiers.
+This optional branch reads the existing Gold profile and rank-period marts **once** through the Python cohort exporter. It freezes every current ranked player with complete valid core profile inputs at one common as-of date, with no row cap; actual per-player snapshot dates are preserved. Missing required core features or invalid observations exclude the player, including unclassified role/playstyle. Ranked-share estimates and latest-rank-period games/day are optional; unobserved values remain null. This is a selected, well-observed cohort, not a random population sample. Its dbt lineage starts at dedicated sample raw tables, so `dbt build --select tag:business_sample` builds only the sample seeds, transaction models, spending mart and focused tests. All spending, inventory and customer-type relationships are generated. The public dashboard export uses an explicit allowlist and excludes private join/event/SKU identifiers.
 
 ### Reference seeds and raw sample sources
 
@@ -716,7 +716,7 @@ This optional branch reads the existing Gold profile and rank-period marts **onc
 
 | Field group | Definition |
 |---|---|
-| Real context | `snapshot_date`, `as_of_date`, `region`, `queue`, `tier`, `main_role`, `active_playstyle`, primary champion key/name, active entropy/top-one share, all-time top-one share, total mastery points, champions with mastery, recent games/day and ranked-mastery share. Core profile fields must be present and valid for eligibility. Ranked share and recent games/day may be null; observed values must be valid. The exporter freezes all complete current profiles at one as-of date, retains each actual snapshot date and records their min/max range. Ranked share is the median valid observed estimate for the same player/queue through as-of. |
+| Real context | `snapshot_date`, `as_of_date`, `region`, `queue`, `tier`, `main_role`, `recent_playstyle`, primary champion key/name, recent entropy/top-one share, lifetime top-one share, total mastery points, champions with mastery, latest-rank-period games/day and ranked-mastery share. Core profile fields must be present and valid for eligibility. Ranked share and latest-rank-period games/day may be null; observed values must be valid. The exporter freezes all complete current profiles at one as-of date, retains each actual snapshot date and records their min/max range. Ranked share is the median valid observed estimate for the same player/queue through as-of. |
 | Scenario context | `scenario_id`, inclusive `purchase_window_start/end`, `simulated_customer_type`, `simulated_owned_champions`. Customer probabilities are 72% sardine / 24% dolphin / 4% whale. Ownership is at least 20 and loosely anchored to mastery count, allowing rewards, rotations and unused characters. |
 | History | `first_purchase_at` / `last_purchase_at`: min/max across all generated currency types. `purchase_count_alltime` counts all events; `be_champion_purchase_count_alltime` counts BE champion unlocks. Every player has BE purchases. First purchase is the only tenure date, not real account creation; no redundant age field exists. |
 | Full generated-history cash | `cash_purchase_count_alltime`, `cash_spent_usd_alltime`, `cash_active_months_alltime`: fiat events, source USD sum, distinct purchasing calendar months. These are not observed lifetime totals. |
@@ -730,7 +730,7 @@ This optional branch reads the existing Gold profile and rank-period marts **onc
 
 Count and spend columns are zero for players without the relevant events. Purchaser status is derived from cash counts; there is no stored `has_purchase` or `is_synthetic_spending`. Gold has no RP/BE spending totals and never counts an RP content event as another cash payment. The reconciliation test checks player grain, source USD all-history/recent sums, BE coverage and money separation.
 
-**Generation assumptions.** [scenario.py](../../src/sample/scenario.py) holds seven editable base controls and grouped offsets for tier, role, primary champion (sparse overrides plus neutral default), playstyle, latent tenure, mastery-sum band, ranked-share band, active top-one-share band, active-entropy band and seeded customer type. The sum is clamped, then perturbed with residual noise. Tenure is generated before purchases, not caused by a computed first purchase. Frequency chooses purchasing months; consistency distributes occasions; intensity controls top-up count/size. Cosmetic share changes event selection and discounts change prices. Incomplete core profiles are excluded; missing optional ranked share and unlisted champion keys use neutral offsets. Recent games/day is context only. Champion-pool entropy is diversity, never playrate regularity. The dashboard reports the scenario's imposed shapes, not empirical evidence.
+**Generation assumptions.** [scenario.py](../../src/sample/scenario.py) holds seven editable base controls and grouped offsets for tier, role, primary champion (sparse overrides plus neutral default), playstyle, latent tenure, mastery-sum band, ranked-share band, recent top-one-share band, recent-entropy band and seeded customer type. The sum is clamped, then perturbed with residual noise. Tenure is generated before purchases, not caused by a computed first purchase. Frequency chooses purchasing months; consistency distributes occasions; intensity controls top-up count/size. Cosmetic share changes event selection and discounts change prices. Incomplete core profiles are excluded; missing optional ranked share and unlisted champion keys use neutral offsets. Latest-rank-period games/day is context only. Champion-pool entropy is diversity, never playrate regularity. The dashboard reports the scenario's imposed shapes, not empirical evidence.
 
 ## Operational guidance
 

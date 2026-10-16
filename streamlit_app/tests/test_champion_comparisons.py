@@ -10,14 +10,14 @@ from app_core.analysis import (
 from app_core.charts import champion_tier_outcome_heatmap, playstyle_outcome_chart
 
 
-def test_one_trick_distribution_uses_active_main_or_hhi_and_player_baseline():
+def test_one_trick_distribution_uses_recent_main_or_hhi_and_player_baseline():
     players = pd.DataFrame({
-        "active_primary_champion_name": ["Riven", "Riven", "Riven", "Riven", None, "Riven"],
+        "recent_primary_champion_name": ["Riven", "Riven", "Riven", "Riven", None, "Riven"],
         "tier": ["GOLD", "DIAMOND", "GOLD", "GOLD", "GOLD", "GOLD"],
-        "total_mastery_points": [300_000, 400_000, 200_000, 500_000, 500_000, 500_000],
-        "active_top1_share": [0.8, 0.5, 1.0, 0.3, 1.0, float("nan")],
-        "active_hhi": [0.5, 0.7, 1.0, 0.4, 1.0, float("nan")],
-        "recent_total_points": [1000, 1000, 1000, 1000, 0, 1000],
+        "lifetime_mastery_points": [300_000, 400_000, 200_000, 500_000, 500_000, 500_000],
+        "recent_top1_share": [0.8, 0.5, 1.0, 0.3, 1.0, float("nan")],
+        "recent_hhi": [0.5, 0.7, 1.0, 0.4, 1.0, float("nan")],
+        "recent_mastery_points": [1000, 1000, 1000, 1000, 0, 1000],
     })
     baseline = pd.DataFrame({
         "champion_name": ["Riven"] * 4, "tier": ["GOLD", "DIAMOND", "ALL", "GOLD"],
@@ -38,9 +38,9 @@ def test_one_trick_distribution_uses_active_main_or_hhi_and_player_baseline():
 
 def test_one_trick_baseline_agreement_and_measured_zero():
     players = pd.DataFrame({
-        "active_primary_champion_name": ["Teemo", "Teemo", "Riven"],
-        "tier": ["GOLD", "DIAMOND", "GOLD"], "total_mastery_points": [300_000] * 3,
-        "active_top1_share": [0.9] * 3, "active_hhi": [0.8] * 3, "recent_total_points": [1000] * 3,
+        "recent_primary_champion_name": ["Teemo", "Teemo", "Riven"],
+        "tier": ["GOLD", "DIAMOND", "GOLD"], "lifetime_mastery_points": [300_000] * 3,
+        "recent_top1_share": [0.9] * 3, "recent_hhi": [0.8] * 3, "recent_mastery_points": [1000] * 3,
     })
     baseline = pd.DataFrame({
         "champion_name": ["Teemo", "Teemo", "Riven", "Riven"],
@@ -102,8 +102,8 @@ def test_playstyle_tier_over_under_uses_champion_tier_average() -> None:
     playstyle = pd.DataFrame(
         {
             "starting_tier": ["GOLD"],
-            "playstyle": ["specialist"],
-            "observed_player_count": [8],
+            "rank_period_playstyle": ["specialist"],
+            "observed_player_tier_count": [8],
             "climbing_efficiency": [3.0],
             "observed_win_rate": [0.53],
         }
@@ -122,9 +122,9 @@ def test_playstyle_tier_over_under_uses_champion_tier_average() -> None:
 
 def test_playstyle_win_rate_bars_keep_outcomes_outside_old_zoom_visible() -> None:
     summary = pd.DataFrame({
-        "playstyle": ["specialist", "generalist"],
+        "rank_period_playstyle": ["specialist", "generalist"],
         "observed_win_rate": [0.3, 0.7],
-        "observed_player_count": [12, 15],
+        "observed_player_tier_count": [12, 15],
         "observed_period_count": [20, 25],
     })
     figure = playstyle_outcome_chart(summary, "observed_win_rate", "Mean player win rate")

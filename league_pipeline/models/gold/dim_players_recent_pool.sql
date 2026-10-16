@@ -4,18 +4,18 @@
 {% set gap_multiplier = var('favoured_champion_gap_multiplier', 1.5) %}
 {% set min_log_gap = var('favoured_champion_min_log_gap', 0.69314718056) %}
 
-with active_champions as (
+with recent_champions as (
 
     select
         a.player_id,
         a.champion_key,
         a.champion_name,
         case
-            when a.recent_total_points > 0 then a.recent_champion_points
+            when a.recent_mastery_points > 0 then a.recent_champion_mastery_points
             else 1
         end as pool_points
     from {{ ref('fct_players_champion_activity') }} a
-    where a.is_active
+    where a.is_recent_pool_champion
 
 ),
 
@@ -31,7 +31,7 @@ pool_shares as (
             partition by player_id
             order by pool_points desc, champion_key
         ) as points_rank
-    from active_champions
+    from recent_champions
 
 ),
 
@@ -92,8 +92,8 @@ favoured_boundaries as (
                     or max(g.log_gap) >= {{ gap_multiplier }} * max(s.median_log_gap)
                 ) then max(g.points_rank)
             else count(*)
-        end as pool_favoured_champion_count,
-        max(g.log_gap) as pool_favoured_log_gap
+        end as recent_favoured_champion_count,
+        max(g.log_gap) as recent_favoured_log_gap
     from top_candidates t
     left join largest_gap g on t.player_id = g.player_id
     left join gap_summary s on t.player_id = s.player_id
@@ -105,17 +105,17 @@ pool_metrics as (
 
     select
         s.player_id,
-        count(*) as active_champion_count,
+        count(*) as recent_champion_count,
         max(case when s.points_rank = 1 then s.champion_key end) as primary_champion_key,
         max(case when s.points_rank = 1 then s.champion_name end) as primary_champion_name,
-        max(s.champion_share) as pool_top1_share,
+        max(s.champion_share) as recent_top1_share,
         least(greatest(sum(
-            case when s.points_rank <= b.pool_favoured_champion_count then s.champion_share else 0 end
-        ), 0.0), 1.0) as pool_favoured_champions_share,
-        max(b.pool_favoured_champion_count) as pool_favoured_champion_count,
-        max(b.pool_favoured_log_gap) as pool_favoured_log_gap,
-        sum(pow(s.champion_share, 2)) as pool_hhi,
-        -sum(s.champion_share * log2(s.champion_share)) as pool_entropy
+            case when s.points_rank <= b.recent_favoured_champion_count then s.champion_share else 0 end
+        ), 0.0), 1.0) as recent_favoured_champions_share,
+        max(b.recent_favoured_champion_count) as recent_favoured_champion_count,
+        max(b.recent_favoured_log_gap) as recent_favoured_log_gap,
+        sum(pow(s.champion_share, 2)) as recent_hhi,
+        -sum(s.champion_share * log2(s.champion_share)) as recent_entropy
     from pool_shares s
     join favoured_boundaries b on s.player_id = b.player_id
     group by s.player_id
@@ -127,12 +127,12 @@ normalized as (
     select
         *,
         case
-            when active_champion_count = 1 then 0
+            when recent_champion_count = 1 then 0
             else least(greatest(
-                {{ dbt_utils.safe_divide('pool_entropy', 'log2(active_champion_count)') }},
+                {{ dbt_utils.safe_divide('recent_entropy', 'log2(recent_champion_count)') }},
                 0.0
             ), 1.0)
-        end as pool_normalized_entropy
+        end as recent_normalized_entropy
     from pool_metrics
 
 ),
@@ -141,10 +141,10 @@ scored as (
 
     select
         *,
-        {{ playstyle_score('specialist', 'pool_top1_share', 'pool_favoured_champions_share', 'pool_hhi', 'pool_normalized_entropy', 'pool_favoured_champion_count') }} as specialist_score,
-        {{ playstyle_score('multispecialist', 'pool_top1_share', 'pool_favoured_champions_share', 'pool_hhi', 'pool_normalized_entropy', 'pool_favoured_champion_count') }} as multispecialist_score,
-        {{ playstyle_score('versatile', 'pool_top1_share', 'pool_favoured_champions_share', 'pool_hhi', 'pool_normalized_entropy', 'pool_favoured_champion_count') }} as versatile_score,
-        {{ playstyle_score('generalist', 'pool_top1_share', 'pool_favoured_champions_share', 'pool_hhi', 'pool_normalized_entropy', 'pool_favoured_champion_count') }} as generalist_score
+        {{ playstyle_score('specialist', 'recent_top1_share', 'recent_favoured_champions_share', 'recent_hhi', 'recent_normalized_entropy', 'recent_favoured_champion_count') }} as specialist_score,
+        {{ playstyle_score('multispecialist', 'recent_top1_share', 'recent_favoured_champions_share', 'recent_hhi', 'recent_normalized_entropy', 'recent_favoured_champion_count') }} as multispecialist_score,
+        {{ playstyle_score('versatile', 'recent_top1_share', 'recent_favoured_champions_share', 'recent_hhi', 'recent_normalized_entropy', 'recent_favoured_champion_count') }} as versatile_score,
+        {{ playstyle_score('generalist', 'recent_top1_share', 'recent_favoured_champions_share', 'recent_hhi', 'recent_normalized_entropy', 'recent_favoured_champion_count') }} as generalist_score
     from normalized
 
 ),
@@ -163,7 +163,7 @@ labeled as (
             when multispecialist_score then 'multispecialist'
             when versatile_score then 'versatile'
             else 'generalist'
-        end as playstyle
+        end as recent_playstyle
     from scored
 
 ),
@@ -172,8 +172,8 @@ pool_lists as (
 
     select
         player_id,
-        sort_array(collect_list(champion_name)) as active_champion_names
-    from active_champions
+        sort_array(collect_list(champion_name)) as recent_champion_names
+    from recent_champions
     group by player_id
 
 ),
@@ -187,7 +187,7 @@ role_sums as (
         sum(w.avg_middle_pct * a.pool_points) as middle_points,
         sum(w.avg_bottom_pct * a.pool_points) as bottom_points,
         sum(w.avg_support_pct * a.pool_points) as support_points
-    from active_champions a
+    from recent_champions a
     inner join {{ ref('dim_champion_role_weights') }} w
         on a.champion_key = w.champion_key
     where w.avg_top_pct is not null
@@ -258,7 +258,7 @@ player_activity as (
         player_id,
         max(as_of_date) as as_of_date,
         max(days_tracked) as days_tracked,
-        max(recent_total_points) as recent_total_points
+        max(recent_mastery_points) as recent_mastery_points
     from {{ ref('fct_players_champion_activity') }}
     group by player_id
 
@@ -268,24 +268,24 @@ select
     p.puuid as player_id,
     a.as_of_date,
     coalesce(a.days_tracked, 0) as days_tracked,
-    coalesce(a.recent_total_points, 0) as recent_total_points,
-    coalesce(m.active_champion_count, 0) > 0 as is_active,
-    coalesce(l.active_champion_names, array()) as active_champion_names,
-    coalesce(m.active_champion_count, 0) as active_champion_count,
+    coalesce(a.recent_mastery_points, 0) as recent_mastery_points,
+    coalesce(m.recent_champion_count, 0) > 0 as has_recent_pool,
+    coalesce(l.recent_champion_names, array()) as recent_champion_names,
+    coalesce(m.recent_champion_count, 0) as recent_champion_count,
     m.primary_champion_key,
     m.primary_champion_name,
-    m.pool_top1_share,
-    m.pool_favoured_champion_count,
-    m.pool_favoured_champions_share,
-    m.pool_favoured_log_gap,
-    m.pool_hhi,
-    m.pool_entropy,
-    m.pool_normalized_entropy,
+    m.recent_top1_share,
+    m.recent_favoured_champion_count,
+    m.recent_favoured_champions_share,
+    m.recent_favoured_log_gap,
+    m.recent_hhi,
+    m.recent_entropy,
+    m.recent_normalized_entropy,
     m.specialist_score,
     m.multispecialist_score,
     m.versatile_score,
     m.generalist_score,
-    m.playstyle,
+    m.recent_playstyle,
     r.role_top_pct,
     r.role_jungle_pct,
     r.role_middle_pct,

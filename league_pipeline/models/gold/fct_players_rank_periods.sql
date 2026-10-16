@@ -90,7 +90,7 @@ where datediff(p.period_bucket_start, p.previous_bucket_start) = {{ period_days 
       between {{ [1, period_days - 1] | max }} and {{ period_days + 1 }}
   and not exists (
       select 1
-      from {{ ref('fct_players_rank_history') }} h
+      from {{ ref('fct_players_rank_deltas') }} h
       where h.player_id = p.player_id
         and h.queue = p.queue
         and h.snapshot_date > p.previous_snapshot_date

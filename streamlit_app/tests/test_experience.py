@@ -14,8 +14,8 @@ from streamlit.testing.v1 import AppTest
 def test_bands_have_equal_counts_even_with_ties(size):
     players = pd.DataFrame({
         "tier": ["IRON"] * size,
-        "total_mastery_points": [100] * size,
-        "alltime_playstyle": ["specialist"] * size,
+        "lifetime_mastery_points": [100] * size,
+        "lifetime_playstyle": ["specialist"] * size,
     })
     bands = experience_bands(players)
     counts = bands.groupby("mastery_band").size().reindex(range(1, 6), fill_value=0)
@@ -27,8 +27,8 @@ def test_bands_have_equal_counts_even_with_ties(size):
 def test_bands_are_pooled_and_master_exclusion_keeps_assignments():
     players = pd.DataFrame({
         "tier": ["IRON"] * 10 + ["MASTER"] * 10,
-        "total_mastery_points": range(20),
-        "alltime_playstyle": ["specialist"] * 20,
+        "lifetime_mastery_points": range(20),
+        "lifetime_playstyle": ["specialist"] * 20,
     })
     bands = experience_bands(players)
     assert bands.loc[bands["tier"].eq("IRON"), "mastery_band"].max() == 3
@@ -44,17 +44,17 @@ def test_bands_are_pooled_and_master_exclusion_keeps_assignments():
 
 def test_only_classified_valid_mastery_enters_bands():
     players = pd.DataFrame({
-        "total_mastery_points": [0, 100, np.nan, np.inf, -1, 100],
-        "alltime_playstyle": ["generalist"] * 5 + ["insufficient activity"],
+        "lifetime_mastery_points": [0, 100, np.nan, np.inf, -1, 100],
+        "lifetime_playstyle": ["generalist"] * 5 + ["insufficient activity"],
     })
-    assert experience_bands(players)["total_mastery_points"].tolist() == [0, 100]
+    assert experience_bands(players)["lifetime_mastery_points"].tolist() == [0, 100]
 
 
 def test_omission_uses_denominator_and_preserves_zero_share():
     bands = pd.DataFrame({
         "tier": ["IRON"] * 6 + ["GOLD"] * 2,
         "mastery_band": [1] * 3 + [3] * 3 + [2] * 2,
-        "alltime_playstyle": ["generalist"] * 3 + ["specialist", "generalist", "generalist"]
+        "lifetime_playstyle": ["generalist"] * 3 + ["specialist", "generalist", "generalist"]
                              + ["specialist"] * 2,
         "_population_weight": [999] * 8,
     })
@@ -82,7 +82,7 @@ def test_wilson_interval_for_zero_and_all_specialists():
     bands = pd.DataFrame({
         "tier": ["IRON"] * 10 + ["GOLD"] * 10,
         "mastery_band": [1] * 20,
-        "alltime_playstyle": ["generalist"] * 10 + ["specialist"] * 10,
+        "lifetime_playstyle": ["generalist"] * 10 + ["specialist"] * 10,
     })
     cells = experience_cells(bands)
     zero, one = cells.iloc[0], cells.iloc[1]
@@ -115,7 +115,7 @@ def test_page_layout_and_master_toggles_render():
 def test_experience_portuguese_labels_and_hover():
     with patch("app_core.i18n._st.session_state", {LANGUAGE_KEY: "PT"}):
         assert t("Experience-stratified specialization") == "Especialização por faixa de experiência"
-        empty = pd.DataFrame(columns=["mastery_band", "tier", "alltime_playstyle"])
+        empty = pd.DataFrame(columns=["mastery_band", "tier", "lifetime_playstyle"])
         chart = localize_figure(experience_chart(experience_display(experience_cells(empty), 3)))
         assert "Especialistas:" in chart.data[0].hovertemplate
         assert chart.layout.yaxis.title.text == "Proporção bruta de especialistas"

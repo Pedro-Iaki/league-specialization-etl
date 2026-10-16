@@ -13,7 +13,7 @@ In League of Legends, a player chooses a champion for each match. Ranked players
 - How concentrated are players' current, lifetime, and observed-period champion pools?
 - How does concentration relate to rank movement within comparable starting tiers?
 - How do players associated with a champion differ by tier, inferred role, playstyle, mastery depth, and observed growth?
-- Which champions tend to coexist in the same players' active pools?
+- Which champions tend to coexist in the same players' recent pools?
 
 The original research brief also called for examining mastery, win rate, recent activity, champion population across tiers, and champion selection patterns. The implemented views cover parts of that brief through the available snapshots and derived marts; they should not be read as a complete answer to every original question.
 
@@ -90,14 +90,14 @@ dbt preserves useful history and produces current records, rank periods, champio
 1. **Sample ranked players.** The extractor pages through configured tiers and divisions, initially for North America solo queue. At equal page depth it visits configured tiers within division I, then division II, and so on; with Diamond, Emerald, and Platinum configured, that means Diamond I → Emerald I → Platinum I. The aim was roughly even coverage by tier, which deliberately differs from the actual ranked population; an earlier collection bug also overrepresented Diamond through Platinum. Tier-specific comparisons therefore matter more than an unqualified overall average.
 2. **Observe repeated snapshots.** Ranked entries provide tier, division, LP, and cumulative wins and losses. Champion-mastery entries provide cumulative mastery points and last-play information. Differences between snapshots, not individual match events, supply the historical activity signal.
 3. **Measure rank movement.** A project-defined rank score allows movement across division boundaries. Completed observations are grouped into configured seven-day buckets, chosen to fit weekly play patterns while limiting API calls. Eligible growth is reported as LP per recorded ranked game, then compared with the tracked sample's baseline for the same queue and starting tier. The current growth filter excludes periods with absolute movement above 50 LP per game to reduce the impact of unobserved rank changes.
-4. **Describe specialization.** The models calculate leading-champion share, concentration, entropy, and a favoured-champion subset for active, lifetime, or period pools. Exploratory clustering and game knowledge informed four profiles; a weighted, configurable dbt heuristic assigns specialist, multispecialist, versatile, or generalist. These are descriptions of measured pool shape, not validated behavioral types or skill grades.
+4. **Describe specialization.** The models calculate leading-champion share, concentration, entropy, and a favoured-champion subset for recent, lifetime, or rank-period pools. Exploratory clustering and game knowledge informed four profiles; a weighted, configurable dbt heuristic assigns specialist, multispecialist, versatile, or generalist. These are descriptions of measured pool shape, not validated behavioral types or skill grades.
 5. **Associate champions with outcomes.** Mastery gained during a period supplies weights for allocating that period's rank movement and games to favoured champions. The resulting champion figures are associations, not observed wins or LP earned while playing that champion. Champion summaries first aggregate within players so those with many periods do not automatically dominate the final average.
 6. **Compare and inspect.** Gold marts summarize players, champions, tiers, playstyles, and champion-pair overlap. The dashboard exposes support counts and controls for sparse groups. Co-occurrence measures shared player preference, not team synergy.
 7. **Estimate under a frozen tier mix.** A versioned manual seed supplies ten estimated tier shares. Player-based population views can weight actual sample counts within region/queue before analyst filters. Other pages' aggregate statistics retain sample definitions. Coverage and effective sample size expose the adjustment's limits; it cannot correct selection within tiers.
 
 The precise formulas, thresholds, model grains, and edge cases live in the [dbt model reference](league_pipeline/docs/model_reference.md) and [dbt configuration](league_pipeline/dbt_project.yml). Dashboard-specific reading guidance is in the [dashboard README](streamlit_app/README.md).
 
-The active pool uses a 60-day reference window. For players tracked for less than 30 days, the model falls back to recent last-play dates without the usual mastery-gain threshold. A single game in another mode can therefore make a champion appear active; this is especially relevant to the short history in the included snapshot. The champion role mix is derived from the likely roles of players who recently used that champion: the model starts from Riot's expected champion positions, estimates each player's role mix from recent champions, then averages those player estimates by champion. It is an association with inferred player roles, **not** the observed share of that champion's matches in each lane.
+The recent pool uses a 60-day reference window. For players tracked for less than 30 days, the model falls back to recent last-play dates without the usual mastery-gain threshold. A single game in another mode can therefore make a champion appear active; this is especially relevant to the short history in the included snapshot. The champion role mix is derived from the likely roles of players who recently used that champion: the model starts from Riot's expected champion positions, estimates each player's role mix from recent champions, then averages those player estimates by champion. It is an association with inferred player roles, **not** the observed share of that champion's matches in each lane.
 
 ## Why the pipeline is built this way
 
@@ -117,7 +117,7 @@ SQLite holds job and file evidence, Neon holds durable collection coordination, 
 
 The included export is early evidence, intended to exercise and explain the pipeline. Its [manifest](streamlit_app/data/manifest.json) records 37,172 current player-profile rows and 3,373 rank-growth rows, with profile data as of 2026-09-29. The current Master group contains 59 profiles. Collection happened in development bursts, and there is only a short span of completed historical periods.
 
-In this sample, specialization is also common in lower tiers, so it does not increase steadily with rank. The Master group's **active** playstyle mix looks markedly different from Iron through Diamond, while its all-time mix is closer to the rest of the sample. The sampled Master players were first collected in Diamond and later climbed, which makes that active-pool contrast interesting but also makes this a selected group of climbers. The original question remains open: current growth comparisons do **not** show a clear general specialization advantage or establish a champion-specific climbing strategy. There are only 59 current Master profiles, few completed historical periods, and potential activity from other game modes. More regular snapshots are needed before treating these patterns as stable.
+In this sample, specialization is also common in lower tiers, so it does not increase steadily with rank. The Master group's **recent** playstyle mix looks markedly different from Iron through Diamond, while its lifetime mix is closer to the rest of the sample. The sampled Master players were first collected in Diamond and later climbed, which makes that recent-pool contrast interesting but also makes this a selected group of climbers. The original question remains open: current growth comparisons do **not** show a clear general specialization advantage or establish a champion-specific climbing strategy. There are only 59 current Master profiles, few completed historical periods, and potential activity from other game modes. More regular snapshots are needed before treating these patterns as stable.
 
 ## Try the dashboard
 
@@ -164,7 +164,7 @@ and [method, maintenance and design review](docs/population_weighting.md).
 Use this route for a 60–90 second demo:
 
 1. Start on **Business Sample**: explain the synthetic spending/real profile split, the purchaser denominator and USD cash-only view. The plots show imposed scenario shapes. Follow **Explore the real gameplay analysis** into the existing project, then show the separate branches in the [data-flow diagram](#data-flow).
-2. In **Overview** and **Population Analysis**, compare active and all-time playstyles by tier. The Master active-pool contrast is a finding; lower-tier specialization, 59 Master profiles, and the short observation window are its immediate caveats.
+2. In **Overview** and **Population Analysis**, compare recent and lifetime playstyles by tier. The Master recent-pool contrast is a finding; lower-tier specialization, 59 Master profiles, and the short observation window are its immediate caveats.
 3. Open one champion in **Champion Explorer**, then compare it with the champion universe in **Cross Champion View**. The separate pages keep the individual profile and the cross-champion baseline readable. Explain that role mix describes inferred player roles and that mastery-weighted rank outcomes are estimates.
 
 A recording and public app link are planned.
@@ -374,6 +374,48 @@ dbt build
 
 Use `dbt build --full-refresh` when changing the grain, unique key, or relevant schema of incremental history models. The [dbt README](league_pipeline/README.md) records the validated build context and details. To refresh the dashboard snapshot after a successful Gold build, follow the [export instructions](streamlit_app/README.md#refresh-the-snapshot).
 
+## Analysis windows and naming
+
+Population and time window are separate choices. The tracked player sample is
+the parent population; a window describes which measurements are used. The four
+window names are shared by dashboard labels, Python variables and dbt columns:
+
+| Window | Identifier/prefix | Definition |
+| --- | --- | --- |
+| Lifetime | `lifetime` / `lifetime_` | Cumulative mastery in the latest available snapshot. |
+| Recent activity | `recent` / `recent_` | The existing recent champion-pool rule: currently up to 60 days, with activity thresholds and the short-tracking fallback. |
+| Recent activity with rank follow-up | `recent_rank_observed` | The same recent measurements, restricted to players with a usable LP delta in the latest completed rank period represented in the dataset. Includes positive, zero and negative deltas. |
+| Observed rank periods | `rank_period` / `rank_period_` | Mastery activity and rank outcomes matched within completed rank periods, currently weekly. |
+
+Recent activity remains the default profile window. Existing default controls,
+filters, eligibility rules, weighting and calculations are unchanged. The recent
+rule is not a literal filter for everyone whose last game was within 60 days, and
+mastery can include modes other than ranked. Lifetime describes cumulative API
+mastery, not a complete match history. Dates refer to the exported dataset's
+reference date or completed periods, rather than the day the dashboard is opened.
+
+`latest_rank_period_` names identify latest-period outcomes such as
+`latest_rank_period_lp_delta`; these do not describe the 60-day pool window.
+`tracked_mastery_points_per_day` measures accumulation over the observed tracking
+span and is not a lifetime rate. Window-neutral chart adapters can expose generic
+names such as `playstyle` after selecting the requested window. Rank-period
+exports retain `rank_period_playstyle`, and recent rank-follow-up selections use
+`recent_rank_observed_players` rather than duplicating recent measurement columns.
+
+Snapshots, raw observations, interval deltas and aligned periods remain distinct:
+longitudinal charts label their counting unit, including player–starting-tier
+summaries that can contain more than one row for a player.
+
+The naming migration changes Gold model/relation names and column contracts.
+Deploy the renamed dbt project and rebuild its Gold tables before the next manual
+export; existing warehouse relations are not renamed or removed by this local
+change. Bundled Parquet files have only column names and file-size metadata
+updated, preserving all values, coverage and original export timestamps.
+The versioned synthetic raw cohort retains its original field names and scenario
+fingerprints; the generator and spending mart map those names at the Gold
+boundary. Synthetic purchase fields ending in `_alltime` still describe the
+full generated purchase history, rather than the gameplay mastery window.
+
 ## Python code organization
 
 Keep the module docstring and imports first. Scripts centered on one execution
@@ -400,7 +442,7 @@ signatures, decorators, imports or executable statements.
 
 Extraction tests cover configuration, file output, state operations, pagination, concurrency, and integrity behavior. dbt tests check source and model contracts plus reconciliation rules such as current-record selection, rank-period consistency, and mastery attribution. Dashboard tests cover metrics, snapshot contracts, and page rendering. Run local Python checks from the repository root with `python -m pytest src/extract/tests streamlit_app/tests`; warehouse validation requires its own configured dbt build.
 
-The tests check properties of the implementation; they do not make the tracked players a random sample or turn mastery into match-level evidence. Region, queue, tiers, dates, short observation windows, patch changes, and small groups can all affect comparisons. An inferred role is not an observed lane, and the ranked-mastery share is an estimate rather than a measured percentage of ranked matches. For players tracked under 30 days, the active-pool fallback can admit a one-off pick from another mode. Interpret dashboard results with their denominators, support counts, and snapshot dates.
+The tests check properties of the implementation; they do not make the tracked players a random sample or turn mastery into match-level evidence. Region, queue, tiers, dates, short observation windows, patch changes, and small groups can all affect comparisons. An inferred role is not an observed lane, and the ranked-mastery share is an estimate rather than a measured percentage of ranked matches. For players tracked under 30 days, the recent-pool fallback can admit a one-off pick from another mode. Interpret dashboard results with their denominators, support counts, and snapshot dates.
 
 ## About Orchestration
 

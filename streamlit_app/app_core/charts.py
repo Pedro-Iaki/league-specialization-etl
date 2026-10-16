@@ -62,8 +62,8 @@ def annotate_sparse_cells(
 
 
 def rank_distribution_chart(players: pd.DataFrame) -> go.Figure:
-    frame = players.loc[players["active_playstyle"].isin(PLAYSTYLE_ORDER)].copy()
-    frame["Playstyle"] = frame["active_playstyle"].map(PLAYSTYLE_LABELS)
+    frame = players.loc[players["recent_playstyle"].isin(PLAYSTYLE_ORDER)].copy()
+    frame["Playstyle"] = frame["recent_playstyle"].map(PLAYSTYLE_LABELS)
     color_map = {PLAYSTYLE_LABELS[key]: value for key, value in PLAYSTYLE_COLORS.items()}
     fig = px.box(
         frame,
@@ -81,18 +81,18 @@ def rank_distribution_chart(players: pd.DataFrame) -> go.Figure:
 
 
 def concentration_distribution_chart(players: pd.DataFrame) -> go.Figure:
-    frame = players.loc[players["active_playstyle"].isin(PLAYSTYLE_ORDER)].copy()
+    frame = players.loc[players["recent_playstyle"].isin(PLAYSTYLE_ORDER)].copy()
     metrics = [
-        ("active_top1_share", "Top champion share"),
-        ("active_hhi", "HHI concentration"),
-        ("active_normalized_entropy", "Normalized entropy"),
-        ("active_favoured_champion_count", "Favoured champions"),
+        ("recent_top1_share", "Top champion share"),
+        ("recent_hhi", "HHI concentration"),
+        ("recent_normalized_entropy", "Normalized entropy"),
+        ("recent_favoured_champion_count", "Favoured champions"),
     ]
     fig = make_subplots(rows=2, cols=2, subplot_titles=[label for _, label in metrics])
     for index, (column, _label) in enumerate(metrics):
         row, col = divmod(index, 2)
         for playstyle in PLAYSTYLE_ORDER:
-            values = frame.loc[frame["active_playstyle"] == playstyle, column].dropna()
+            values = frame.loc[frame["recent_playstyle"] == playstyle, column].dropna()
             fig.add_trace(
                 go.Box(
                     y=values,
@@ -140,7 +140,7 @@ def population_box_chart(frame: pd.DataFrame, value: str, group: str = "tier", *
 
 def playstyle_composition_chart(composition: pd.DataFrame) -> go.Figure:
     frame = composition.copy()
-    frame["Playstyle"] = frame["active_playstyle"].map(PLAYSTYLE_LABELS)
+    frame["Playstyle"] = frame["recent_playstyle"].map(PLAYSTYLE_LABELS)
     color_map = {PLAYSTYLE_LABELS[key]: value for key, value in PLAYSTYLE_COLORS.items()}
     fig = px.bar(
         frame,
@@ -202,13 +202,13 @@ def transition_heatmap(matrix: pd.DataFrame, counts: pd.DataFrame | None = None)
             customdata=counts.to_numpy(),
             text=np.where(np.isfinite(data), labels_array, ""),
             texttemplate="%{text}",
-            hovertemplate="Active: %{y}<br>All-time: %{x}<br>Share: %{z:.1%}<br>Players: %{customdata:,.0f}<extra></extra>",
+            hovertemplate="Recent: %{y}<br>Lifetime: %{x}<br>Share: %{z:.1%}<br>Players: %{customdata:,.0f}<extra></extra>",
             colorbar={"title": "Row share", "tickformat": ".0%"},
         )
     )
     annotate_sparse_cells(fig, labels, labels, data, labels_array)
-    fig.update_xaxes(title="All-time mastery playstyle")
-    fig.update_yaxes(title="Active-pool playstyle", autorange="reversed")
+    fig.update_xaxes(title="Lifetime mastery playstyle")
+    fig.update_yaxes(title="Recent-pool playstyle", autorange="reversed")
     return style_figure(fig, height=500)
 
 
@@ -479,7 +479,7 @@ def growth_by_tier_chart(summary: pd.DataFrame) -> go.Figure:
 
 def playstyle_outcome_chart(frame: pd.DataFrame, value: str, title: str) -> go.Figure:
     plot = frame.copy()
-    plot["Playstyle"] = plot["playstyle"].map(PLAYSTYLE_LABELS)
+    plot["Playstyle"] = plot["rank_period_playstyle"].map(PLAYSTYLE_LABELS)
     fig = px.bar(
         plot,
         x="Playstyle",
@@ -487,7 +487,7 @@ def playstyle_outcome_chart(frame: pd.DataFrame, value: str, title: str) -> go.F
         color="Playstyle",
         color_discrete_map={PLAYSTYLE_LABELS[key]: color for key, color in PLAYSTYLE_COLORS.items()},
         category_orders={"Playstyle": [PLAYSTYLE_LABELS[key] for key in PLAYSTYLE_ORDER]},
-        custom_data=["observed_player_count", "observed_period_count"],
+        custom_data=["observed_player_tier_count", "observed_period_count"],
     )
     fig.update_layout(showlegend=False)
     value_format = "%{y:.1%}" if value == "observed_win_rate" else "%{y:+.2f} LP/game"
@@ -511,11 +511,11 @@ def champion_efficiency_landscape(frame: pd.DataFrame, x_label: str, y_label: st
         plot,
         x="specialization_axis",
         y="outcome",
-        size="observed_player_count",
+        size="observed_player_tier_count",
         hover_name="champion_name",
         color="observed_win_rate",
         color_continuous_scale="Tealgrn",
-        custom_data=["observed_player_count", "observed_period_count"],
+        custom_data=["observed_player_tier_count", "observed_period_count"],
         size_max=36,
     )
     fig.add_hline(y=0, line_dash="dot", line_color=MUTED, opacity=0.65)
@@ -549,17 +549,17 @@ def champion_tier_outcome_heatmap(
     else:
         plot["value"] = plot[metric]
     tiers = [tier for tier in TIER_ORDER if tier in set(plot["starting_tier"])]
-    styles = [style for style in PLAYSTYLE_ORDER if style in set(plot["playstyle"])]
-    values = plot.pivot(index="playstyle", columns="starting_tier", values="value").reindex(
+    styles = [style for style in PLAYSTYLE_ORDER if style in set(plot["rank_period_playstyle"])]
+    values = plot.pivot(index="rank_period_playstyle", columns="starting_tier", values="value").reindex(
         index=styles, columns=tiers
     )
-    counts = plot.pivot(index="playstyle", columns="starting_tier", values="observed_player_count").reindex(
+    counts = plot.pivot(index="rank_period_playstyle", columns="starting_tier", values="observed_player_tier_count").reindex(
         index=styles, columns=tiers
     )
-    raw_values = plot.pivot(index="playstyle", columns="starting_tier", values=metric).reindex(
+    raw_values = plot.pivot(index="rank_period_playstyle", columns="starting_tier", values=metric).reindex(
         index=styles, columns=tiers
     )
-    baseline_values = plot.pivot(index="playstyle", columns="starting_tier", values="baseline").reindex(
+    baseline_values = plot.pivot(index="rank_period_playstyle", columns="starting_tier", values="baseline").reindex(
         index=styles, columns=tiers
     )
     if not show_sparse:
@@ -629,9 +629,9 @@ def champion_tier_outcome_heatmap(
 
 def champion_playstyle_heatmap(summary: pd.DataFrame) -> go.Figure:
     pivot = summary.pivot(
-        index="primary_champion_name", columns="playstyle", values="lp_per_game_lift_vs_tier"
+        index="primary_champion_name", columns="rank_period_playstyle", values="lp_per_game_lift_vs_tier"
     ).reindex(columns=PLAYSTYLE_ORDER)
-    game_pivot = summary.pivot(index="primary_champion_name", columns="playstyle", values="observed_games").reindex(
+    game_pivot = summary.pivot(index="primary_champion_name", columns="rank_period_playstyle", values="observed_games").reindex(
         index=pivot.index, columns=PLAYSTYLE_ORDER
     )
     labels = [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER]
@@ -682,24 +682,24 @@ def champion_landscape_chart(champions: pd.DataFrame, minimum_games: int = 100) 
     frame["Observed games"] = frame["observed_games"].fillna(0)
     fig = px.scatter(
         frame,
-        x="active_play_rate",
+        x="recent_pool_membership_rate",
         y="lp_per_game_lift_vs_tier",
         size="Observed games",
         color="Dominant role",
         color_discrete_map=ROLE_COLORS,
         hover_name="champion_name",
-        custom_data=["primary_player_count", "observed_games", "observed_win_rate"],
+        custom_data=["recent_primary_player_count", "observed_games", "observed_win_rate"],
         size_max=34,
     )
     fig.add_hline(y=0, line_dash="dot", line_color=MUTED, opacity=0.7)
     fig.update_traces(
         hovertemplate=(
-            "<b>%{hovertext}</b><br>Active play rate: %{x:.2%}<br>"
+            "<b>%{hovertext}</b><br>Recent-pool membership rate: %{x:.2%}<br>"
             "LP/game lift: %{y:+.2f}<br>Primary players: %{customdata[0]:,}<br>"
             "Observed games: %{customdata[1]:,}<br>Observed win rate: %{customdata[2]:.1%}<extra></extra>"
         )
     )
-    fig.update_xaxes(title="Active-pool play rate", tickformat=".1%")
+    fig.update_xaxes(title="Recent-pool play rate", tickformat=".1%")
     fig.update_yaxes(title="LP/game lift vs starting-tier baseline")
     return style_figure(fig, height=520, legend_title="Dominant role")
 
@@ -715,7 +715,7 @@ def champion_playstyle_chart(profile: pd.DataFrame) -> go.Figure:
         color="Playstyle",
         color_discrete_map=color_map,
         category_orders={"Playstyle": [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER]},
-        custom_data=["observed_games", "observed_player_count", "current_player_count"],
+        custom_data=["observed_games", "observed_player_tier_count", "current_player_count"],
     )
     fig.add_hline(y=0, line_dash="dot", line_color=MUTED)
     fig.update_traces(

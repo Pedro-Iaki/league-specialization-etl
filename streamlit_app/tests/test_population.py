@@ -12,7 +12,7 @@ from app_core.analysis import (
     ranked_share_by_dimensions,
     role_playstyle_skew,
 )
-from app_core.metrics import active_alltime_transition
+from app_core.metrics import recent_lifetime_comparison
 from app_core.population import (
     WEIGHT,
     calibrate_population,
@@ -33,12 +33,12 @@ def profiles() -> pd.DataFrame:
             "region": "BR1",
             "queue": "RANKED_SOLO_5x5",
             "main_role": "Top",
-            "alltime_playstyle": ["specialist"] * 4 + ["generalist"] * 4,
-            "active_playstyle": "specialist",
-            "alltime_hhi": 0.5,
-            "alltime_top1_share": 0.5,
-            "alltime_normalized_entropy": 0.5,
-            "top_champion_name": "Ahri",
+            "lifetime_playstyle": ["specialist"] * 4 + ["generalist"] * 4,
+            "recent_playstyle": "specialist",
+            "lifetime_hhi": 0.5,
+            "lifetime_top1_share": 0.5,
+            "lifetime_normalized_entropy": 0.5,
+            "lifetime_primary_champion_name": "Ahri",
         }
     )
 
@@ -88,10 +88,10 @@ def test_calibration_precedes_filters_and_within_tier_shares_do_not_change():
     expected = 0.166 / (0.166 + 4 * 0.0368)
     summary = category_summary(selected, "tier").set_index("tier")
     assert summary.loc["BRONZE", "estimated_share"] == pytest.approx(expected)
-    unweighted = playstyle_composition(raw, "All-time").sort_values(["tier", "playstyle"])
-    estimate = playstyle_composition(weighted, "All-time").sort_values(["tier", "playstyle"])
+    unweighted = playstyle_composition(raw, "Lifetime").sort_values(["tier", "playstyle"])
+    estimate = playstyle_composition(weighted, "Lifetime").sort_values(["tier", "playstyle"])
     assert np.allclose(unweighted["share"], estimate["share"])
-    roles = playstyle_composition(weighted, "All-time", "main_role").set_index("playstyle")
+    roles = playstyle_composition(weighted, "Lifetime", "main_role").set_index("playstyle")
     assert roles.loc["specialist", "share"] == pytest.approx(0.166 / 0.2028)
 
 
@@ -113,26 +113,26 @@ def test_region_queue_scopes_duplicate_indices_and_unknown_tiers():
 
 def test_weighted_transition_uses_weights_but_support_remains_raw_counts():
     weighted, _ = calibrate_population(profiles())
-    matrix = active_alltime_transition(weighted)
+    matrix = recent_lifetime_comparison(weighted)
     assert matrix.loc["specialist", "specialist"] == pytest.approx(0.166 / 0.2028)
-    counts = active_alltime_transition(weighted, normalize=False)
+    counts = recent_lifetime_comparison(weighted, normalize=False)
     assert counts.loc["specialist", "specialist"] == 4
-    skew = role_playstyle_skew(weighted, "All-time")
+    skew = role_playstyle_skew(weighted, "Lifetime")
     assert skew.loc["Top", "specialist"] == pytest.approx(0)
 
 
 def test_unsupported_rows_are_excluded_from_bands_transitions_and_support():
     raw = profiles()
-    raw["total_mastery_points"] = np.arange(1, len(raw) + 1) * 100_000
+    raw["lifetime_mastery_points"] = np.arange(1, len(raw) + 1) * 100_000
     unknown = raw.iloc[[0]].copy()
     unknown["tier"] = "UNRANKED"
-    unknown["total_mastery_points"] = 99_000_000
+    unknown["lifetime_mastery_points"] = 99_000_000
     weighted, _ = calibrate_population(pd.concat([raw, unknown], ignore_index=True))
-    assert active_alltime_transition(weighted, normalize=False).to_numpy().sum() == 8
-    assert playstyle_composition(weighted, "All-time", "main_role")["players"].sum() == 8
-    assert playstyle_mastery_bands(weighted, "All-time", 0)["players"].sum() == 8
-    assert mastery_normalized_composition(weighted, "All-time", "main_role")["players"].sum() == 8
-    assert role_playstyle_skew(weighted, "All-time").attrs["support_counts"].to_numpy().sum() == 8
+    assert recent_lifetime_comparison(weighted, normalize=False).to_numpy().sum() == 8
+    assert playstyle_composition(weighted, "Lifetime", "main_role")["players"].sum() == 8
+    assert playstyle_mastery_bands(weighted, "Lifetime", 0)["players"].sum() == 8
+    assert mastery_normalized_composition(weighted, "Lifetime", "main_role")["players"].sum() == 8
+    assert role_playstyle_skew(weighted, "Lifetime").attrs["support_counts"].to_numpy().sum() == 8
     weighted["starting_tier"] = weighted["tier"]
     weighted["current_main_role"] = "Top"
     weighted["favoured_champions"] = [["Ahri"]] * len(weighted)

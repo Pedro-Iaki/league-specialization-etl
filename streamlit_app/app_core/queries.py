@@ -30,9 +30,9 @@ DATASET_QUERIES = {
             select distinct a.player_id, a.champion_key, p.region, p.queue, p.tier
             from league_pipeline.gold.fct_players_champion_activity a
             join league_pipeline.gold.mart_player_profile p on a.player_id = p.player_id
-            where a.is_active
+            where a.is_recent_pool_champion
         ), population as (
-            select region, queue, tier, count(distinct player_id) as pool_player_count
+            select region, queue, tier, count(distinct player_id) as recent_pool_player_count
             from pool group by region, queue, tier
         ), totals as (
             select region, queue, tier, champion_key, count(*) as player_count
@@ -45,7 +45,7 @@ DATASET_QUERIES = {
             group by a.region, a.queue, a.tier, a.champion_key, b.champion_key
         )
         select r.champion_key_a, r.champion_name_a, r.champion_key_b, r.champion_name_b,
-               p.region, p.queue, p.tier, p.pool_player_count,
+               p.region, p.queue, p.tier, p.recent_pool_player_count,
                coalesce(a.player_count, 0) as player_count_a,
                coalesce(b.player_count, 0) as player_count_b,
                coalesce(j.pair_player_count, 0) as pair_player_count
@@ -59,32 +59,32 @@ DATASET_QUERIES = {
             and p.region <=> j.region and p.queue <=> j.queue and p.tier <=> j.tier
     """,
     "champion_population_activity": """
-        with active as (
+        with recent_pool as (
             select a.champion_key, p.region, p.queue, p.tier,
-                   count(*) as active_player_count, avg(a.recent_share) as mean_active_share,
+                   count(*) as recent_player_count, avg(a.recent_champion_share) as mean_recent_share,
                    count(p.role_top_pct) as role_sample_player_count,
                    avg(p.role_top_pct) as role_top_pct, avg(p.role_jungle_pct) as role_jungle_pct,
                    avg(p.role_middle_pct) as role_middle_pct, avg(p.role_bottom_pct) as role_bottom_pct,
                    avg(p.role_support_pct) as role_support_pct
             from league_pipeline.gold.fct_players_champion_activity a
             join league_pipeline.gold.mart_player_profile p on a.player_id = p.player_id
-            where a.is_active
+            where a.is_recent_pool_champion
             group by a.champion_key, p.region, p.queue, p.tier
         ), population as (
-            select p.region, p.queue, p.tier, count(distinct p.player_id) as active_pool_player_count
+            select p.region, p.queue, p.tier, count(distinct p.player_id) as recent_pool_player_count
             from league_pipeline.gold.mart_player_profile p
             join league_pipeline.gold.fct_players_champion_activity a on p.player_id = a.player_id
-            where a.is_active
+            where a.is_recent_pool_champion
             group by p.region, p.queue, p.tier
         )
         select c.name as champion_name, p.region, p.queue, p.tier,
-               coalesce(a.active_player_count, 0) as active_player_count,
-               p.active_pool_player_count, a.mean_active_share,
+               coalesce(a.recent_player_count, 0) as recent_player_count,
+               p.recent_pool_player_count, a.mean_recent_share,
                coalesce(a.role_sample_player_count, 0) as role_sample_player_count,
                a.role_top_pct, a.role_jungle_pct, a.role_middle_pct, a.role_bottom_pct, a.role_support_pct
         from league_pipeline.silver.dim_champions c
         cross join population p
-        left join active a on c.key = a.champion_key
+        left join recent_pool a on c.key = a.champion_key
             and p.region <=> a.region and p.queue <=> a.queue and p.tier <=> a.tier
     """,
     "business_players": "select " + ", ".join(BUSINESS_PUBLIC_COLUMNS) + " from league_pipeline.gold.mart_player_spending",
@@ -95,13 +95,13 @@ DATASET_QUERIES = {
             p.queue,
             p.tier,
             m.champion_points,
-            p.total_mastery_points,
-            m.champion_points / p.total_mastery_points as mastery_share
+            p.lifetime_mastery_points,
+            m.champion_points / p.lifetime_mastery_points as mastery_share
         from league_pipeline.silver.fct_masteries_current m
         inner join league_pipeline.gold.mart_player_profile p on m.puuid = p.player_id
         inner join league_pipeline.silver.dim_champions c on m.champion_key = c.key
         where m.champion_points >= 15000
-          and p.total_mastery_points > 0
+          and p.lifetime_mastery_points > 0
           and p.tier in ('IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER')
     """,
     "champion_tier_mastery": """
@@ -152,14 +152,14 @@ DATASET_QUERIES = {
             rank_score,
             total_games,
             win_rate,
-            form_window_days,
-            games_recent,
-            lp_delta_recent,
-            win_rate_recent,
-            lp_per_game_recent,
-            lp_per_day_recent,
-            games_per_day_recent,
-            form_days_covered,
+            latest_rank_period_window_days,
+            latest_rank_period_games,
+            latest_rank_period_lp_delta,
+            latest_rank_period_win_rate,
+            latest_rank_period_lp_per_game,
+            latest_rank_period_lp_per_day,
+            latest_rank_period_games_per_day,
+            latest_rank_period_days_covered,
             role_top_pct,
             role_jungle_pct,
             role_middle_pct,
@@ -169,27 +169,27 @@ DATASET_QUERIES = {
             main_role,
             main_role_weight,
             role_champions_sampled_count,
-            active_champion_count,
-            recent_total_points,
-            active_primary_champion_key,
-            active_primary_champion_name,
-            active_playstyle,
-            active_top1_share,
-            active_favoured_champion_count,
-            active_favoured_champions_share,
-            active_hhi,
-            active_normalized_entropy,
-            champions_with_mastery,
-            total_mastery_points,
-            top_champion_key,
-            top_champion_name,
-            alltime_top1_share,
-            alltime_favoured_champion_count,
-            alltime_favoured_champions_share,
-            alltime_hhi,
-            alltime_normalized_entropy,
-            alltime_playstyle,
-            alltime_points_per_day,
+            recent_champion_count,
+            recent_mastery_points,
+            recent_primary_champion_key,
+            recent_primary_champion_name,
+            recent_playstyle,
+            recent_top1_share,
+            recent_favoured_champion_count,
+            recent_favoured_champions_share,
+            recent_hhi,
+            recent_normalized_entropy,
+            lifetime_champion_count,
+            lifetime_mastery_points,
+            lifetime_primary_champion_key,
+            lifetime_primary_champion_name,
+            lifetime_top1_share,
+            lifetime_favoured_champion_count,
+            lifetime_favoured_champions_share,
+            lifetime_hhi,
+            lifetime_normalized_entropy,
+            lifetime_playstyle,
+            tracked_mastery_points_per_day,
             days_since_last_play,
             days_tracked
         from league_pipeline.gold.mart_player_profile
@@ -207,18 +207,18 @@ DATASET_QUERIES = {
             select
                 player_id,
                 previous_tier as starting_tier,
-                percentile(pool_hhi, 0.5) as specialization_hhi,
-                percentile(pool_top1_share, 0.5) as top_champion_share,
-                percentile(pool_normalized_entropy, 0.5) as normalized_entropy,
+                percentile(rank_period_hhi, 0.5) as specialization_hhi,
+                percentile(rank_period_top1_share, 0.5) as top_champion_share,
+                percentile(rank_period_normalized_entropy, 0.5) as normalized_entropy,
                 percentile(estimated_ranked_mastery_share, 0.5) as estimated_ranked_mastery_share,
                 percentile(lp_per_game_lift_vs_tier, 0.5) as climbing_efficiency,
                 sum(wins_delta) / nullif(sum(games_delta), 0) as win_rate,
                 count(*) as period_count,
                 sum(games_delta) as games
-            from league_pipeline.gold.mart_player_delta_history
+            from league_pipeline.gold.mart_player_rank_periods
             where is_lp_growth_eligible
-              and playstyle is not null
-              and pool_hhi is not null
+              and rank_period_playstyle is not null
+              and rank_period_hhi is not null
               and lp_per_game_lift_vs_tier is not null
             group by player_id, previous_tier
         )
@@ -245,20 +245,20 @@ DATASET_QUERIES = {
             select
                 player_id,
                 previous_tier as starting_tier,
-                playstyle,
+                rank_period_playstyle,
                 percentile(lp_per_game_lift_vs_tier, 0.5) as climbing_efficiency,
                 sum(wins_delta) / nullif(sum(games_delta), 0) as win_rate,
                 count(*) as period_count,
                 sum(games_delta) as games
-            from league_pipeline.gold.mart_player_delta_history
+            from league_pipeline.gold.mart_player_rank_periods
             where is_lp_growth_eligible
-              and playstyle is not null
+              and rank_period_playstyle is not null
               and lp_per_game_lift_vs_tier is not null
-            group by player_id, previous_tier, playstyle
+            group by player_id, previous_tier, rank_period_playstyle
         )
         select
             p.starting_tier,
-            p.playstyle,
+            p.rank_period_playstyle,
             current_player.region,
             current_player.queue,
             current_player.main_role as current_main_role,
@@ -274,7 +274,7 @@ DATASET_QUERIES = {
     "ranked_mastery_cohorts": """
         with latest as (
             select max(period_bucket_end) as latest_period_end
-            from league_pipeline.gold.mart_player_delta_history
+            from league_pipeline.gold.mart_player_rank_periods
             where estimated_ranked_mastery_share is not null
         ),
         windows as (
@@ -291,7 +291,7 @@ DATASET_QUERIES = {
                 p.previous_tier,
                 p.period_bucket_end,
                 p.estimated_ranked_mastery_share
-            from league_pipeline.gold.mart_player_delta_history p
+            from league_pipeline.gold.mart_player_rank_periods p
             cross join latest l
             cross join windows w
             where p.estimated_ranked_mastery_share is not null

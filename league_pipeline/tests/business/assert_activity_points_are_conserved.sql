@@ -5,11 +5,11 @@ with player_totals as (
 
     select
         player_id,
-        count(distinct recent_total_points) as distinct_stated_totals,
-        max(recent_total_points) as stated_total_points,
-        sum(recent_champion_points) as calculated_total_points,
-        sum(recent_share) as calculated_share,
-        count(recent_share) as populated_share_count
+        count(distinct recent_mastery_points) as distinct_stated_totals,
+        max(recent_mastery_points) as stated_total_points,
+        sum(recent_champion_mastery_points) as calculated_total_points,
+        sum(recent_champion_share) as calculated_share,
+        count(recent_champion_share) as populated_share_count
     from {{ ref('fct_players_champion_activity') }}
     group by player_id
 

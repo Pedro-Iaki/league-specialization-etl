@@ -13,7 +13,7 @@ The full model catalog is in [docs/model_reference.md](docs/model_reference.md).
 ## Main analytical outputs
 
 - `mart_player_profile`
-- `mart_player_delta_history`
+- `mart_player_rank_periods`
 - `mart_champion_profile`
 - `mart_champion_cooccurrence`
 - `mart_player_spending` — optional synthetic spending scenario over frozen real profiles; separate from gameplay marts.
@@ -51,7 +51,7 @@ The sample loader clears the cohort completion marker before replacing transacti
 
 The four-chart dashboard update on 2026-10-09 added recent fiat-only discounted-event count, discounted share and conditional mean to the spending mart. `dbt build --select mart_player_spending assert_business_sample_reconciles` passed **5/5 resources** (one sample table and four tests). Reconciliation now verifies cash-only discount counts/ratios/conditional means against facts for every player, including nulls for absent denominators. The business-only export still has 24,990 rows and now has 42 public columns. Real gameplay models and raw tables were not modified.
 
-The current **core-profile refresh, generator 1.2 (2026-10-09)** includes 24,990 players and 3,900,172 generated events. Ranked share/recent games-day observations are optional and present for 1,066/1,074 players; all other required core context is complete. The sample-only build passed 19/19 resources and the anonymous export contains 24,990 rows. Source fiat USD reconciles to 7,439,491.86 across generated history and 283,693.66 in the recent window. Of 37,172 available profiles, 12,182 lack required core/active context. Prior runs below record earlier selection policies.
+The current **core-profile refresh, generator 1.2 (2026-10-09)** includes 24,990 players and 3,900,172 generated events. Ranked share/recent games-day observations are optional and present for 1,066/1,074 players; all other required core context is complete. The sample-only build passed 19/19 resources and the anonymous export contains 24,990 rows. Source fiat USD reconciles to 7,439,491.86 across generated history and 283,693.66 in the recent window. Of 37,172 available profiles, 12,182 lack required core/recent-pool context. Prior runs below record earlier selection policies.
 
 The intermediate **2026-10-09 strict complete-data refresh** selected all 1,066 eligible players from 37,172 current profiles. Every requested real feature is observed; snapshot dates span 2026-09-23 through 2026-09-28 with common as-of 2026-09-29. Bronze/Silver contained 200,827 events, and Gold/public export each contain 1,066 players. The targeted build again passed 19/19 resources. Source fiat USD totals reconcile to 315,627.90 across generated history and 11,870.10 in the recent window. Generated history begins on 2018-10-04. The remaining 36,106 profiles failed complete-data eligibility; there is no row cap.
 

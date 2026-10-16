@@ -136,9 +136,9 @@ else:
 
         section("Content preference", "Does champion-pool concentration relate to cosmetic preference?",
                 "Content means champion unlocks and cosmetics. A cosmetic event can use RP, but adds no cash revenue to this chart.")
-        axes = {"Leading champion share": "active_top1_share", "Champion-pool diversity (entropy)": "active_normalized_entropy"}
+        axes = {"Leading champion share": "recent_top1_share", "Champion-pool diversity (entropy)": "recent_normalized_entropy"}
         axis_label = st.selectbox("Champion-pool measure", list(axes))
-        dimension = "active_playstyle"
+        dimension = "recent_playstyle"
         summary = cosmetic_summary(filtered, axes[axis_label], dimension)
         plot = supported(summary, ["players"], ["mean_cosmetic_share", "q1", "q3"], minimum, "business_cosmetics")
         if plot.empty or plot["mean_cosmetic_share"].notna().sum() == 0:
@@ -155,7 +155,7 @@ else:
         if not CASH_DISCOUNT_COLUMNS.issubset(filtered.columns):
             st.info("This snapshot does not include a cash-only discount breakdown.")
         else:
-            dimensions = {"Role": "main_role", "Tier": "tier", "Playstyle": "active_playstyle"}
+            dimensions = {"Role": "main_role", "Tier": "tier", "Playstyle": "recent_playstyle"}
             dimension = dimensions[st.selectbox("Compare cash discounts by", list(dimensions))]
             summary = discount_summary(filtered, dimension)
             plot = supported(summary, ["cash_purchasers", "discounted_cash_purchasers"], ["cash_discount_mean"], minimum, "business_discounts")

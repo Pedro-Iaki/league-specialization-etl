@@ -14,9 +14,9 @@ with growth as (
 
 select g.rank_period_id
 from growth g
-inner join {{ ref('mart_player_delta_history') }} p
+inner join {{ ref('mart_player_rank_periods') }} p
     on g.rank_period_id = p.rank_period_id
-where abs(g.attributed_share - p.pool_favoured_champions_share) > 0.000001
+where abs(g.attributed_share - p.rank_period_favoured_champions_share) > 0.000001
    or abs(g.attributed_games - g.attributed_share * p.games_delta) > 0.000001
    or abs(g.attributed_wins - g.attributed_share * p.wins_delta) > 0.000001
    or abs(g.attributed_lp_delta - g.attributed_share * p.lp_delta) > 0.000001

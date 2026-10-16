@@ -14,13 +14,13 @@ current_activity as (
     select
         champion_key,
         player_id,
-        recent_share
+        recent_champion_share
     from {{ ref('fct_players_champion_activity') }}
-    where is_active
+    where is_recent_pool_champion
 
 ),
 
-active_population as (
+recent_population as (
 
     select count(distinct player_id) as player_count
     from current_activity
@@ -31,8 +31,8 @@ activity_metrics as (
 
     select
         champion_key,
-        count(distinct player_id) as active_player_count,
-        avg(recent_share) as avg_active_pool_share
+        count(distinct player_id) as recent_player_count,
+        avg(recent_champion_share) as avg_recent_pool_share
     from current_activity
     group by champion_key
 
@@ -41,16 +41,16 @@ activity_metrics as (
 primary_player_metrics as (
 
     select
-        active_primary_champion_key as champion_key,
-        count(*) as primary_player_count,
-        count(lp_per_game_recent) as recent_form_player_count,
+        recent_primary_champion_key as champion_key,
+        count(*) as recent_primary_player_count,
+        count(latest_rank_period_lp_per_game) as latest_rank_period_player_count,
         avg(rank_score) as avg_current_rank_score,
         percentile(rank_score, 0.5) as median_current_rank_score,
-        avg(lp_per_game_recent) as avg_recent_lp_per_game,
-        avg(win_rate_recent) as avg_recent_win_rate
+        avg(latest_rank_period_lp_per_game) as avg_latest_rank_period_lp_per_game,
+        avg(latest_rank_period_win_rate) as avg_latest_rank_period_win_rate
     from {{ ref('mart_player_profile') }}
-    where active_primary_champion_key is not null
-    group by active_primary_champion_key
+    where recent_primary_champion_key is not null
+    group by recent_primary_champion_key
 
 ),
 
@@ -62,11 +62,11 @@ growth_metrics as (
 
     select
         champion_key,
-        count(*) as observed_player_count,
+        count(*) as observed_player_tier_count,
         sum(observed_period_count) as observed_period_count,
         sum(attributed_games) as attributed_games,
         avg(player_mean_champion_share) as mean_commitment,
-        avg(player_mean_pool_hhi) as mean_pool_hhi,
+        avg(player_mean_rank_period_hhi) as mean_rank_period_hhi,
         avg(player_win_rate) as observed_win_rate,
         avg(player_lp_per_game) as expected_lp_per_game,
         avg(player_lp_per_day) as expected_lp_per_day,
@@ -98,24 +98,24 @@ select
     c.expected_positions,
     ao.as_of_date,
 
-    coalesce(a.active_player_count, 0) as active_player_count,
-    p.player_count as active_pool_player_count,
-    {{ dbt_utils.safe_divide('coalesce(a.active_player_count, 0)', 'p.player_count') }} as active_play_rate,
-    a.avg_active_pool_share,
+    coalesce(a.recent_player_count, 0) as recent_player_count,
+    p.player_count as recent_pool_player_count,
+    {{ dbt_utils.safe_divide('coalesce(a.recent_player_count, 0)', 'p.player_count') }} as recent_pool_membership_rate,
+    a.avg_recent_pool_share,
 
-    coalesce(pp.primary_player_count, 0) as primary_player_count,
-    coalesce(pp.recent_form_player_count, 0) as recent_form_player_count,
+    coalesce(pp.recent_primary_player_count, 0) as recent_primary_player_count,
+    coalesce(pp.latest_rank_period_player_count, 0) as latest_rank_period_player_count,
     pp.avg_current_rank_score,
     pp.median_current_rank_score,
-    pp.avg_recent_lp_per_game,
-    pp.avg_recent_win_rate,
+    pp.avg_latest_rank_period_lp_per_game,
+    pp.avg_latest_rank_period_win_rate,
 
-    coalesce(g.observed_player_count, 0) as observed_player_count,
+    coalesce(g.observed_player_tier_count, 0) as observed_player_tier_count,
     coalesce(g.observed_period_count, 0) as observed_period_count,
     coalesce(g.attributed_games, 0) as attributed_games,
     coalesce(g.attributed_games, 0) as observed_games,
     g.mean_commitment,
-    g.mean_pool_hhi,
+    g.mean_rank_period_hhi,
     g.observed_win_rate,
     g.expected_lp_per_game,
     g.expected_lp_per_day,
@@ -137,7 +137,7 @@ select
     w.avg_support_pct as role_support_pct
 from {{ ref('dim_champions') }} c
 cross join as_of ao
-cross join active_population p
+cross join recent_population p
 left join activity_metrics a on c.key = a.champion_key
 left join primary_player_metrics pp on c.key = pp.champion_key
 left join growth_metrics g on c.key = g.champion_key

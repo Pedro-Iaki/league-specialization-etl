@@ -1,13 +1,13 @@
 {% macro champion_player_growth(include_playstyle=false) %}
--- One player/champion/starting-tier vote, optionally within observed playstyle.
+-- One player/champion/starting-tier vote, optionally within observed rank_period_playstyle.
 -- Derive each cohort from periods; do not combine precomputed subgroup medians.
 with selected as (
     select g.*,
         previous_tier as starting_tier,
-        {% if include_playstyle %}playstyle{% else %}cast(null as string){% endif %} as cohort_playstyle
+        {% if include_playstyle %}rank_period_playstyle{% else %}cast(null as string){% endif %} as cohort_playstyle
     from {{ ref('fct_players_period_champion_growth') }} g
     where previous_tier is not null
-    {% if include_playstyle %}and playstyle is not null{% endif %}
+    {% if include_playstyle %}and rank_period_playstyle is not null{% endif %}
 ), ordered as (
     select *,
         sum(attribution_share) over (
@@ -35,8 +35,8 @@ with selected as (
         count(*) as observed_period_count,
         sum(attributed_games) as attributed_games,
         avg(attribution_share) as player_mean_champion_share,
-        avg(pool_hhi) as player_mean_pool_hhi,
-        avg(pool_top1_share) as player_mean_pool_top1_share,
+        avg(rank_period_hhi) as player_mean_rank_period_hhi,
+        avg(rank_period_top1_share) as player_mean_rank_period_top1_share,
         sum(attributed_wins) / nullif(sum(attributed_games), 0) as player_win_rate,
         sum(attributed_lp_delta) / nullif(sum(attributed_games), 0) as player_lp_per_game,
         sum(attributed_lp_delta) / nullif(sum(attribution_share * period_in_days), 0) as player_lp_per_day,
@@ -57,13 +57,13 @@ with player_growth as (
     {{ champion_player_growth(include_playstyle) }}
 )
 select p.region, p.queue, p.champion_key, c.name as champion_name,
-    p.starting_tier, p.cohort_playstyle as playstyle,
+    p.starting_tier, p.cohort_playstyle as rank_period_playstyle,
     '{% if include_playstyle %}champion_tier_playstyle{% else %}champion_tier{% endif %}' as cohort_scope,
-    count(*) as observed_player_count,
+    count(*) as observed_player_tier_count,
     sum(observed_period_count) as observed_period_count,
     sum(attributed_games) as attributed_games,
     avg(player_mean_champion_share) as mean_commitment,
-    avg(player_mean_pool_hhi) as mean_pool_hhi,
+    avg(player_mean_rank_period_hhi) as mean_rank_period_hhi,
     avg(player_win_rate) as observed_win_rate,
     avg(player_lp_per_game) as expected_lp_per_game,
     avg(player_lp_per_day) as expected_lp_per_day,

@@ -11,19 +11,19 @@ from app_core.charts import (
     transition_heatmap,
 )
 from app_core.config import MIN_SUPPORT_PLAYERS
-from app_core.metrics import active_alltime_transition
+from app_core.metrics import recent_lifetime_comparison
 
 
 def test_role_heatmap_distinguishes_missing_support_from_zero_difference() -> None:
     players = pd.DataFrame({
-        "active_playstyle": ["specialist", "specialist", "specialist", "generalist", "generalist"],
+        "recent_playstyle": ["specialist", "specialist", "specialist", "generalist", "generalist"],
         "main_role": ["Top", "Top", "Top", "Middle", "Middle"],
-        "active_hhi": [0.5] * 5,
-        "active_top1_share": [0.5] * 5,
-        "active_normalized_entropy": [0.5] * 5,
-        "active_primary_champion_name": ["Ahri"] * 5,
+        "recent_hhi": [0.5] * 5,
+        "recent_top1_share": [0.5] * 5,
+        "recent_normalized_entropy": [0.5] * 5,
+        "recent_primary_champion_name": ["Ahri"] * 5,
     })
-    result = role_playstyle_skew(players, "Active (60 days)")
+    result = role_playstyle_skew(players, "Recent activity")
     counts = result.attrs["support_counts"]
     assert counts.loc["Top", "specialist"] == MIN_SUPPORT_PLAYERS
     assert result.loc["Top", "generalist"] == -40
@@ -60,11 +60,11 @@ def test_ranked_share_heatmap_mutes_thin_cell_but_keeps_count() -> None:
 
 def test_transition_heatmap_keeps_measured_zero_in_supported_row() -> None:
     players = pd.DataFrame({
-        "active_playstyle": ["specialist"] * 3 + ["generalist"],
-        "alltime_playstyle": ["specialist"] * 3 + ["generalist"],
+        "recent_playstyle": ["specialist"] * 3 + ["generalist"],
+        "lifetime_playstyle": ["specialist"] * 3 + ["generalist"],
     })
-    matrix = active_alltime_transition(players)
-    matrix.attrs["support_counts"] = active_alltime_transition(players, normalize=False)
+    matrix = recent_lifetime_comparison(players)
+    matrix.attrs["support_counts"] = recent_lifetime_comparison(players, normalize=False)
     chart = transition_heatmap(matrix)
     assert chart.data[0].z[0][3] == 0
     assert "n=0" in chart.data[0].text[0][3]
@@ -78,8 +78,8 @@ def test_transition_heatmap_keeps_measured_zero_in_supported_row() -> None:
 def test_champion_tier_heatmap_reveals_low_support_cell_on_request() -> None:
     styles = pd.DataFrame({
         "starting_tier": ["GOLD"],
-        "playstyle": ["specialist"],
-        "observed_player_count": [2],
+        "rank_period_playstyle": ["specialist"],
+        "observed_player_tier_count": [2],
         "climbing_efficiency": [2.0],
     })
     baseline = pd.DataFrame({"starting_tier": ["GOLD"], "climbing_efficiency": [1.0]})

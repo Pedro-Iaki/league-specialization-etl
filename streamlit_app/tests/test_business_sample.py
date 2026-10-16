@@ -26,11 +26,11 @@ def business_frame():
     frame["scenario_id"] = "business-test"
     frame["tier"] = ["GOLD"] * 6 + ["SILVER"] * 6
     frame["main_role"] = ["Middle"] * 6 + ["Top"] * 6
-    frame["active_playstyle"] = ["specialist"] * 6 + ["generalist"] * 6
-    frame["active_primary_champion_name"] = ["Ahri"] * 6 + ["Garen"] * 6
-    frame["total_mastery_points"] = [100_000] * 3 + [200_000] * 3 + [300_000] * 3 + [400_000] * 3
-    frame["active_top1_share"] = [0.8] * 6 + [0.2] * 6
-    frame["active_normalized_entropy"] = [0.2] * 6 + [0.8] * 6
+    frame["recent_playstyle"] = ["specialist"] * 6 + ["generalist"] * 6
+    frame["recent_primary_champion_name"] = ["Ahri"] * 6 + ["Garen"] * 6
+    frame["lifetime_mastery_points"] = [100_000] * 3 + [200_000] * 3 + [300_000] * 3 + [400_000] * 3
+    frame["recent_top1_share"] = [0.8] * 6 + [0.2] * 6
+    frame["recent_normalized_entropy"] = [0.2] * 6 + [0.8] * 6
     frame["content_purchase_count_alltime"] = 10
     frame["cosmetic_bias_alltime"] = [0.5] * 6 + [0.25] * 6
     frame["as_of_date"] = pd.Timestamp("2026-09-29")
@@ -56,7 +56,7 @@ def test_business_summaries_preserve_denominators_and_weight_cash_discounts(busi
     assert summary.loc["Middle", "usd_per_player"] == 10
     assert summary.loc["Middle", "usd_per_purchaser"] == 20
     assert experience_summary(frame)["players"].sum() == len(frame)
-    assert set(cosmetic_summary(frame, "active_top1_share", "active_playstyle")["mean_cosmetic_share"]) == {0.25, 0.5}
+    assert set(cosmetic_summary(frame, "recent_top1_share", "recent_playstyle")["mean_cosmetic_share"]) == {0.25, 0.5}
     two = frame.iloc[:2].copy()
     two["cash_purchase_count_60d"] = [2, 4]
     two["cash_discounted_purchase_count_60d"] = [1, 3]
@@ -111,10 +111,10 @@ def test_audience_traits_keep_every_player_and_do_not_split_equal_playtime(busin
         assert "mastery" not in audience_chart(summary, dimension).to_json().lower()
     age = audience_summary(frame, "tenure_band")
     assert set(age["audience"]) == {"Under 1 year", "1–3 years", "3+ years"}
-    tied = audience_summary(frame.assign(total_mastery_points=100_000), "playtime_band")
+    tied = audience_summary(frame.assign(lifetime_mastery_points=100_000), "playtime_band")
     assert len(tied) == 1 and tied["players"].iloc[0] == len(frame)
     with pytest.raises(ValueError, match="Unsupported audience"):
-        audience_summary(frame, "active_primary_champion_name")
+        audience_summary(frame, "recent_primary_champion_name")
 
 
 def test_older_business_snapshot_and_absent_sample_still_render(business_frame):

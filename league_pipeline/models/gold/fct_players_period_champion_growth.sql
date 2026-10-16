@@ -8,7 +8,7 @@ select
     p.previous_tier,
     p.period_bucket_start,
     p.period_in_days,
-    p.playstyle,
+    p.rank_period_playstyle,
     p.rank_score as end_rank_score,
     a.champion_key,
     a.champion_name,
@@ -23,8 +23,8 @@ select
     p.lp_per_day,
     p.period_win_rate,
     p.lp_per_game_lift_vs_tier,
-    p.pool_hhi,
-    p.pool_top1_share,
+    p.rank_period_hhi,
+    p.rank_period_top1_share,
     p.estimated_ranked_mastery_share,
     a.champion_share * p.games_delta as attributed_games,
     a.champion_share * p.wins_delta as attributed_wins,
@@ -33,7 +33,7 @@ select
         * (p.lp_delta - p.tier_lp_per_game_baseline * p.games_delta)
         as attributed_excess_lp
 from {{ ref('fct_players_period_champion_activity') }} a
-inner join {{ ref('mart_player_delta_history') }} p
+inner join {{ ref('mart_player_rank_periods') }} p
     on a.rank_period_id = p.rank_period_id
 where a.is_favoured
   and p.is_lp_growth_eligible

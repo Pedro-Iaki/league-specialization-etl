@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: fct_players_champion_delta_history
+  - name: fct_players_champion_mastery_deltas
     description: Mastery gained by player and champion between observed snapshots.
     columns:
       - name: champion_delta_id
@@ -19,16 +19,16 @@ models:
     columns:
       - name: player_champion_activity_id
         tests: [not_null, unique]
-      - name: recent_champion_points
+      - name: recent_champion_mastery_points
         tests: [not_null]
-      - name: recent_share
+      - name: recent_champion_share
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
-      - name: is_active
+      - name: is_recent_pool_champion
         tests: [not_null]
 
-  - name: fct_players_rank_history
+  - name: fct_players_rank_deltas
     description: Rank, game, and ladder-score changes for each observed player interval.
     columns:
       - name: rank_delta_id
@@ -55,33 +55,33 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments: {combination_of_columns: [player_id, queue, period_bucket_start]}
 
-  - name: fct_players_mastery_profile
+  - name: fct_players_lifetime_mastery_profile
     description: Lifetime mastery concentration and playstyle at player grain.
     columns:
       - name: player_id
         tests: [not_null, unique]
-      - name: mastery_top1_share
+      - name: lifetime_top1_share
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
-      - name: mastery_favoured_champion_count
+      - name: lifetime_favoured_champion_count
         description: Champions above the strongest qualifying log gap, capped at ten.
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 1, max_value: 10}
-      - name: mastery_favoured_champions_share
+      - name: lifetime_favoured_champions_share
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
-      - name: mastery_hhi
+      - name: lifetime_hhi
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
-      - name: mastery_normalized_entropy
+      - name: lifetime_normalized_entropy
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
-      - name: mastery_playstyle
+      - name: lifetime_playstyle
         tests:
           - accepted_values:
               arguments: {values: [specialist, multispecialist, versatile, generalist]}
@@ -98,35 +98,35 @@ models:
       - name: champion_key
         tests: [not_null, unique]
 
-  - name: dim_players_active_pool
-    description: Current active champion pool, role mix, concentration, and playstyle for each player.
+  - name: dim_players_recent_pool
+    description: Current recent-pool champion pool, role mix, concentration, and playstyle for each player.
     columns:
       - name: player_id
         tests: [not_null, unique]
-      - name: active_champion_count
+      - name: recent_champion_count
         tests: [not_null]
-      - name: pool_top1_share
+      - name: recent_top1_share
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
-      - name: pool_favoured_champion_count
-        description: Active champions above the strongest qualifying log gap, capped at ten.
+      - name: recent_favoured_champion_count
+        description: Recent-pool champions above the strongest qualifying log gap, capped at ten.
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 1, max_value: 10}
-      - name: pool_favoured_champions_share
+      - name: recent_favoured_champions_share
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
-      - name: pool_hhi
+      - name: recent_hhi
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
-      - name: pool_normalized_entropy
+      - name: recent_normalized_entropy
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
-      - name: playstyle
+      - name: recent_playstyle
         tests:
           - accepted_values:
               arguments: {values: [specialist, multispecialist, versatile, generalist]}
@@ -150,18 +150,18 @@ models:
         description: Cross-tier ladder score used to compare rank height and calculate movement.
       - name: metadata_primary_roles
         description: Tied role candidates from recent champions before empirical champion-role weighting.
-      - name: active_playstyle
-        description: Archetype inferred from the current active champion pool.
+      - name: recent_playstyle
+        description: Archetype inferred from the current recent-pool champion pool.
         tests:
           - accepted_values:
               arguments: {values: [specialist, multispecialist, versatile, generalist]}
-      - name: alltime_playstyle
+      - name: lifetime_playstyle
         description: Archetype inferred from the player's lifetime mastery distribution.
         tests:
           - accepted_values:
               arguments: {values: [specialist, multispecialist, versatile, generalist]}
 
-  - name: mart_player_delta_history
+  - name: mart_player_rank_periods
     description: Final player-period analysis linking rank growth to champions and playstyle.
     columns:
       - name: rank_period_id
@@ -172,7 +172,7 @@ models:
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
-      - name: playstyle
+      - name: rank_period_playstyle
         tests:
           - accepted_values:
               arguments: {values: [specialist, multispecialist, versatile, generalist]}
@@ -216,15 +216,15 @@ models:
               arguments:
                 to: ref('fct_players_rank_periods')
                 field: rank_period_id
-      - name: favoured_champion_count
+      - name: rank_period_favoured_champion_count
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 1, max_value: 10}
-      - name: favoured_champions_share
+      - name: rank_period_favoured_champions_share
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}
-      - name: playstyle
+      - name: rank_period_playstyle
         tests:
           - accepted_values:
               arguments: {values: [specialist, multispecialist, versatile, generalist]}
@@ -252,7 +252,7 @@ models:
         tests: [not_null, unique]
       - name: champion_name
         tests: [not_null]
-      - name: active_play_rate
+      - name: recent_pool_membership_rate
         tests:
           - dbt_utils.accepted_range:
               arguments: {min_value: 0, max_value: 1}

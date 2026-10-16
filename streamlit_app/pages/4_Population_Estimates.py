@@ -48,12 +48,12 @@ minimum_mastery = st.sidebar.number_input(
     "Minimum total mastery points", min_value=0, value=0, step=10000, key="estimate_mastery"
 )
 cohort = cohort.loc[
-    cohort["days_tracked"].fillna(0).ge(minimum_days) & cohort["total_mastery_points"].ge(minimum_mastery)
+    cohort["days_tracked"].fillna(0).ge(minimum_days) & cohort["lifetime_mastery_points"].ge(minimum_mastery)
 ].copy()
 window = st.segmented_control(
-    "Classification window", ["Active (60 days)", "All-time"], default="Active (60 days)", key="estimate_window"
+    "Classification window", ["Recent activity", "Lifetime"], default="Recent activity", key="estimate_window"
 )
-prefix = "active" if window == "Active (60 days)" else "alltime"
+prefix = "recent" if window == "Recent activity" else "lifetime"
 if st.checkbox("Classified players only", value=False):
     cohort = cohort.loc[cohort[f"{prefix}_playstyle"].isin(PLAYSTYLE_ORDER)].copy()
 
@@ -71,7 +71,7 @@ column = {
     "Playstyle": f"{prefix}_playstyle",
     "Role": "main_role",
     "Tier": "tier",
-    "Primary champion": "active_primary_champion_name" if prefix == "active" else "top_champion_name",
+    "Primary champion": "recent_primary_champion_name" if prefix == "recent" else "lifetime_primary_champion_name",
 }[group]
 cohort["category"] = cohort[column].fillna("Unclassified")
 shares = category_summary(cohort, "category")
@@ -109,12 +109,12 @@ st.download_button(
 
 section("Player metrics", "Means and medians under each denominator")
 metrics = [
-    "total_mastery_points",
+    "lifetime_mastery_points",
     "rank_score",
     f"{prefix}_hhi",
     f"{prefix}_top1_share",
-    "lp_per_game_recent",
-    "win_rate_recent",
+    "latest_rank_period_lp_per_game",
+    "latest_rank_period_win_rate",
 ]
 records = []
 for metric in metrics:
@@ -184,7 +184,7 @@ with st.expander("Analyst export and method"):
         "text/csv",
     )
     st.caption(
-        "Current player estimates use current tier. Recent outcomes remain conditional on observed players. The Population Analysis page also weights role composition, mastery bands, mastery baselines and active/lifetime comparisons. Its ranked-activity view calibrates the selected observed window by starting tier. Tier box plots remain within-tier descriptions. Champion aggregate marts, overlap summaries and historical outcome aggregates on other pages retain their sample definitions; pooled aggregates require player-level recomputation to become population estimates."
+        "Current player estimates use current tier. Recent outcomes remain conditional on observed players. The Population Analysis page also weights role composition, mastery bands, mastery baselines and recent/lifetime comparisons. Its ranked-activity view calibrates the selected observed window by starting tier. Tier box plots remain within-tier descriptions. Champion aggregate marts, overlap summaries and historical outcome aggregates on other pages retain their sample definitions; pooled aggregates require player-level recomputation to become population estimates."
     )
     st.caption(
         "Manual maintenance: edit league_pipeline/seeds/rank_population_reference.csv, update all reference versions and review dates, and keep ten positive shares summing to 1. Additions to the rank system require updating the supported tier list and reviewing model and dashboard tier handling. The recorded date is when the estimate was supplied; its observation date is unknown."

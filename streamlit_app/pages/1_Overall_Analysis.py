@@ -24,7 +24,7 @@ from app_core.config import PLAYSTYLE_COLORS, PLAYSTYLE_LABELS, PLAYSTYLE_ORDER,
 from app_core.data import DashboardDataError, data_freshness, load_dataset, load_optional_dataset
 from app_core.experience import experience_bands, experience_cells, experience_chart, experience_display
 from app_core.i18n import st
-from app_core.metrics import active_alltime_transition
+from app_core.metrics import recent_lifetime_comparison
 from app_core.population import calibrate_population, direct_standardized_means
 from app_core.population_ui import population_controls
 from app_core.ui import (
@@ -67,34 +67,35 @@ else:
 st.sidebar.subheader("Current player profiles")
 minimum_tracked = st.sidebar.slider("Minimum tracked days", 0, 60, 0, 5)
 minimum_mastery = st.sidebar.slider("Minimum total mastery points", 0, 1_000_000, 0, 10_000, help="Applies to charts based on cumulative mastery points.")
-st.sidebar.caption("Applies to population composition, role differences, and active versus lifetime classifications only.")
+st.sidebar.caption("Applies to population composition, role differences, and recent versus lifetime classifications only.")
 minimum_cell_players = st.sidebar.slider("Minimum players per cell", 1, 50, minimum_support, key="ranked_share_support")
 cohort = players.loc[players["days_tracked"].fillna(0) >= minimum_tracked].copy()
 
 section("Population structure", "How playstyles are distributed")
 controls = st.columns([2, 1.1], gap="small")
 basis = controls[0].segmented_control(
-    "Mastery window", ["Active (60 days)", "All-time", "Active and observed"], default="Active (60 days)"
+    "Mastery window", ["Recent activity", "Lifetime", "Recent activity with rank follow-up"], default="Recent activity"
 )
-if basis == "Active and observed":
-    st.caption("Active playstyles for players with an available LP delta in the latest completed observation period. Positive, zero, and negative deltas are included.")
+if basis == "Recent activity with rank follow-up":
+    st.caption("Recent playstyles for players with an available LP delta in the latest completed observation period. Positive, zero, and negative deltas are included.")
 group_view = controls[1].selectbox("Compare by", ["Tier", "Role"])
 group = "main_role" if group_view == "Role" else "tier"
 normalize_mastery = st.toggle(
     "Normalize by mastery baseline", value=False,
     help="Divide each playstyle share by its expected share at the group's median total mastery. The baseline uses all selected players, pooled across tiers and roles.",
 )
-composition_cohort = cohort.loc[cohort["total_mastery_points"].ge(minimum_mastery)]
+composition_cohort = cohort.loc[cohort["lifetime_mastery_points"].ge(minimum_mastery)]
 # Resolve this view before calling shared helpers: a running Streamlit process may
 # still have an imported helper from before the new window label was introduced.
-population_cohort = composition_cohort
-population_basis = basis
-if basis == "Active and observed":
-    population_cohort = composition_cohort.loc[composition_cohort["lp_delta_recent"].notna()]
-    population_basis = "Active (60 days)"
+profile_players = composition_cohort
+profile_window = basis
+if basis == "Recent activity with rank follow-up":
+    recent_rank_observed_players = composition_cohort.loc[composition_cohort["latest_rank_period_lp_delta"].notna()]
+    profile_players = recent_rank_observed_players
+    profile_window = "Recent activity"
 composition = (
-    mastery_normalized_composition(population_cohort, population_basis, group, minimum_mastery)
-    if normalize_mastery else playstyle_composition(population_cohort, population_basis, group)
+    mastery_normalized_composition(profile_players, profile_window, group, minimum_mastery)
+    if normalize_mastery else playstyle_composition(profile_players, profile_window, group)
 )
 composition_players = int(composition["players"].sum())
 if composition_players:
@@ -149,7 +150,7 @@ if normalize_mastery:
     st.caption("Players with missing or zero total mastery are excluded. A zero expected share produces an undefined ratio and no bar.")
 
 section("Experience-stratified specialization", "Does the tier pattern survive at similar total mastery?")
-st.caption("All-time playstyle only. Five equal-count mastery bands use the full classified sample before profile filters or Master exclusion. Raw shares ignore population weights. Ties are split in snapshot order; band counts differ by at most one. Missing, infinite or negative mastery is excluded.")
+st.caption("Lifetime playstyle only. Five equal-count mastery bands use the full classified sample before profile filters or Master exclusion. Raw shares ignore population weights. Ties are split in snapshot order; band counts differ by at most one. Missing, infinite or negative mastery is excluded.")
 experience_controls = st.columns(2, gap="small")
 experience_lines = experience_controls[0].toggle("Lines across mastery bands", value=False,
     help="Off: five panels with tier groups on the x-axis. On: one line per tier group across mastery bands.")
@@ -170,8 +171,8 @@ st.caption("Compare tier groups within the same mastery band. Lines or bars that
 st.caption("95% Wilson intervals describe sampling uncertainty within the tracked players only; they do not correct selection bias.")
 with st.expander("Experience bands and cell support"):
     band_support = banded_players.groupby("mastery_band").agg(
-        n=("total_mastery_points", "size"),
-        mastery_min=("total_mastery_points", "min"), mastery_max=("total_mastery_points", "max"),
+        n=("lifetime_mastery_points", "size"),
+        mastery_min=("lifetime_mastery_points", "min"), mastery_max=("lifetime_mastery_points", "max"),
     ).reset_index()
     st.dataframe(band_support, hide_index=True, width="stretch")
     st.dataframe(experience_plot.drop(columns="count_label"), hide_index=True, width="stretch")
@@ -180,7 +181,7 @@ st.caption("Numeric check skipped: statsmodels is not an existing project depend
 section("Observed climbers", "Playstyles of players who gained LP")
 climber_controls = st.columns(2, gap="small")
 climber_basis = climber_controls[0].segmented_control(
-    "Climber mastery window", ["Active (60 days)", "All-time"], default="Active (60 days)",
+    "Climber mastery window", ["Recent activity", "Lifetime"], default="Recent activity",
 )
 climber_group_view = climber_controls[1].selectbox("Compare climbers by", ["Tier", "Role"])
 climber_group = "main_role" if climber_group_view == "Role" else "tier"
@@ -217,11 +218,11 @@ if normalize_climbers:
     st.caption("Players with missing or zero total mastery are excluded. A zero expected share produces an undefined ratio and no bar.")
 
 section("Player universe", "Pool shape by rank")
-universe_basis = st.segmented_control("Pool window", ["Active (60 days)", "All-time"], default="Active (60 days)", key="universe_basis")
+universe_basis = st.segmented_control("Pool window", ["Recent activity", "Lifetime"], default="Recent activity", key="universe_basis")
 universe_metric = st.selectbox("Pool measure", ["Main pick share", "Off picks share", "Favoured picks count", "All picks count", "HHI"], key="universe_metric")
-prefix = "active" if universe_basis == "Active (60 days)" else "alltime"
-columns = {"Main pick share": f"{prefix}_top1_share", "Off picks share": "off_picks_share", "Favoured picks count": f"{prefix}_favoured_champion_count", "All picks count": "active_champion_count" if prefix == "active" else "champions_with_mastery", "HHI": f"{prefix}_hhi"}
-pool = cohort.loc[cohort["tier"].isin(TIER_ORDER) & cohort["total_mastery_points"].ge(minimum_mastery)].copy()
+prefix = "recent" if universe_basis == "Recent activity" else "lifetime"
+columns = {"Main pick share": f"{prefix}_top1_share", "Off picks share": "off_picks_share", "Favoured picks count": f"{prefix}_favoured_champion_count", "All picks count": "recent_champion_count" if prefix == "recent" else "lifetime_champion_count", "HHI": f"{prefix}_hhi"}
+pool = cohort.loc[cohort["tier"].isin(TIER_ORDER) & cohort["lifetime_mastery_points"].ge(minimum_mastery)].copy()
 pool["off_picks_share"] = (pool[f"{prefix}_favoured_champions_share"] - pool[f"{prefix}_top1_share"]).clip(lower=0)
 if pool.empty:
     st.info("No players have this pool measure at the selected mastery threshold.")
@@ -233,16 +234,16 @@ else:
     st.caption(f"One box per tier shows the player distribution. Window: {universe_basis}. Off picks share excludes the main pick from favoured-pick share. Favoured picks count is the selected core pool; all picks count includes every observed champion.")
 
 section("Cumulative mastery", "Total mastery by tier")
-mastery = cohort.loc[cohort["tier"].isin(TIER_ORDER) & cohort["total_mastery_points"].ge(max(1, minimum_mastery))].dropna(subset=["total_mastery_points"])
+mastery = cohort.loc[cohort["tier"].isin(TIER_ORDER) & cohort["lifetime_mastery_points"].ge(max(1, minimum_mastery))].dropna(subset=["lifetime_mastery_points"])
 if not mastery.empty:
-    fig = population_box_chart(mastery, "total_mastery_points")
+    fig = population_box_chart(mastery, "lifetime_mastery_points")
     fig.update_xaxes(title="Current tier")
-    fig.update_yaxes(title="All-time total mastery points (log scale)", type="log")
+    fig.update_yaxes(title="Lifetime total mastery points (log scale)", type="log")
     st.plotly_chart(fig, width="stretch")
     st.caption("Log scaling keeps typical and very high mastery totals visible. Zero values cannot appear on a log axis.")
 
 section("Mastery and playstyle", "How playstyle composition changes with cumulative mastery")
-mastery_basis = st.segmented_control("Classification window", ["Active (60 days)", "All-time"], default="All-time", key="mastery_style_basis")
+mastery_basis = st.segmented_control("Classification window", ["Recent activity", "Lifetime"], default="Lifetime", key="mastery_style_basis")
 mastery_tier = st.selectbox("Mastery tier", ["All tiers", *TIER_ORDER])
 bands = playstyle_mastery_bands(cohort, mastery_basis, minimum_mastery, tier=None if mastery_tier == "All tiers" else mastery_tier)
 if not bands.empty:
@@ -256,7 +257,7 @@ if not bands.empty:
 left, right = st.columns(2, gap="large")
 with left:
     section("Role association", "Playstyle share relative to the selected denominator")
-    role_basis = st.segmented_control("Role association window", ["Active (60 days)", "All-time"], default="Active (60 days)")
+    role_basis = st.segmented_control("Role association window", ["Recent activity", "Lifetime"], default="Recent activity")
     st.caption(f"Window: {role_basis} · Percentage-point difference from all classified players with an inferred role")
     skew = role_playstyle_skew(cohort, role_basis)
     role_counts = skew.attrs.get("support_counts")
@@ -268,10 +269,10 @@ with left:
         )
     st.plotly_chart(role_difference_heatmap(skew), use_container_width=True)
 with right:
-    section("Time horizons", "Active pool versus lifetime mastery")
-    st.caption("Underlying populated rows sum to 100% before low-support cells are hidden. This compares current active and lifetime classifications, not a transition over time.")
-    transition = active_alltime_transition(cohort)
-    transition_support = active_alltime_transition(cohort, normalize=False)
+    section("Time horizons", "Recent pool versus lifetime mastery")
+    st.caption("Underlying populated rows sum to 100% before low-support cells are hidden. This compares current recent and lifetime classifications, not a transition over time.")
+    transition = recent_lifetime_comparison(cohort)
+    transition_support = recent_lifetime_comparison(cohort, normalize=False)
     transition.attrs["support_counts"] = transition_support
     thin_transitions = (transition_support.gt(0) & transition_support.lt(minimum_support)).any().any()
     thin_rows = transition_support.sum(axis=1).lt(minimum_support).any()
@@ -365,7 +366,7 @@ else:
     st.caption("Time windows end at the latest observed period in the dataset, not today's date.")
 
 with st.expander("Reading the classifications"):
-    profile = profile_basis(population_cohort, population_basis)
+    profile = profile_basis(profile_players, profile_window)
     st.markdown(
         f"""
         **{basis}** is a current mastery profile. Specialist, multi-specialist, versatile, and generalist

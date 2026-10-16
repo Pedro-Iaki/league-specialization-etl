@@ -46,7 +46,7 @@ def test_refreshed_growth_views_render() -> None:
         {
             "starting_tier": ["GOLD"],
             "current_main_role": ["Middle"],
-            "playstyle": ["specialist"],
+            "rank_period_playstyle": ["specialist"],
             "climbing_efficiency": [1.2],
             "win_rate": [0.55],
             "period_count": [2],
@@ -70,8 +70,8 @@ def test_refreshed_growth_views_render() -> None:
             "champion_name": ["Ahri"],
             "starting_tier": ["GOLD"],
             "cohort_scope": ["champion_tier_playstyle"],
-            "playstyle": ["specialist"],
-            "observed_player_count": [20],
+            "rank_period_playstyle": ["specialist"],
+            "observed_player_tier_count": [20],
             "observed_period_count": [25],
             "climbing_efficiency": [1.2],
             "observed_win_rate": [0.55],
@@ -199,7 +199,7 @@ def test_rank_score_player_mix_renders() -> None:
 
 def test_champion_header_buttons_cycle_values() -> None:
     app = AppTest.from_file(str(APP_ROOT / "pages/2_Champion_Explorer.py"), default_timeout=30).run()
-    for label in ("Primary players", "Active players", "Historical players"):
+    for label in ("Primary players", "Recent-pool players", "Rank-period players"):
         assert "%" in next(metric for metric in app.metric if metric.label == label).value
     next(button for button in app.button if button.key == "toggle_primary_pct").click().run()
     assert "%" not in next(metric for metric in app.metric if metric.label == "Primary players").value
@@ -240,7 +240,7 @@ def test_champion_ladder_and_expert_comparison_controls() -> None:
 def test_notable_mastery_curves_and_threshold_render() -> None:
     app = AppTest.from_file(str(APP_ROOT / "pages/3_Notable_Champions.py"), default_timeout=30).run()
     options = next(widget for widget in app.selectbox if widget.label == "Measure").options
-    assert {"Mean mastery (at least 15K)", "Median mastery (at least 15K)", "Expert player share", "Active play rate"}.issubset(set(options))
+    assert {"Mean mastery (at least 15K)", "Median mastery (at least 15K)", "Expert player share", "Recent-pool membership rate"}.issubset(set(options))
     next(slider for slider in app.slider if slider.label == "Minimum champion mastery").set_value(90_000).run()
     assert not app.exception
     assert not any(widget.label == "Ladder horizontal axis" for widget in app.segmented_control)
@@ -254,7 +254,7 @@ def test_cross_champion_player_mastery_boxes_render_when_extract_exists() -> Non
         "champion_name": ["Ahri", "Ahri"],
         "tier": ["GOLD", "DIAMOND"],
         "champion_points": [20_000, 50_000],
-        "total_mastery_points": [100_000, 100_000],
+        "lifetime_mastery_points": [100_000, 100_000],
         "mastery_share": [0.2, 0.5],
     })
     with patch("app_core.data.load_optional_dataset", side_effect=lambda name: player_mastery if name == "champion_player_mastery_share" else original(name)):
@@ -275,7 +275,7 @@ def test_mastery_controls_render_without_exception() -> None:
     assert any("mastery-expected share" in chart.proto.spec for chart in app.get("plotly_chart"))
     next(widget for widget in app.selectbox if widget.label == "Compare by").set_value("Role").run()
     next(widget for widget in app.selectbox if widget.label == "Compare climbers by").set_value("Role").run()
-    next(widget for widget in app.segmented_control if widget.label == "Climber mastery window").set_value("All-time").run()
+    next(widget for widget in app.segmented_control if widget.label == "Climber mastery window").set_value("Lifetime").run()
     assert not app.exception
 
 
@@ -288,15 +288,15 @@ def test_climber_normalization_toggle_renders_for_tier_role_and_mastery_windows(
     assert any(json.loads(chart.proto.spec)["layout"].get("yaxis", {}).get("title", {}).get("text")
                == "Observed / mastery-expected share" for chart in app.get("plotly_chart"))
     next(widget for widget in app.selectbox if widget.label == "Compare climbers by").set_value("Role").run()
-    next(widget for widget in app.segmented_control if widget.label == "Climber mastery window").set_value("All-time").run()
+    next(widget for widget in app.segmented_control if widget.label == "Climber mastery window").set_value("Lifetime").run()
     assert not app.exception
     app.toggle(key="normalize_climbers").set_value(False).run()
     assert not app.exception
 
 
-def test_active_and_observed_population_option_renders():
+def test_recent_rank_observed_population_option_renders():
     app = AppTest.from_file(str(APP_ROOT / "pages/1_Overall_Analysis.py"), default_timeout=30).run()
-    next(widget for widget in app.segmented_control if widget.label == "Mastery window").set_value("Active and observed").run()
+    next(widget for widget in app.segmented_control if widget.label == "Mastery window").set_value("Recent activity with rank follow-up").run()
     assert not app.exception
     assert any("Positive, zero, and negative deltas are included" in caption.value for caption in app.caption)
     next(widget for widget in app.toggle if widget.label == "Normalize by mastery baseline").set_value(True).run()
@@ -304,7 +304,7 @@ def test_active_and_observed_population_option_renders():
     assert not app.exception
 
 
-def test_active_and_observed_works_with_cached_legacy_profile_helper():
+def test_recent_rank_observed_works_with_cached_legacy_profile_helper():
     from app_core.analysis import profile_basis as current_profile_basis
     from app_core.data import load_dataset as original_load
 
@@ -313,21 +313,21 @@ def test_active_and_observed_works_with_cached_legacy_profile_helper():
     players = original_load("players").head(12).drop(columns="population_weight", errors="ignore").copy()
     players["tier"] = "GOLD"
     players["days_tracked"] = 60
-    players["total_mastery_points"] = 300_000
-    players["active_playstyle"] = "specialist"
-    players["alltime_playstyle"] = "generalist"
-    players["lp_delta_recent"] = [10, 0, -10] * 2 + [float("nan")] * 6
+    players["lifetime_mastery_points"] = 300_000
+    players["recent_playstyle"] = "specialist"
+    players["lifetime_playstyle"] = "generalist"
+    players["latest_rank_period_lp_delta"] = [10, 0, -10] * 2 + [float("nan")] * 6
 
     def legacy_profile(frame, basis):
         # Mimic the helper retained by a server launched before the third option.
-        return current_profile_basis(frame, "Active (60 days)" if basis == "Active (60 days)" else "All-time")
+        return current_profile_basis(frame, "Recent activity" if basis == "Recent activity" else "Lifetime")
 
     with patch("app_core.data.load_dataset", side_effect=lambda name, **kwargs: players if name == "players" else original_load(name, **kwargs)), \
             patch("app_core.analysis.profile_basis", side_effect=legacy_profile):
         app = AppTest.from_file(str(APP_ROOT / "pages/1_Overall_Analysis.py"), default_timeout=30).run()
-        next(widget for widget in app.segmented_control if widget.label == "Mastery window").set_value("All-time").run()
+        next(widget for widget in app.segmented_control if widget.label == "Mastery window").set_value("Lifetime").run()
         lifetime_chart = app.get("plotly_chart")[0].proto.spec
-        next(widget for widget in app.segmented_control if widget.label == "Mastery window").set_value("Active and observed").run()
+        next(widget for widget in app.segmented_control if widget.label == "Mastery window").set_value("Recent activity with rank follow-up").run()
         assert not app.exception
         support = next(table.value for table in app.dataframe if {"Players", "Playstyle"}.issubset(table.value.columns))
         assert support["Players"].sum() == 6
@@ -340,7 +340,7 @@ def test_active_and_observed_works_with_cached_legacy_profile_helper():
         assert support["relative_share"].eq(1).all()
 
 
-@pytest.mark.parametrize("basis", ["Active (60 days)", "All-time"])
+@pytest.mark.parametrize("basis", ["Recent activity", "Lifetime"])
 def test_current_profile_windows_use_current_tier_without_historical_period_filter(basis: str) -> None:
     app = AppTest.from_file(str(APP_ROOT / "overview.py"), default_timeout=30).run()
     next(widget for widget in app.selectbox if widget.label == "Specialization window").set_value(basis).run()
@@ -352,7 +352,7 @@ def test_current_profile_windows_use_current_tier_without_historical_period_filt
 
 def test_overview_historical_controls_and_playstyle_outcomes() -> None:
     app = AppTest.from_file(str(APP_ROOT / "overview.py"), default_timeout=30).run()
-    assert next(widget for widget in app.selectbox if widget.label == "Specialization window").value == "Active (60 days)"
+    assert next(widget for widget in app.selectbox if widget.label == "Specialization window").value == "Recent activity"
     assert not any(widget.label == "Minimum estimated ranked share" for widget in app.slider)
     assert not any(widget.label == "Role-purity tier" for widget in app.selectbox)
     assert any(widget.label == "Starting tier" for widget in app.selectbox)

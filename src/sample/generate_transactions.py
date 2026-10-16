@@ -28,6 +28,18 @@ from .scenario import BASE_WEIGHTS, CONTROL_BOUNDS, CUSTOMER_PROBABILITIES, GENE
 
 DEFAULT_QUEUE = "RANKED_SOLO_5x5"  # matches dbt's ranked_queue; --queue can override it
 NONPAYER_PROBABILITIES = {"sardine": 0.32, "dolphin": 0.06, "whale": 0.01}
+# Map canonical Gold names into the fixed raw cohort contract to preserve scenario fingerprints.
+PROFILE_SOURCE_COLUMNS = {
+    "active_playstyle": "recent_playstyle",
+    "active_primary_champion_key": "recent_primary_champion_key",
+    "active_primary_champion_name": "recent_primary_champion_name",
+    "active_normalized_entropy": "recent_normalized_entropy",
+    "active_top1_share": "recent_top1_share",
+    "alltime_top1_share": "lifetime_top1_share",
+    "total_mastery_points": "lifetime_mastery_points",
+    "champions_with_mastery": "lifetime_champion_count",
+    "games_per_day_recent": "latest_rank_period_games_per_day",
+}
 
 
 def main() -> None:
@@ -68,20 +80,23 @@ def fetch_cohort(queue: str) -> tuple[pa.Table, str]:
     with get_connection() as connection, connection.cursor() as cursor:
         share_available = False
         try:
-            cursor.execute("describe table league_pipeline.gold.mart_player_delta_history")
+            cursor.execute("describe table league_pipeline.gold.mart_player_rank_periods")
             share_available = "estimated_ranked_mastery_share" in {row[0] for row in cursor.fetchall()}
         except Exception as error:
             if "TABLE_OR_VIEW_NOT_FOUND" not in str(error):
                 raise
         share_cte = """
             select player_id, percentile(estimated_ranked_mastery_share, 0.5) as ranked_mastery_share
-            from league_pipeline.gold.mart_player_delta_history
+            from league_pipeline.gold.mart_player_rank_periods
             where queue = :queue and is_lp_growth_eligible
               and estimated_ranked_mastery_share between 0 and 1
               and period_bucket_end <= (select max(as_of_date) from selected_profiles)
             group by player_id
         """ if share_available else "select cast(null as string) as player_id, cast(null as double) as ranked_mastery_share"
-        columns = ", ".join(f"p.`{name}`" for name in COHORT_SCHEMA.names if name != "ranked_mastery_share")
+        columns = ", ".join(
+            f"p.`{PROFILE_SOURCE_COLUMNS.get(name, name)}` as `{name}`"
+            for name in COHORT_SCHEMA.names if name != "ranked_mastery_share"
+        )
         cursor.execute(f"""
             with selected_profiles as (
                 select * from league_pipeline.gold.mart_player_profile
@@ -168,7 +183,7 @@ def generate(cohort: pa.Table, seed: int = 42, queue: str = DEFAULT_QUEUE) -> tu
     manifest = {
         "scenario_id": scenario_id, "generator_seed": seed, "generator_version": GENERATOR_VERSION,
         "provenance": "Purchase history and spending patterns are synthetic; frozen player metrics are real Riot API data.",
-        "source": "league_pipeline.gold.mart_player_profile + mart_player_delta_history",
+        "source": "league_pipeline.gold.mart_player_profile + mart_player_rank_periods",
         "cohort_fingerprint": cohort_hash, "config_fingerprint": config_hash,
         "min_snapshot_date": min(row["snapshot_date"] for row in rows).isoformat(),
         "max_snapshot_date": max(row["snapshot_date"] for row in rows).isoformat(), "as_of_date": as_of.isoformat(),
@@ -184,7 +199,7 @@ def generate(cohort: pa.Table, seed: int = 42, queue: str = DEFAULT_QUEUE) -> tu
         "player_count": len(players), "transaction_count": len(events),
         "fiat_transaction_count": sum(currencies[event["currency_id"]]["currency_kind"] == "fiat" for event in events),
         "cash_spent_usd_alltime": str(sum((event["amount_usd"] or Decimal(0) for event in events), Decimal(0))),
-        "top1_champion_share_source": "mart_player_profile.active_top1_share",
+        "top1_champion_share_source": "mart_player_profile.recent_top1_share",
         "ranked_share_source": "median valid observed ranked-mastery estimate; null when unobserved; optional for eligibility",
         "queue": queue,
     }

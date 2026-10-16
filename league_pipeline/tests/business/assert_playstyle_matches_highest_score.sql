@@ -6,31 +6,31 @@ with profiles as (
     select
         'lifetime_mastery' as profile_type,
         cast(player_id as string) as profile_id,
-        mastery_playstyle as actual_playstyle,
-        mastery_specialist_score as specialist_score,
-        mastery_multispecialist_score as multispecialist_score,
-        mastery_versatile_score as versatile_score,
-        mastery_generalist_score as generalist_score
-    from {{ ref('fct_players_mastery_profile') }}
+        lifetime_playstyle as actual_playstyle,
+        lifetime_specialist_score as specialist_score,
+        lifetime_multispecialist_score as multispecialist_score,
+        lifetime_versatile_score as versatile_score,
+        lifetime_generalist_score as generalist_score
+    from {{ ref('fct_players_lifetime_mastery_profile') }}
 
     union all
 
     select
-        'active_pool',
+        'recent_pool',
         cast(player_id as string),
-        playstyle,
+        recent_playstyle,
         specialist_score,
         multispecialist_score,
         versatile_score,
         generalist_score
-    from {{ ref('dim_players_active_pool') }}
+    from {{ ref('dim_players_recent_pool') }}
 
     union all
 
     select
         'rank_period',
         cast(rank_period_id as string),
-        playstyle,
+        rank_period_playstyle,
         specialist_score,
         multispecialist_score,
         versatile_score,

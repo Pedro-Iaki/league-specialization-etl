@@ -17,6 +17,6 @@ left join {{ ref('fct_players_period_pool_profile') }} p
     on a.rank_period_id = p.rank_period_id
 where p.rank_period_id is null
    or a.champion_count <> p.champion_count
-   or a.favoured_count <> p.favoured_champion_count
+   or a.favoured_count <> p.rank_period_favoured_champion_count
    or abs(a.total_share - 1.0) > 0.000001
-   or abs(a.favoured_share - p.favoured_champions_share) > 0.000001
+   or abs(a.favoured_share - p.rank_period_favoured_champions_share) > 0.000001

@@ -8,7 +8,7 @@ CASH_DISCOUNT_COLUMNS = {
 }
 TENURE_ORDER = ["Under 1 year", "1–3 years", "3+ years"]
 AUDIENCE_DIMENSIONS = {
-    "Tier": "tier", "Role": "main_role", "Playstyle": "active_playstyle",
+    "Tier": "tier", "Role": "main_role", "Playstyle": "recent_playstyle",
     "Account age (simulated)": "tenure_band", "Total playtime (estimated)": "playtime_band",
 }
 PLAYTIME_ORDER = ["Lowest playtime", "Lower playtime", "Mid-range playtime", "Higher playtime", "Highest playtime"]
@@ -20,9 +20,9 @@ EXPERIENCE_METRICS = {
 
 BUSINESS_PUBLIC_COLUMNS = [
     "scenario_id", "as_of_date", "snapshot_date", "purchase_window_start", "purchase_window_end",
-    "tier", "main_role", "active_playstyle", "active_primary_champion_name",
-    "active_normalized_entropy", "active_top1_share", "alltime_top1_share",
-    "total_mastery_points", "champions_with_mastery", "ranked_mastery_share", "games_per_day_recent",
+    "tier", "main_role", "recent_playstyle", "recent_primary_champion_name",
+    "recent_normalized_entropy", "recent_top1_share", "lifetime_top1_share",
+    "lifetime_mastery_points", "lifetime_champion_count", "ranked_mastery_share", "latest_rank_period_games_per_day",
     "simulated_owned_champions", "simulated_customer_type", "first_purchase_at", "last_purchase_at",
     "purchase_count_alltime", "be_champion_purchase_count_alltime", "cash_purchase_count_alltime",
     "cash_spent_usd_alltime", "cash_active_months_alltime", "payment_frequency_alltime",
@@ -44,10 +44,10 @@ def audience_summary(frame: pd.DataFrame, dimension: str) -> pd.DataFrame:
         raise ValueError("Unsupported audience dimension")
     data = with_tenure(frame) if dimension == "tenure_band" else frame.copy()
     if dimension == "playtime_band":
-        if data["total_mastery_points"].nunique() <= 1:
+        if data["lifetime_mastery_points"].nunique() <= 1:
             data[dimension] = "Similar playtime"
         else:
-            codes = pd.qcut(data["total_mastery_points"], 5, labels=False, duplicates="drop")
+            codes = pd.qcut(data["lifetime_mastery_points"], 5, labels=False, duplicates="drop")
             observed_codes = sorted(codes.dropna().unique())
             count = len(observed_codes)
             labels = (["Similar playtime"] if count == 1 else
@@ -70,17 +70,17 @@ def tier_purchasers(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def experience_summary(frame: pd.DataFrame, bins: int = 8) -> pd.DataFrame:
-    data = with_tenure(frame).dropna(subset=["total_mastery_points", "tenure_band"])
-    data = data.loc[data["total_mastery_points"] > 0].copy()
+    data = with_tenure(frame).dropna(subset=["lifetime_mastery_points", "tenure_band"])
+    data = data.loc[data["lifetime_mastery_points"] > 0].copy()
     if data.empty:
         return pd.DataFrame()
-    data["mastery_band"] = (0 if data["total_mastery_points"].nunique() == 1 else
-                            pd.qcut(data["total_mastery_points"], bins, labels=False, duplicates="drop"))
+    data["mastery_band"] = (0 if data["lifetime_mastery_points"].nunique() == 1 else
+                            pd.qcut(data["lifetime_mastery_points"], bins, labels=False, duplicates="drop"))
     groups = ["tenure_band", "mastery_band"]
     result = cash_summary(data, groups)
     bounds = data.groupby(groups, observed=True).agg(
-        mastery_points=("total_mastery_points", "median"),
-        min_mastery=("total_mastery_points", "min"), max_mastery=("total_mastery_points", "max"),
+        mastery_points=("lifetime_mastery_points", "median"),
+        min_mastery=("lifetime_mastery_points", "min"), max_mastery=("lifetime_mastery_points", "max"),
     ).reset_index()
     return result.merge(bounds, on=groups, validate="one_to_one").sort_values(["tenure_band", "mastery_points"])
 
@@ -108,7 +108,7 @@ def with_tenure(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def cosmetic_summary(frame: pd.DataFrame, axis: str, dimension: str) -> pd.DataFrame:
-    if dimension not in {"active_playstyle", "main_role", "tier"}:
+    if dimension not in {"recent_playstyle", "main_role", "tier"}:
         raise ValueError("Unsupported content audience dimension")
     data = frame.loc[frame["content_purchase_count_alltime"].gt(0)].dropna(
         subset=[axis, dimension, "cosmetic_bias_alltime"],

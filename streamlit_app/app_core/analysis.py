@@ -27,17 +27,17 @@ RANKED_SHARE_DIMENSIONS = {
 
 
 def profile_basis(players: pd.DataFrame, basis: str) -> pd.DataFrame:
-    """Expose active or lifetime profiles, optionally requiring an observed LP delta."""
-    prefix = "active" if basis in {"Active (60 days)", "Active and observed"} else "alltime"
+    """Expose recent or lifetime profiles, optionally requiring an observed LP delta."""
+    prefix = "recent" if basis in {"Recent activity", "Recent activity with rank follow-up"} else "lifetime"
     frame = eligible_weighted_rows(players)
-    if basis == "Active and observed":
-        frame = frame.loc[frame["lp_delta_recent"].notna()].copy()
+    if basis == "Recent activity with rank follow-up":
+        frame = frame.loc[frame["latest_rank_period_lp_delta"].notna()].copy()
     frame["playstyle"] = frame[f"{prefix}_playstyle"]
     frame["specialization_hhi"] = frame[f"{prefix}_hhi"]
     frame["top_champion_share"] = frame[f"{prefix}_top1_share"]
     frame["normalized_entropy"] = frame[f"{prefix}_normalized_entropy"]
     frame["primary_champion_name"] = (
-        frame["active_primary_champion_name"] if prefix == "active" else frame["top_champion_name"]
+        frame["recent_primary_champion_name"] if prefix == "recent" else frame["lifetime_primary_champion_name"]
     )
     frame["inverse_entropy"] = 1 - frame["normalized_entropy"]
     return frame
@@ -106,7 +106,7 @@ def climber_playstyle_composition(
     minimum_mastery: int = 0,
 ) -> pd.DataFrame:
     """Count each classified player with positive net LP in the latest observed period once."""
-    climbers = players.loc[players["lp_delta_recent"].gt(0) & players["games_recent"].gt(0)]
+    climbers = players.loc[players["latest_rank_period_lp_delta"].gt(0) & players["latest_rank_period_games"].gt(0)]
     if normalized:
         return mastery_normalized_composition(
             climbers, basis, group, minimum_mastery, baseline_players=players,
@@ -128,7 +128,7 @@ def mastery_normalized_composition(
     """
     frame = profile_basis(players, basis)
     frame = frame.loc[
-        frame["total_mastery_points"].ge(max(1, minimum_mastery))
+        frame["lifetime_mastery_points"].ge(max(1, minimum_mastery))
         & frame["playstyle"].isin(PLAYSTYLE_ORDER)
         & frame[group].notna()
     ].copy()
@@ -140,18 +140,18 @@ def mastery_normalized_composition(
 
     reference = frame.copy() if baseline_players is None else profile_basis(baseline_players, basis)
     reference = reference.loc[
-        reference["total_mastery_points"].ge(max(1, minimum_mastery))
+        reference["lifetime_mastery_points"].ge(max(1, minimum_mastery))
         & reference["playstyle"].isin(PLAYSTYLE_ORDER) & reference[group].notna()
     ].copy()
     if group in {"tier", "main_role"}:
         reference = reference.loc[reference[group].isin(TIER_ORDER if group == "tier" else ROLE_ORDER)]
     if reference.empty:
         return pd.DataFrame(columns=columns)
-    if reference["total_mastery_points"].nunique() < 2:
+    if reference["lifetime_mastery_points"].nunique() < 2:
         reference["band"] = 0
     else:
         reference["band"] = pd.qcut(
-            reference["total_mastery_points"], q=min(bins, reference["total_mastery_points"].nunique()),
+            reference["lifetime_mastery_points"], q=min(bins, reference["lifetime_mastery_points"].nunique()),
             duplicates="drop",
         )
     reference["_weight"] = row_weights(reference)
@@ -159,7 +159,7 @@ def mastery_normalized_composition(
     band_counts = band_counts.reindex(columns=PLAYSTYLE_ORDER, fill_value=0)
     band_shares = band_counts.div(band_counts.sum(axis=1), axis=0)
     band_mastery = reference.groupby("band", observed=True).apply(
-        lambda rows: weighted_quantile(rows["total_mastery_points"], rows["_weight"]), include_groups=False,
+        lambda rows: weighted_quantile(rows["lifetime_mastery_points"], rows["_weight"]), include_groups=False,
     )
     # Tied band medians have one common baseline interpolation point.
     band_shares["mastery"] = band_mastery
@@ -174,7 +174,7 @@ def mastery_normalized_composition(
     result["weighted_mass"] = result["weighted_mass"].fillna(0)
     frame["_weight"] = row_weights(frame)
     group_medians = frame.groupby(group, observed=True).apply(
-        lambda rows: weighted_quantile(rows["total_mastery_points"], rows["_weight"]), include_groups=False,
+        lambda rows: weighted_quantile(rows["lifetime_mastery_points"], rows["_weight"]), include_groups=False,
     )
     group_effective = frame.groupby(group, observed=True)["_weight"].agg(effective_sample_size)
     result["effective_group_players"] = result[group].map(group_effective).astype(float)
@@ -197,15 +197,15 @@ def playstyle_mastery_bands(players: pd.DataFrame, basis: str, minimum_mastery: 
     frame = profile_basis(players, basis)
     if tier is not None:
         frame = frame.loc[frame["tier"] == tier]
-    frame = frame.loc[(frame["total_mastery_points"] >= max(1, minimum_mastery)) & frame["playstyle"].isin(PLAYSTYLE_ORDER)].copy()
-    if frame.empty or frame["total_mastery_points"].nunique() < 2:
+    frame = frame.loc[(frame["lifetime_mastery_points"] >= max(1, minimum_mastery)) & frame["playstyle"].isin(PLAYSTYLE_ORDER)].copy()
+    if frame.empty or frame["lifetime_mastery_points"].nunique() < 2:
         return pd.DataFrame(columns=["mastery", "log_mean_mastery", "playstyle", "players", "share"])
-    frame["band"] = pd.qcut(frame["total_mastery_points"], q=min(bins, frame["total_mastery_points"].nunique()), duplicates="drop")
+    frame["band"] = pd.qcut(frame["lifetime_mastery_points"], q=min(bins, frame["lifetime_mastery_points"].nunique()), duplicates="drop")
     frame["_weight"] = row_weights(frame)
     band_mastery = frame.groupby("band", observed=True).apply(
         lambda rows: pd.Series({
-            "mastery": weighted_quantile(rows["total_mastery_points"], rows["_weight"]),
-            "mean_mastery": weighted_mean(rows["total_mastery_points"], rows["_weight"]),
+            "mastery": weighted_quantile(rows["lifetime_mastery_points"], rows["_weight"]),
+            "mean_mastery": weighted_mean(rows["lifetime_mastery_points"], rows["_weight"]),
         }), include_groups=False,
     ).reset_index()
     grouped = frame.groupby(["band", "playstyle"], observed=True).agg(
@@ -243,8 +243,8 @@ def growth_scatter_data(
         return frame, "LP/game above starting-tier baseline", "Observed rank periods"
 
     frame = profile_basis(players, basis)
-    frame["outcome"] = frame["lp_per_game_recent"]
-    frame["support_games"] = frame["games_recent"]
+    frame["outcome"] = frame["latest_rank_period_lp_per_game"]
+    frame["support_games"] = frame["latest_rank_period_games"]
     return frame, "Recent rank LP/game (unadjusted)", f"{basis} pool × latest rank week"
 
 
@@ -378,11 +378,11 @@ def champion_landscape_data(champions: pd.DataFrame, players: pd.DataFrame) -> t
         frame["specialization_axis"] = frame["mean_commitment"]
         return frame, "Mean champion mastery share in favoured periods"
 
-    active = players.loc[players["active_primary_champion_name"].notna()].groupby(
-        "active_primary_champion_name", observed=True
-    ).apply(lambda rows: weighted_mean(rows["active_hhi"], row_weights(rows)), include_groups=False)
-    frame["specialization_axis"] = frame["champion_name"].map(active)
-    return frame, "Current primary players’ mean active HHI (preview)"
+    recent_activity = players.loc[players["recent_primary_champion_name"].notna()].groupby(
+        "recent_primary_champion_name", observed=True
+    ).apply(lambda rows: weighted_mean(rows["recent_hhi"], row_weights(rows)), include_groups=False)
+    frame["specialization_axis"] = frame["champion_name"].map(recent_activity)
+    return frame, "Current primary players’ mean recent_activity HHI (preview)"
 
 
 def tier_population_comparison(players: pd.DataFrame, champion_name: str, basis: str) -> pd.DataFrame:
@@ -449,20 +449,20 @@ def one_trick_tier_distribution(
     minimum_share: float = 0.8,
     minimum_hhi: float = 0.65,
     criterion: str = "Main share or HHI",
-    mastery_column: str = "total_mastery_points",
+    mastery_column: str = "lifetime_mastery_points",
 ) -> pd.DataFrame:
-    """Player-count tier distributions of active mains versus all champion mastery holders.
+    """Player-count tier distributions of recent_activity mains versus all champion mastery holders.
 
     The baseline uses the unfiltered zero-threshold champion-holder counts, not
     mastery-point weights. All tier denominators are calculated before support filtering.
     """
-    share_pass = players["active_top1_share"].ge(minimum_share)
-    hhi_pass = players["active_hhi"].ge(minimum_hhi)
+    share_pass = players["recent_top1_share"].ge(minimum_share)
+    hhi_pass = players["recent_hhi"].ge(minimum_hhi)
     concentration = share_pass if criterion == "Main share" else hhi_pass if criterion == "HHI" else share_pass | hhi_pass
     players = eligible_weighted_rows(players)
     mains = players.loc[
         concentration & players[mastery_column].ge(minimum_mastery)
-        & players["active_primary_champion_name"].notna() & players["tier"].isin(TIER_ORDER)
+        & players["recent_primary_champion_name"].notna() & players["tier"].isin(TIER_ORDER)
     ]
     baseline = tier_mastery.loc[
         tier_mastery["minimum_mastery"].eq(0) & tier_mastery["tier"].isin(TIER_ORDER)
@@ -471,16 +471,16 @@ def one_trick_tier_distribution(
                "champion_total", "one_trick_share", "champion_share", "representation_ratio", "difference_pp"]
     if mains.empty or baseline.empty:
         return pd.DataFrame(columns=columns)
-    names = sorted(set(mains["active_primary_champion_name"]) & set(baseline["champion_name"]))
+    names = sorted(set(mains["recent_primary_champion_name"]) & set(baseline["champion_name"]))
     index = pd.MultiIndex.from_product([names, TIER_ORDER], names=["champion_name", "tier"])
-    counts = mains.rename(columns={"active_primary_champion_name": "champion_name"}).groupby(
+    counts = mains.rename(columns={"recent_primary_champion_name": "champion_name"}).groupby(
         ["champion_name", "tier"], observed=True,
     ).size().reindex(index, fill_value=0)
     holder_counts = baseline.groupby(["champion_name", "tier"], observed=True)["player_count"].sum().reindex(index, fill_value=0)
     result = pd.DataFrame({"one_trick_players": counts, "champion_players": holder_counts}).reset_index()
     result["one_trick_total"] = result.groupby("champion_name")["one_trick_players"].transform("sum")
     result["champion_total"] = result.groupby("champion_name")["champion_players"].transform("sum")
-    mains = mains.assign(_weight=row_weights(mains)).rename(columns={"active_primary_champion_name": "champion_name"})
+    mains = mains.assign(_weight=row_weights(mains)).rename(columns={"recent_primary_champion_name": "champion_name"})
     main_mass = mains.groupby(["champion_name", "tier"], observed=True)["_weight"].sum().reindex(index, fill_value=0)
     baseline = baseline.assign(_mass=baseline["player_count"] * row_weights(baseline))
     holder_mass = baseline.groupby(["champion_name", "tier"], observed=True)["_mass"].sum().reindex(index, fill_value=0)

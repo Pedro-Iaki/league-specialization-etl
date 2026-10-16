@@ -16,39 +16,39 @@ from app_core.analysis import (
 
 def mastery_players(tiers, mastery, styles):
     return pd.DataFrame({
-        "tier": tiers, "total_mastery_points": mastery, "alltime_playstyle": styles,
-        "alltime_hhi": 0.5, "alltime_top1_share": 0.6,
-        "alltime_normalized_entropy": 0.4, "top_champion_name": "Ahri",
+        "tier": tiers, "lifetime_mastery_points": mastery, "lifetime_playstyle": styles,
+        "lifetime_hhi": 0.5, "lifetime_top1_share": 0.6,
+        "lifetime_normalized_entropy": 0.4, "lifetime_primary_champion_name": "Ahri",
     })
 
 
 def test_climber_composition_requires_positive_net_lp_and_observed_games():
     players = mastery_players(["GOLD"] * 6, [100] * 6,
                              ["specialist", "generalist", "specialist", "generalist", "generalist", "generalist"])
-    players["lp_delta_recent"] = [20, 10, 0, -10, np.nan, 100]
-    players["games_recent"] = [4, 2, 5, 3, 2, 0]
+    players["latest_rank_period_lp_delta"] = [20, 10, 0, -10, np.nan, 100]
+    players["latest_rank_period_games"] = [4, 2, 5, 3, 2, 0]
     players["lp_per_game_lift_vs_tier"] = [-5, -2, 10, 20, 10, 10]
-    result = climber_playstyle_composition(players, "All-time")
+    result = climber_playstyle_composition(players, "Lifetime")
     assert result["players"].sum() == 2
     assert np.allclose(result["share"], 0.5)
 
 
-def test_active_and_observed_includes_all_available_delta_signs():
+def test_recent_rank_observed_includes_all_available_delta_signs():
     players = mastery_players(["GOLD"] * 4, [300_000] * 4, ["generalist"] * 4)
     for suffix in ["playstyle", "hhi", "top1_share", "normalized_entropy"]:
-        players[f"active_{suffix}"] = players[f"alltime_{suffix}"]
-    players["active_playstyle"] = ["specialist"] * 3 + ["generalist"]
-    players["active_primary_champion_name"] = "Riven"
-    players["lp_delta_recent"] = [10, 0, -10, np.nan]
-    raw = playstyle_composition(players, "Active and observed")
+        players[f"recent_{suffix}"] = players[f"lifetime_{suffix}"]
+    players["recent_playstyle"] = ["specialist"] * 3 + ["generalist"]
+    players["recent_primary_champion_name"] = "Riven"
+    players["latest_rank_period_lp_delta"] = [10, 0, -10, np.nan]
+    raw = playstyle_composition(players, "Recent activity with rank follow-up")
     assert raw["players"].sum() == 3
     assert raw["playstyle"].eq("specialist").all()
-    normalized = mastery_normalized_composition(players, "Active and observed")
+    normalized = mastery_normalized_composition(players, "Recent activity with rank follow-up")
     assert normalized["players"].sum() == 3
     assert normalized.loc[normalized["playstyle"].eq("specialist"), "baseline_share"].eq(1).all()
-    players["lp_delta_recent"] = np.nan
-    assert playstyle_composition(players, "Active and observed").empty
-    assert mastery_normalized_composition(players, "Active and observed").empty
+    players["latest_rank_period_lp_delta"] = np.nan
+    assert playstyle_composition(players, "Recent activity with rank follow-up").empty
+    assert mastery_normalized_composition(players, "Recent activity with rank follow-up").empty
 
 
 def test_mastery_normalization_removes_expected_mastery_trend():
@@ -56,7 +56,7 @@ def test_mastery_normalization_removes_expected_mastery_trend():
         ["GOLD"] * 4 + ["DIAMOND"] * 4, [100] * 4 + [1000] * 4,
         ["specialist"] * 3 + ["generalist"] + ["specialist"] + ["generalist"] * 3,
     )
-    result = mastery_normalized_composition(players, "All-time", bins=2)
+    result = mastery_normalized_composition(players, "Lifetime", bins=2)
     supported = result.loc[result["baseline_share"].gt(0)]
     assert np.allclose(supported["relative_share"], 1)
     assert np.isclose(result.loc[(result["tier"] == "DIAMOND") & (result["playstyle"] == "generalist"), "share"].iloc[0], 0.75)
@@ -66,16 +66,16 @@ def test_mastery_normalization_removes_expected_mastery_trend():
 def test_climber_normalization_uses_population_baseline():
     players = mastery_players(["GOLD"] * 6, [300_000] * 6,
                              ["specialist"] * 2 + ["generalist"] * 4)
-    players["lp_delta_recent"] = [20, 10, 0, -10, np.nan, -20]
-    players["games_recent"] = [4] * 6
-    result = climber_playstyle_composition(players, "All-time", normalized=True).set_index("playstyle")
+    players["latest_rank_period_lp_delta"] = [20, 10, 0, -10, np.nan, -20]
+    players["latest_rank_period_games"] = [4] * 6
+    result = climber_playstyle_composition(players, "Lifetime", normalized=True).set_index("playstyle")
     assert result["players"].sum() == 2
     assert result.loc["specialist", "share"] == 1
     assert np.isclose(result.loc["specialist", "baseline_share"], 1 / 3)
     assert result.loc["specialist", "relative_share"] == 3
     assert result.loc["generalist", "relative_share"] == 0
     assert np.isnan(result.loc["versatile", "relative_share"])
-    assert climber_playstyle_composition(players, "All-time", normalized=True, minimum_mastery=400_000).empty
+    assert climber_playstyle_composition(players, "Lifetime", normalized=True, minimum_mastery=400_000).empty
 
 
 def test_mastery_normalization_interpolates_at_group_median():
@@ -83,7 +83,7 @@ def test_mastery_normalization_interpolates_at_group_median():
         ["GOLD", "GOLD", "DIAMOND", "DIAMOND"], [100, 400, 200, 300],
         ["specialist", "generalist", "specialist", "generalist"],
     )
-    result = mastery_normalized_composition(players, "All-time", bins=2)
+    result = mastery_normalized_composition(players, "Lifetime", bins=2)
     assert result["median_mastery"].eq(250).all()
     assert result.loc[result["playstyle"].isin(["specialist", "generalist"]), "baseline_share"].eq(0.5).all()
     assert result.loc[result["baseline_share"].gt(0), "relative_share"].eq(1).all()
@@ -92,10 +92,10 @@ def test_mastery_normalization_interpolates_at_group_median():
 def test_mastery_normalization_handles_constant_mastery_and_filters():
     players = mastery_players(["GOLD"] * 4, [100, 100, 0, np.nan],
                              ["specialist", "generalist", "generalist", "generalist"])
-    result = mastery_normalized_composition(players, "All-time")
+    result = mastery_normalized_composition(players, "Lifetime")
     assert result["players"].sum() == 2
     assert result.loc[result["baseline_share"].gt(0), "relative_share"].eq(1).all()
-    assert mastery_normalized_composition(players, "All-time", minimum_mastery=200).empty
+    assert mastery_normalized_composition(players, "Lifetime", minimum_mastery=200).empty
 
 
 def test_conditional_overlap_uses_selected_champion_direction() -> None:
@@ -114,27 +114,27 @@ def test_conditional_overlap_uses_selected_champion_direction() -> None:
 def test_tier_representation_uses_population_share_as_baseline() -> None:
     players = pd.DataFrame({
         "tier": ["IRON", "IRON", "GOLD", "GOLD"],
-        "active_primary_champion_name": ["Ahri", "Teemo", "Ahri", "Teemo"],
-        "active_playstyle": ["specialist"] * 4,
-        "active_hhi": [0.5] * 4,
-        "active_top1_share": [0.6] * 4,
-        "active_normalized_entropy": [0.4] * 4,
+        "recent_primary_champion_name": ["Ahri", "Teemo", "Ahri", "Teemo"],
+        "recent_playstyle": ["specialist"] * 4,
+        "recent_hhi": [0.5] * 4,
+        "recent_top1_share": [0.6] * 4,
+        "recent_normalized_entropy": [0.4] * 4,
     })
-    result = tier_population_comparison(players, "Ahri", "Active (60 days)")
+    result = tier_population_comparison(players, "Ahri", "Recent activity")
     assert result.loc[result["tier"] == "IRON", "representation_ratio"].iloc[0] == 1
     assert result.loc[result["tier"] == "GOLD", "champion_players"].iloc[0] == 1
 
 
 def test_mastery_threshold_removes_low_mastery_players() -> None:
     players = pd.DataFrame({
-        "total_mastery_points": [100, 200, 300, 400],
-        "alltime_playstyle": ["specialist", "specialist", "generalist", "generalist"],
-        "alltime_hhi": [0.5] * 4,
-        "alltime_top1_share": [0.6] * 4,
-        "alltime_normalized_entropy": [0.4] * 4,
-        "top_champion_name": ["Ahri"] * 4,
+        "lifetime_mastery_points": [100, 200, 300, 400],
+        "lifetime_playstyle": ["specialist", "specialist", "generalist", "generalist"],
+        "lifetime_hhi": [0.5] * 4,
+        "lifetime_top1_share": [0.6] * 4,
+        "lifetime_normalized_entropy": [0.4] * 4,
+        "lifetime_primary_champion_name": ["Ahri"] * 4,
     })
-    result = playstyle_mastery_bands(players, "All-time", 250, bins=2)
+    result = playstyle_mastery_bands(players, "Lifetime", 250, bins=2)
     assert result["players"].sum() == 2
     assert result["playstyle"].eq("generalist").all()
 

@@ -48,11 +48,11 @@ except ValueError as error:
 st.caption("Population mode weights pooled summaries before filters; individual points and support counts remain observations. Historical estimates describe represented player–tier observations with completed periods, not all ranked players.")
 
 section("Player comparison", "Pool concentration and rank growth")
-available_bases = ["Observed rank periods", "Active (60 days)", "All-time"] if growth_players is not None else [
-    "Active (60 days)", "All-time"
+available_bases = ["Observed rank periods", "Recent activity", "Lifetime"] if growth_players is not None else [
+    "Recent activity", "Lifetime"
 ]
 controls = st.columns([1.4, 1.2, 1], gap="small")
-basis = controls[0].selectbox("Specialization window", available_bases, index=available_bases.index("Active (60 days)"))
+basis = controls[0].selectbox("Specialization window", available_bases, index=available_bases.index("Recent activity"))
 x_axis = controls[1].selectbox(
     "Specialization axis",
     ["specialization_hhi", "top_champion_share", "inverse_entropy"],
@@ -133,16 +133,16 @@ else:
         growth = growth.loc[growth["starting_tier"] == outcome_tier]
     if outcome_role != "All roles":
         growth = growth.loc[growth["current_main_role"] == outcome_role]
-    growth = growth.loc[growth["playstyle"].isin(PLAYSTYLE_ORDER)]
+    growth = growth.loc[growth["rank_period_playstyle"].isin(PLAYSTYLE_ORDER)]
     if growth.empty:
         st.info("No player groups match the selected tier and role.")
     else:
         st.caption("The chart compares observed playstyles by starting tier; the tier selector narrows the observations.")
-        summary = weighted_summary(growth, "playstyle", {
+        summary = weighted_summary(growth, "rank_period_playstyle", {
             "climbing_efficiency": "climbing_efficiency", "observed_win_rate": "win_rate",
-        }).rename(columns={"players": "observed_player_count"})
-        summary["observed_period_count"] = summary["playstyle"].map(growth.groupby("playstyle")["period_count"].sum())
-        hidden_styles = int(summary["observed_player_count"].lt(minimum_players).sum())
+        }).rename(columns={"players": "observed_player_tier_count"})
+        summary["observed_period_count"] = summary["rank_period_playstyle"].map(growth.groupby("rank_period_playstyle")["period_count"].sum())
+        hidden_styles = int(summary["observed_player_tier_count"].lt(minimum_players).sum())
         if hidden_styles:
             show_thin_outcomes = support_warning(
                 f"Insufficient data: {hidden_styles} playstyle group(s) have fewer than "
@@ -150,7 +150,7 @@ else:
                 "overview_outcomes",
             )
             if not show_thin_outcomes:
-                summary = summary.loc[summary["observed_player_count"] >= minimum_players]
+                summary = summary.loc[summary["observed_player_tier_count"] >= minimum_players]
         if summary.empty:
             st.info("No playstyle reaches the selected player threshold.")
         else:
@@ -164,15 +164,16 @@ else:
 
 columns = st.columns(3)
 columns[0].metric("Tracked players", format_compact(len(players)))
-columns[1].metric("Observed playstyles", format_compact(growth_styles["playstyle"].nunique()) if growth_styles is not None else "?")
+columns[1].metric("Observed playstyles", format_compact(growth_styles["rank_period_playstyle"].nunique()) if growth_styles is not None else "?")
 columns[2].metric(observation_label, format_compact(len(scatter)))
 
-with st.expander("What the three time windows mean"):
+with st.expander("What the analysis windows mean"):
     st.markdown(
         """
         - **Observed rank periods:** mastery distribution and rank movement measured within completed weekly periods.
-        - **Active (60 days):** the current pool inferred using up to 60 days of activity; shorter tracking histories may use recent-play fallback rules.
-        - **All-time:** the player's cumulative mastery distribution.
+        - **Recent activity:** the current pool inferred using up to 60 days of activity; shorter tracking histories may use recent-play fallback rules.
+        - **Recent activity with rank follow-up:** the same recent profile, restricted to players with a usable rank outcome in the latest completed period; that outcome can be positive, zero or negative.
+        - **Lifetime:** the player's cumulative mastery distribution.
 
         Historical growth comparisons use starting-tier baselines from this dataset. Mastery is an activity proxy; it does not identify the champion used in an individual ranked match.
 

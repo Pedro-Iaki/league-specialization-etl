@@ -3,8 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 from app_core.metrics import (
-    active_alltime_transition,
     playstyle_tier_composition,
+    recent_lifetime_comparison,
     role_playstyle_difference,
     weighted_growth_summary,
 )
@@ -14,7 +14,7 @@ def test_playstyle_tier_composition_sums_to_one() -> None:
     players = pd.DataFrame(
         {
             "tier": ["GOLD", "GOLD", "GOLD", "SILVER"],
-            "active_playstyle": ["specialist", "generalist", None, "versatile"],
+            "recent_playstyle": ["specialist", "generalist", None, "versatile"],
         }
     )
 
@@ -45,15 +45,15 @@ def test_weighted_growth_uses_summed_outcomes() -> None:
     assert result["lp_per_game_lift_vs_tier"] == pytest.approx(-0.8)
 
 
-def test_active_alltime_transition_normalizes_rows() -> None:
+def test_recent_lifetime_comparison_normalizes_rows() -> None:
     players = pd.DataFrame(
         {
-            "active_playstyle": ["specialist", "specialist", "generalist", None],
-            "alltime_playstyle": ["specialist", "generalist", "generalist", "specialist"],
+            "recent_playstyle": ["specialist", "specialist", "generalist", None],
+            "lifetime_playstyle": ["specialist", "generalist", "generalist", "specialist"],
         }
     )
 
-    matrix = active_alltime_transition(players)
+    matrix = recent_lifetime_comparison(players)
 
     assert matrix.loc["specialist"].sum() == pytest.approx(1.0)
     assert matrix.loc["specialist", "specialist"] == pytest.approx(0.5)
@@ -63,7 +63,7 @@ def test_active_alltime_transition_normalizes_rows() -> None:
 def test_role_difference_is_percentage_point_difference() -> None:
     players = pd.DataFrame(
         {
-            "active_playstyle": ["specialist", "specialist", "generalist", "generalist"],
+            "recent_playstyle": ["specialist", "specialist", "generalist", "generalist"],
             "main_role": ["Top", "Top", "Middle", "Middle"],
         }
     )

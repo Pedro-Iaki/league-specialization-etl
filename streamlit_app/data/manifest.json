@@ -7,7 +7,7 @@
       "file": "champion_player_mastery_share.parquet",
       "rows": 1139520,
       "columns": 7,
-      "size_bytes": 14505676
+      "size_bytes": 14507649
     },
     "champion_tier_mastery": {
       "file": "champion_tier_mastery.parquet",
@@ -19,7 +19,7 @@
       "file": "player_profiles.parquet",
       "rows": 37172,
       "columns": 53,
-      "size_bytes": 4041839,
+      "size_bytes": 4042999,
       "min_as_of_date": "2026-09-29T00:00:00",
       "max_as_of_date": "2026-09-29T00:00:00",
       "min_snapshot_date": "2026-09-16T00:00:00",
@@ -29,7 +29,7 @@
       "file": "champion_profiles.parquet",
       "rows": 173,
       "columns": 38,
-      "size_bytes": 63630,
+      "size_bytes": 64098,
       "min_as_of_date": "2026-09-29T00:00:00",
       "max_as_of_date": "2026-09-29T00:00:00"
     },
@@ -37,7 +37,7 @@
       "file": "champion_playstyle_profiles.parquet",
       "rows": 690,
       "columns": 20,
-      "size_bytes": 65761,
+      "size_bytes": 66041,
       "min_as_of_date": "2026-09-29T00:00:00",
       "max_as_of_date": "2026-09-29T00:00:00"
     },
@@ -45,7 +45,7 @@
       "file": "champion_cooccurrence.parquet",
       "rows": 14878,
       "columns": 14,
-      "size_bytes": 779984,
+      "size_bytes": 780044,
       "min_as_of_date": "2026-09-29T00:00:00",
       "max_as_of_date": "2026-09-29T00:00:00"
     },
@@ -53,7 +53,7 @@
       "file": "rank_growth.parquet",
       "rows": 3373,
       "columns": 34,
-      "size_bytes": 151137,
+      "size_bytes": 151505,
       "min_snapshot_date": "2026-09-23T00:00:00",
       "max_snapshot_date": "2026-09-26T00:00:00",
       "min_previous_snapshot_date": "2026-09-16T00:00:00",
@@ -75,13 +75,13 @@
       "file": "growth_player_styles.parquet",
       "rows": 1066,
       "columns": 9,
-      "size_bytes": 16490
+      "size_bytes": 16578
     },
     "champion_tier_growth": {
       "file": "champion_tier_growth.parquet",
       "rows": 2842,
       "columns": 14,
-      "size_bytes": 140289
+      "size_bytes": 140481
     },
     "ranked_mastery_cohorts": {
       "file": "ranked_mastery_cohorts.parquet",
@@ -93,7 +93,7 @@
       "file": "business_players.parquet",
       "rows": 24990,
       "columns": 42,
-      "size_bytes": 2117210,
+      "size_bytes": 2117342,
       "min_as_of_date": "2026-09-29T00:00:00",
       "max_as_of_date": "2026-09-29T00:00:00",
       "min_snapshot_date": "2026-09-16T00:00:00",
@@ -158,7 +158,7 @@
       "file": "champion_population_pairs.parquet",
       "rows": 119024,
       "columns": 11,
-      "size_bytes": 565230
+      "size_bytes": 565290
     }
   }
 }

@@ -22,7 +22,7 @@ def mastery_summary(masteries: pd.DataFrame, minimum: int = 15_000) -> pd.DataFr
 def population_pairs(frame: pd.DataFrame) -> pd.DataFrame:
     """Estimate overlap probabilities from tier counts, retaining observed support."""
     frame = frame.copy()
-    counts = ["pair_player_count", "player_count_a", "player_count_b", "pool_player_count"]
+    counts = ["pair_player_count", "player_count_a", "player_count_b", "recent_pool_player_count"]
     for column in counts:
         frame[column + "_mass"] = frame[column] * row_weights(frame)
     keys = ["champion_key_a", "champion_name_a", "champion_key_b", "champion_name_b"]
@@ -48,32 +48,32 @@ def champion_estimates(
     additional anonymous activity export is available.
     """
     result = champions.copy().set_index("champion_name")
-    for column in ("active_play_rate", "active_player_count", "active_pool_player_count", "avg_active_pool_share",
+    for column in ("recent_pool_membership_rate", "recent_player_count", "recent_pool_player_count", "avg_recent_pool_share",
                    "role_sample_player_count", "role_top_pct", "role_jungle_pct", "role_middle_pct",
                    "role_bottom_pct", "role_support_pct", "median_mastery_points",
-                   "observed_win_rate", "climbing_efficiency", "mean_commitment", "mean_pool_hhi",
-                   "avg_end_rank_score", "median_end_rank_score", "observed_player_count"):
+                   "observed_win_rate", "climbing_efficiency", "mean_commitment", "mean_rank_period_hhi",
+                   "avg_end_rank_score", "median_end_rank_score", "observed_player_tier_count"):
         if column in result:
             result[column] = np.nan
-    primary = weighted_summary(players, "active_primary_champion_name", {
+    primary = weighted_summary(players, "recent_primary_champion_name", {
         "avg_current_rank_score": "rank_score",
-    }).set_index("active_primary_champion_name")
+    }).set_index("recent_primary_champion_name")
     result["avg_current_rank_score"] = primary["avg_current_rank_score"]
-    result["primary_player_count"] = primary["players"]
-    medians = players.groupby("active_primary_champion_name", observed=True).apply(
+    result["recent_primary_player_count"] = primary["players"]
+    medians = players.groupby("recent_primary_champion_name", observed=True).apply(
         lambda rows: weighted_quantile(rows["rank_score"], row_weights(rows)), include_groups=False,
     )
     result["median_current_rank_score"] = medians
     if growth is not None:
         metrics = {"climbing_efficiency": "climbing_efficiency", "observed_win_rate": "win_rate",
-                   "mean_commitment": "champion_commitment", "mean_pool_hhi": "specialization_hhi"}
+                   "mean_commitment": "champion_commitment", "mean_rank_period_hhi": "specialization_hhi"}
         if "end_rank_score" in growth:
             metrics["avg_end_rank_score"] = "end_rank_score"
         metrics = {label: source for label, source in metrics.items() if source in growth}
         pooled = weighted_summary(growth, "champion_name", metrics).set_index("champion_name")
         for column in metrics:
             result[column] = pooled[column]
-        result["observed_player_count"] = pooled["players"]
+        result["observed_player_tier_count"] = pooled["players"]
         if "end_rank_score" in growth:
             medians = growth.groupby("champion_name", observed=True).apply(
                 lambda rows: weighted_quantile(rows["end_rank_score"], row_weights(rows)), include_groups=False,
@@ -101,19 +101,19 @@ def champion_estimates(
         result["median_mastery_15k"] = pooled["median_mastery"]
         result["mastery_players_15k"] = pooled["players"]
     if activity is not None:
-        active = activity.copy()
-        active["mass"] = active["active_player_count"] * row_weights(active)
-        active["denominator_mass"] = active["active_pool_player_count"] * row_weights(active)
-        active["share_mass"] = active["mean_active_share"] * active["mass"]
-        pooled = active.groupby("champion_name")[["mass", "denominator_mass", "share_mass", "active_player_count", "active_pool_player_count"]].sum()
-        result["active_play_rate"] = pooled["mass"] / pooled["denominator_mass"].replace(0, np.nan)
-        result["avg_active_pool_share"] = pooled["share_mass"] / pooled["mass"].replace(0, np.nan)
-        result["active_player_count"] = pooled["active_player_count"]
-        result["active_pool_player_count"] = pooled["active_pool_player_count"]
-        active["role_mass"] = active["role_sample_player_count"] * row_weights(active)
+        recent_activity = activity.copy()
+        recent_activity["mass"] = recent_activity["recent_player_count"] * row_weights(recent_activity)
+        recent_activity["denominator_mass"] = recent_activity["recent_pool_player_count"] * row_weights(recent_activity)
+        recent_activity["share_mass"] = recent_activity["mean_recent_share"] * recent_activity["mass"]
+        pooled = recent_activity.groupby("champion_name")[["mass", "denominator_mass", "share_mass", "recent_player_count", "recent_pool_player_count"]].sum()
+        result["recent_pool_membership_rate"] = pooled["mass"] / pooled["denominator_mass"].replace(0, np.nan)
+        result["avg_recent_pool_share"] = pooled["share_mass"] / pooled["mass"].replace(0, np.nan)
+        result["recent_player_count"] = pooled["recent_player_count"]
+        result["recent_pool_player_count"] = pooled["recent_pool_player_count"]
+        recent_activity["role_mass"] = recent_activity["role_sample_player_count"] * row_weights(recent_activity)
         for column in ("role_top_pct", "role_jungle_pct", "role_middle_pct", "role_bottom_pct", "role_support_pct"):
-            numerator = (active[column] * active["role_mass"]).groupby(active["champion_name"]).sum(min_count=1)
-            denominator = active["role_mass"].where(active[column].notna()).groupby(active["champion_name"]).sum()
+            numerator = (recent_activity[column] * recent_activity["role_mass"]).groupby(recent_activity["champion_name"]).sum(min_count=1)
+            denominator = recent_activity["role_mass"].where(recent_activity[column].notna()).groupby(recent_activity["champion_name"]).sum()
             result[column] = numerator / denominator.replace(0, np.nan)
-        result["role_sample_player_count"] = active.groupby("champion_name")["role_sample_player_count"].sum()
+        result["role_sample_player_count"] = recent_activity.groupby("champion_name")["role_sample_player_count"].sum()
     return result.reset_index()

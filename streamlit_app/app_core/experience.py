@@ -1,4 +1,4 @@
-"""Raw all-time specialization comparisons within pooled mastery quintiles."""
+"""Raw lifetime specialization comparisons within pooled mastery quintiles."""
 from __future__ import annotations
 
 import numpy as np
@@ -23,11 +23,11 @@ def experience_bands(players: pd.DataFrame) -> pd.DataFrame:
     Stable source order breaks mastery ties, keeping counts within one player.
     Missing, infinite and negative mastery cannot define an experience band.
     """
-    frame = players.loc[players["alltime_playstyle"].isin(PLAYSTYLE_ORDER)].copy()
-    mastery = pd.to_numeric(frame["total_mastery_points"], errors="coerce")
+    frame = players.loc[players["lifetime_playstyle"].isin(PLAYSTYLE_ORDER)].copy()
+    mastery = pd.to_numeric(frame["lifetime_mastery_points"], errors="coerce")
     frame = frame.loc[np.isfinite(mastery) & mastery.ge(0)].copy()
-    frame["total_mastery_points"] = mastery.loc[frame.index]
-    frame = frame.sort_values("total_mastery_points", kind="stable")
+    frame["lifetime_mastery_points"] = mastery.loc[frame.index]
+    frame = frame.sort_values("lifetime_mastery_points", kind="stable")
     # array_split yields exactly five bands, including empty bands in tiny samples.
     frame["mastery_band"] = np.repeat(np.arange(1, 6), [len(part) for part in np.array_split(np.arange(len(frame)), 5)])
     return frame
@@ -38,7 +38,7 @@ def experience_cells(banded: pd.DataFrame, include_master: bool = True) -> pd.Da
     if not include_master:
         frame = frame.loc[frame["tier"].ne("MASTER")]
     frame["tier_group"] = frame["tier"].map(TIER_GROUP_MAP)
-    frame["is_specialist"] = frame["alltime_playstyle"].eq("specialist")
+    frame["is_specialist"] = frame["lifetime_playstyle"].eq("specialist")
     counts = frame.groupby(["mastery_band", "tier_group"], observed=True).agg(
         n=("is_specialist", "size"), specialists=("is_specialist", "sum"),
     )

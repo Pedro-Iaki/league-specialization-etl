@@ -46,19 +46,19 @@ def export_bundle(snapshot: Path, output_dir: Path) -> dict:
     weighted.to_parquet(output_dir / "anonymous_weighted_profiles.parquet", index=False)
     reference.to_csv(output_dir / "rank_population_reference.csv", index=False)
     diagnostics.to_csv(output_dir / "weighting_diagnostics.csv", index=False)
-    for column in ("tier", "main_role", "active_playstyle", "alltime_playstyle", "active_primary_champion_name"):
+    for column in ("tier", "main_role", "recent_playstyle", "lifetime_playstyle", "recent_primary_champion_name"):
         frame = weighted.copy()
         frame[column] = frame[column].fillna("Unclassified")
         category_summary(frame, column).to_csv(output_dir / f"{column}_estimates.csv", index=False)
         exported_names.append(f"{column}_estimates.csv")
     metrics = []
     for column in (
-        "total_mastery_points",
+        "lifetime_mastery_points",
         "rank_score",
-        "active_hhi",
-        "active_top1_share",
-        "lp_per_game_recent",
-        "win_rate_recent",
+        "recent_hhi",
+        "recent_top1_share",
+        "latest_rank_period_lp_per_game",
+        "latest_rank_period_win_rate",
     ):
         values = pd.to_numeric(weighted[column], errors="coerce")
         valid = values.notna() & weighted[WEIGHT].notna()
@@ -78,8 +78,8 @@ def export_bundle(snapshot: Path, output_dir: Path) -> dict:
     standardized_tables, tier_tables = [], []
     for cohort_name, cohort in {
         "all_profiles": players,
-        "active_classified": players.loc[players["active_playstyle"].isin(PLAYSTYLE_ORDER)],
-        "alltime_classified": players.loc[players["alltime_playstyle"].isin(PLAYSTYLE_ORDER)],
+        "recent_classified": players.loc[players["recent_playstyle"].isin(PLAYSTYLE_ORDER)],
+        "lifetime_classified": players.loc[players["lifetime_playstyle"].isin(PLAYSTYLE_ORDER)],
     }.items():
         standardized, tiers = direct_standardized_means(cohort, standardization_metrics, reference)
         standardized_tables.append(standardized.assign(cohort=cohort_name))
@@ -124,7 +124,7 @@ Open **Population Estimates** in the Streamlit dashboard to compare sample and w
 - `rank_population_reference.csv`: the exact frozen tier shares.
 - `weighting_diagnostics.csv`: scope/tier counts, raw and supported target shares, coverage and relative weights.
 - `*_estimates.csv`: sample versus weighted category shares and player metrics.
-- `standardized_means.csv` and `standardization_tiers.csv`: common-tier mean comparisons for all profiles and active/all-time classified cohorts, with metric-specific support and coverage.
+- `standardized_means.csv` and `standardization_tiers.csv`: common-tier mean comparisons for all profiles and recent/lifetime classified cohorts, with metric-specific support and coverage.
 - `manifest.json`: input snapshot hash, canonical reference hash, reference version, coverage and explicit bundle file list for reproducibility.
 
 ## Use the weights

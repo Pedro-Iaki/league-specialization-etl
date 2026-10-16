@@ -96,12 +96,12 @@ except ValueError as error:
 st.caption("Population mode weights pooled summaries before filters; individual points and support counts remain observations. Historical estimates describe represented player–tier observations with completed periods, not all ranked players.")
 st.caption("Champion overlap uses tier-preserving counts in population mode; support remains observed. Older snapshots without that export keep sample overlap.")
 if use_population_weights and population_activity is None:
-    st.info("Population estimates of active play rate and role mix need the champion_population_activity export. Refresh the snapshots to enable them.")
+    st.info("Population estimates of recent-pool membership rate and role mix need the champion_population_activity export. Refresh the snapshots to enable them.")
 
 names = sorted(champions["champion_name"].dropna().unique().tolist())
 selected = st.selectbox("Champion", names, index=names.index("Ahri") if "Ahri" in names else 0)
 champion = champions.loc[champions["champion_name"] == selected].iloc[0]
-historical_sample = champion.get("observed_player_count")
+historical_sample = champion.get("observed_player_tier_count")
 has_historical_support = pd.notna(historical_sample) and historical_sample >= minimum_support
 show_thin_cards = False
 if not has_historical_support and pd.notna(historical_sample) and historical_sample > 0:
@@ -130,7 +130,7 @@ trend = specialization_trend(observations_all) if observations_all is not None e
 overlap = champion_overlap_summary(cooccurrence, selected)
 period_all = ranked_share_players.loc[ranked_share_players["window_name"] == "All observed periods"] if ranked_share_players is not None else None
 selected_period = period_all.loc[period_all["favoured_champions"].apply(lambda names: selected in names if isinstance(names, (list, tuple, np.ndarray)) else False)] if period_all is not None else None
-historical_denominator = len(period_all) if period_all is not None else 0
+rank_period_player_denominator = len(period_all) if period_all is not None else 0
 card_mastery_threshold = max(15_000, minimum_mastery)
 if use_population_weights and player_mastery is not None:
     mastery_cohort = mastery_summary(player_mastery, card_mastery_threshold)
@@ -197,15 +197,16 @@ def cycle_association_metric() -> None:
 
 
 cards = st.columns(6)
-primary_share = row_weights(players.loc[players["active_primary_champion_name"].eq(selected)]).sum() / row_weights(players).sum()
-primary_count = int(players["active_primary_champion_name"].eq(selected).sum())
-count_card(cards[0], "primary", "Primary players", primary_count, primary_count / primary_share if primary_share else len(players), "Players whose current active mastery pool is led by this champion. Shares use the selected analysis denominator; counts remain observed.")
-active_count = champion.get("active_player_count")
-active_rate = champion.get("active_play_rate")
-count_card(cards[1], "active", "Active players", active_count, active_count / active_rate if pd.notna(active_rate) and active_rate else champion.get("active_pool_player_count"), "Active champion membership uses the selected analysis denominator; counts remain observed.")
-historical_count = len(selected_period) if selected_period is not None else champion.get("observed_player_count")
-historical_share = row_weights(selected_period).sum() / row_weights(period_all).sum() if period_all is not None and len(period_all) else 0
-count_card(cards[2], "historical", "Historical players", historical_count, historical_count / historical_share if historical_share else historical_denominator, "Favoured champion membership among players with completed periods uses the selected analysis denominator; counts remain observed.")
+primary_share = row_weights(players.loc[players["recent_primary_champion_name"].eq(selected)]).sum() / row_weights(players).sum()
+primary_count = int(players["recent_primary_champion_name"].eq(selected).sum())
+count_card(cards[0], "primary", "Primary players", primary_count, primary_count / primary_share if primary_share else len(players), "Players whose current recent mastery pool is led by this champion. Shares use the selected analysis denominator; counts remain observed.")
+recent_count = champion.get("recent_player_count")
+recent_rate = champion.get("recent_pool_membership_rate")
+count_card(cards[1], "recent", "Recent-pool players", recent_count, recent_count / recent_rate if pd.notna(recent_rate) and recent_rate else champion.get("recent_pool_player_count"), "Recent-pool champion membership uses the selected analysis denominator; counts remain observed.")
+rank_period_support_count = len(selected_period) if selected_period is not None else champion.get("observed_player_tier_count")
+rank_period_player_share = row_weights(selected_period).sum() / row_weights(period_all).sum() if period_all is not None and len(period_all) else 0
+rank_period_support_label = "Rank-period players" if selected_period is not None else "Player–tier observations"
+count_card(cards[2], "historical", rank_period_support_label, rank_period_support_count, rank_period_support_count / rank_period_player_share if rank_period_player_share else rank_period_player_denominator, "Favoured champion membership among players with completed periods uses the selected analysis denominator; counts remain observed.")
 cards[3].metric(
     "Mean player win rate", format_percent(champion.get("observed_win_rate")) if display_historical else "—",
     help="Mean player win rate from attributed ranked outcomes. This is not the champion's match-level win rate.",
@@ -233,9 +234,9 @@ with cards[5].container(key="association_metric"):
     else:
         st.metric("SxG Association", format_percent(trend["r_squared"], digits=2))
 st.caption(
-    "Primary = selected champion leads the current active pool; active = appears in that pool; "
+    "Primary = selected champion leads the current recent pool; recent-pool membership = appears in that pool; "
     "historical = favoured in an eligible completed rank period. "
-    f"Among players with an active pool, {format_percent(champion.get('active_play_rate'))} include this champion. "
+    f"Among players with a recent pool, {format_percent(champion.get('recent_pool_membership_rate'))} include this champion. "
     "Count-card denominators are stated in their tooltips; outcome cards use the full champion historical sample. SxG means specialization–growth association: it compares "
     "each player's mean mastery share on this champion in favoured rank periods with that player's median "
     "LP/game above the starting-tier baseline. It includes "
@@ -268,8 +269,8 @@ with extra[0].container(key="ranked_share_metric"):
         ranked_display = f"{100 * difference:+.1f} pp" if pd.notna(difference) else "—"
     st.metric("Ranked share", ranked_display, help="Cohort: players who favoured this champion in completed rank periods. Differences compare with all players in the same all-period ranked cohort. Estimated from ranked wins/losses and mastery gain; selection bias remains.")
 extra[1].metric("Mean conditional pool overlap", format_percent(overlap["conditional"]), help=f"Shared-player-weighted P(other champion in pool | this champion in pool), across {overlap['pairs']} retained pairs. Pairs with fewer than five shared players are absent.")
-current_primary = players.loc[players["active_primary_champion_name"].eq(selected)]
-extra[2].metric("Mean player active HHI", format_signed(weighted_mean(current_primary["active_hhi"], row_weights(current_primary)), 3), help="Mean active HHI from the current player-profile mart, among players whose current primary champion is selected. Each player has one current active pool; higher HHI means that pool's mastery is more concentrated.")
+current_primary = players.loc[players["recent_primary_champion_name"].eq(selected)]
+extra[2].metric("Mean player recent HHI", format_signed(weighted_mean(current_primary["recent_hhi"], row_weights(current_primary)), 3), help="Mean recent HHI from the current player-profile mart, among players whose current primary champion is selected. Each player has one current recent pool; higher HHI means that pool's mastery is more concentrated.")
 filtered_expert_share = mastery_overall["expert_player_count"] / mastery_overall["player_count"] if mastery_overall is not None and mastery_overall["player_count"] else float("nan")
 if use_population_weights and mastery_overall is not None and "expert_share" in mastery_overall:
     filtered_expert_share = mastery_overall["expert_share"]
@@ -330,14 +331,14 @@ else:
             "The optional local-median line is hidden in the legend by default. "
             "Period LP and games are each allocated by that share; their per-game ratio remains the period rate. "
             "Mastery gained on non-favoured champions leaves a corresponding share of period LP unassigned. "
-            "Current primary or active status does not filter these points. Mastery estimates play representation, "
+            "Current primary or recent-pool status does not filter these points. Mastery estimates play representation, "
             "not the exact percentage of matches played on the champion."
         )
 
 section("Player mix", f"Who has {selected} as their primary champion?")
 controls = st.columns([1, 1, 1], gap="small")
 basis = controls[0].segmented_control(
-    "Mastery window", ["Active (60 days)", "All-time"], default="Active (60 days)"
+    "Mastery window", ["Recent activity", "Lifetime"], default="Recent activity"
 )
 view = controls[1].selectbox("Compare by", ["Tier", "Rank score", "Role"])
 over_under_mix = controls[2].toggle("Difference from selected denominator", key="mix_over_under")
@@ -452,7 +453,7 @@ with right:
     )
 
 section("Rank representation", f"Where {selected} players sit in the ladder")
-representation_basis = st.segmented_control("Primary-player window", ["Active (60 days)", "All-time"], default="Active (60 days)", key="representation_basis")
+representation_basis = st.segmented_control("Primary-player window", ["Recent activity", "Lifetime"], default="Recent activity", key="representation_basis")
 population_table = tier_population_comparison(players, selected, representation_basis)
 representation = population_table.dropna(subset=["representation_ratio"])
 if not representation.empty:
@@ -467,7 +468,7 @@ if not representation.empty:
     fig.update_yaxes(title="Representation difference from selected denominator", range=[0, 3], tickvals=[0, 1, 2, 3], ticktext=["−100%", "0%", "+100%", "+200%"])
     st.plotly_chart(style_figure(fig, height=430), width="stretch")
 st.caption("Each point compares the champion's primary-player share in a tier with that tier's share of all tracked players. The dotted line is equal representation (1×); the visible vertical range is capped at 3×.")
-primary_players = players.loc[players["active_primary_champion_name" if representation_basis == "Active (60 days)" else "top_champion_name"] == selected]
+primary_players = players.loc[players["recent_primary_champion_name" if representation_basis == "Recent activity" else "lifetime_primary_champion_name"] == selected]
 rank_cards = st.columns(2)
 rank_cards[0].metric("Mean primary-player rank score", format_compact(weighted_mean(primary_players["rank_score"], row_weights(primary_players))))
 rank_cards[1].metric("Median primary-player rank score", format_compact(weighted_quantile(primary_players["rank_score"], row_weights(primary_players))))
@@ -520,9 +521,9 @@ else:
     tier_styles = tier_growth.loc[
         (tier_growth["champion_name"] == selected)
         & (tier_growth["cohort_scope"] == "champion_tier_playstyle")
-        & (tier_growth["playstyle"].isin(PLAYSTYLE_ORDER))
+        & (tier_growth["rank_period_playstyle"].isin(PLAYSTYLE_ORDER))
     ].copy()
-    thin_cells = int(tier_styles["observed_player_count"].lt(minimum_players).sum())
+    thin_cells = int(tier_styles["observed_player_tier_count"].lt(minimum_players).sum())
     tier_styles.attrs["minimum_players"] = minimum_players
     if thin_cells:
         tier_styles.attrs["show_sparse"] = support_warning(
@@ -578,7 +579,7 @@ else:
     if period_players["first_period_end"].min() == period_players["last_period_end"].max():
         st.caption("Only one completed rank period is available so far; the window choices currently show the same observations.")
 
-section("Pool overlap", "Champions in the same active player pools")
+section("Pool overlap", "Champions in the same recent player pools")
 st.caption("Co-occurrence describes player preference, not team synergy or champions used together in a match.")
 st.caption("The source mart retains pairs with at least five shared players, even when this control is set lower.")
 minimum_pair = st.slider("Minimum shared players", minimum_support, 1000, 100, 1)

@@ -55,21 +55,21 @@ h1, h2, h3 {
 
 .st-key-association_metric,
 .st-key-primary_metric,
-.st-key-active_metric,
+.st-key-recent_metric,
 .st-key-historical_metric,
 .st-key-ranked_share_metric,
 .st-key-mastery_mean_metric,
 .st-key-mastery_median_metric { position: relative; }
 .st-key-association_metric [data-testid="stMetric"],
 .st-key-primary_metric [data-testid="stMetric"],
-.st-key-active_metric [data-testid="stMetric"],
+.st-key-recent_metric [data-testid="stMetric"],
 .st-key-historical_metric [data-testid="stMetric"],
 .st-key-ranked_share_metric [data-testid="stMetric"],
 .st-key-mastery_mean_metric [data-testid="stMetric"],
 .st-key-mastery_median_metric [data-testid="stMetric"] { padding-right: 2.8rem; }
 .st-key-association_metric .st-key-cycle_specialization,
 .st-key-primary_metric .st-key-toggle_primary_pct,
-.st-key-active_metric .st-key-toggle_active_pct,
+.st-key-recent_metric .st-key-toggle_recent_pct,
 .st-key-historical_metric .st-key-toggle_historical_pct,
 .st-key-ranked_share_metric .st-key-cycle_ranked_share,
 .st-key-mastery_mean_metric .st-key-toggle_mastery_mean_comparison,
@@ -81,7 +81,7 @@ h1, h2, h3 {
 }
 .st-key-association_metric .st-key-cycle_specialization button,
 .st-key-primary_metric .st-key-toggle_primary_pct button,
-.st-key-active_metric .st-key-toggle_active_pct button,
+.st-key-recent_metric .st-key-toggle_recent_pct button,
 .st-key-historical_metric .st-key-toggle_historical_pct button,
 .st-key-ranked_share_metric .st-key-cycle_ranked_share button,
 .st-key-mastery_mean_metric .st-key-toggle_mastery_mean_comparison button,

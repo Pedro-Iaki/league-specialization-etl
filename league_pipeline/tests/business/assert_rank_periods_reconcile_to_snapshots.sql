@@ -31,7 +31,7 @@ where current_snapshot.puuid is null
    )
    or exists (
        select 1
-       from {{ ref('fct_players_rank_history') }} h
+       from {{ ref('fct_players_rank_deltas') }} h
        where h.player_id = r.player_id
          and h.queue = r.queue
          and h.snapshot_date > r.previous_snapshot_date

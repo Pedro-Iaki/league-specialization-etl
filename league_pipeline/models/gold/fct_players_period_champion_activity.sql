@@ -12,7 +12,7 @@ with champion_points as (
         max(d.champion_name) as champion_name,
         sum(d.points_delta) as points_gained
     from {{ ref('fct_players_rank_periods') }} r
-    inner join {{ ref('fct_players_champion_delta_history') }} d
+    inner join {{ ref('fct_players_champion_mastery_deltas') }} d
         on r.player_id = d.player_id
         and d.snapshot_date > r.previous_snapshot_date
         and d.snapshot_date <= r.snapshot_date

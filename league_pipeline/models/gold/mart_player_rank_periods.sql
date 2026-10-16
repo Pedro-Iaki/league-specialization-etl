@@ -34,12 +34,12 @@ with periods as (
         p.primary_champion_key,
         p.primary_champion_name,
         p.primary_champion_points,
-        p.top1_share as pool_top1_share,
-        p.favoured_champion_count as pool_favoured_champion_count,
-        p.favoured_champions_share as pool_favoured_champions_share,
-        p.hhi as pool_hhi,
-        p.normalized_entropy as pool_normalized_entropy,
-        p.playstyle
+        p.rank_period_top1_share as rank_period_top1_share,
+        p.rank_period_favoured_champion_count as rank_period_favoured_champion_count,
+        p.rank_period_favoured_champions_share as rank_period_favoured_champions_share,
+        p.rank_period_hhi as rank_period_hhi,
+        p.rank_period_normalized_entropy as rank_period_normalized_entropy,
+        p.rank_period_playstyle
     from {{ ref('fct_players_rank_periods') }} r
     left join {{ ref('fct_players_period_pool_profile') }} p
         on r.rank_period_id = p.rank_period_id

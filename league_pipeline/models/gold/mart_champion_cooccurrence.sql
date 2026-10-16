@@ -15,13 +15,13 @@ pool as (
         player_id,
         champion_key
     from {{ ref('fct_players_champion_activity') }}
-    where is_active
+    where is_recent_pool_champion
 
 ),
 
 pool_total as (
 
-    select count(distinct player_id) as pool_player_count
+    select count(distinct player_id) as recent_pool_player_count
     from pool
 
 ),
@@ -57,10 +57,10 @@ metrics as (
         p.champion_key_a,
         p.champion_key_b,
         p.pair_player_count,
-        t.pool_player_count,
+        t.recent_pool_player_count,
         ta.player_count as player_count_a,
         tb.player_count as player_count_b,
-        {{ dbt_utils.safe_divide('cast(p.pair_player_count as double)', 't.pool_player_count') }} as support_pair,
+        {{ dbt_utils.safe_divide('cast(p.pair_player_count as double)', 't.recent_pool_player_count') }} as support_pair,
         {{ dbt_utils.safe_divide(
             'cast(p.pair_player_count as double)',
             '(ta.player_count + tb.player_count - p.pair_player_count)'
@@ -68,7 +68,7 @@ metrics as (
         {{ dbt_utils.safe_divide('cast(p.pair_player_count as double)', 'ta.player_count') }} as prob_b_given_a,
         {{ dbt_utils.safe_divide('cast(p.pair_player_count as double)', 'tb.player_count') }} as prob_a_given_b,
         {{ dbt_utils.safe_divide(
-            'cast(p.pair_player_count as double) * t.pool_player_count',
+            'cast(p.pair_player_count as double) * t.recent_pool_player_count',
             'cast(ta.player_count as double) * tb.player_count'
         ) }} as lift
     from pairs p
@@ -89,7 +89,7 @@ select
     m.champion_key_b,
     cb.name as champion_name_b,
 
-    m.pool_player_count,
+    m.recent_pool_player_count,
     m.player_count_a,
     m.player_count_b,
     m.pair_player_count,

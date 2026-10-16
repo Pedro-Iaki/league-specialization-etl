@@ -17,7 +17,7 @@ latest_period as (
 
 ),
 
-recent_form as (
+latest_rank_period as (
 
     select
         r.player_id,
@@ -53,14 +53,14 @@ select
     p.total_games,
     p.win_rate,
 
-    f.window_days as form_window_days,
-    f.games as games_recent,
-    f.lp_delta as lp_delta_recent,
-    f.win_rate as win_rate_recent,
-    f.lp_per_game as lp_per_game_recent,
-    f.lp_per_day as lp_per_day_recent,
-    f.games_per_day as games_per_day_recent,
-    f.days_covered as form_days_covered,
+    f.window_days as latest_rank_period_window_days,
+    f.games as latest_rank_period_games,
+    f.lp_delta as latest_rank_period_lp_delta,
+    f.win_rate as latest_rank_period_win_rate,
+    f.lp_per_game as latest_rank_period_lp_per_game,
+    f.lp_per_day as latest_rank_period_lp_per_day,
+    f.games_per_day as latest_rank_period_games_per_day,
+    f.days_covered as latest_rank_period_days_covered,
 
     pool.role_top_pct,
     pool.role_jungle_pct,
@@ -73,37 +73,37 @@ select
     n.primary_roles as metadata_primary_roles,
     n.champions_sampled_count as role_champions_sampled_count,
 
-    pool.active_champion_count,
-    pool.recent_total_points,
-    pool.primary_champion_key as active_primary_champion_key,
-    pool.primary_champion_name as active_primary_champion_name,
-    pool.playstyle as active_playstyle,
-    pool.pool_top1_share as active_top1_share,
-    pool.pool_favoured_champion_count as active_favoured_champion_count,
-    pool.pool_favoured_champions_share as active_favoured_champions_share,
-    pool.pool_hhi as active_hhi,
-    pool.pool_normalized_entropy as active_normalized_entropy,
-    pool.active_champion_names,
+    pool.recent_champion_count,
+    pool.recent_mastery_points,
+    pool.primary_champion_key as recent_primary_champion_key,
+    pool.primary_champion_name as recent_primary_champion_name,
+    pool.recent_playstyle as recent_playstyle,
+    pool.recent_top1_share as recent_top1_share,
+    pool.recent_favoured_champion_count as recent_favoured_champion_count,
+    pool.recent_favoured_champions_share as recent_favoured_champions_share,
+    pool.recent_hhi as recent_hhi,
+    pool.recent_normalized_entropy as recent_normalized_entropy,
+    pool.recent_champion_names,
 
-    m.champions_with_mastery,
-    m.total_mastery_points,
-    m.top_champion_key,
-    m.top_champion_name,
-    m.mastery_top1_share as alltime_top1_share,
-    m.mastery_favoured_champion_count as alltime_favoured_champion_count,
-    m.mastery_favoured_champions_share as alltime_favoured_champions_share,
-    m.mastery_hhi as alltime_hhi,
-    m.mastery_normalized_entropy as alltime_normalized_entropy,
-    m.mastery_playstyle as alltime_playstyle,
-    m.mastery_points_per_day as alltime_points_per_day,
+    m.lifetime_champion_count,
+    m.lifetime_mastery_points,
+    m.lifetime_primary_champion_key,
+    m.lifetime_primary_champion_name,
+    m.lifetime_top1_share as lifetime_top1_share,
+    m.lifetime_favoured_champion_count as lifetime_favoured_champion_count,
+    m.lifetime_favoured_champions_share as lifetime_favoured_champions_share,
+    m.lifetime_hhi as lifetime_hhi,
+    m.lifetime_normalized_entropy as lifetime_normalized_entropy,
+    m.lifetime_playstyle as lifetime_playstyle,
+    m.tracked_mastery_points_per_day as tracked_mastery_points_per_day,
     m.days_since_last_play,
     m.days_tracked
 from {{ ref('dim_players_current') }} p
-left join {{ ref('dim_players_active_pool') }} pool
+left join {{ ref('dim_players_recent_pool') }} pool
     on p.puuid = pool.player_id
-left join {{ ref('fct_players_mastery_profile') }} m
+left join {{ ref('fct_players_lifetime_mastery_profile') }} m
     on p.puuid = m.player_id
-left join recent_form f
+left join latest_rank_period f
     on p.puuid = f.player_id
     and p.queue = f.queue
 left join naive_roles n on p.puuid = n.player_id

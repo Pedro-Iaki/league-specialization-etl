@@ -62,15 +62,15 @@ def test_pooled_trend_and_mastery_use_weights_not_average_of_tier_medians():
 def test_primary_representation_weights_both_sides_and_retains_support():
     frame = pd.DataFrame({
         "tier": ["IRON", "IRON", "GOLD", "GOLD"],
-        "active_primary_champion_name": ["Ahri", "Annie", "Ahri", "Ahri"],
-        "active_playstyle": "specialist", "active_hhi": 0.9, "active_top1_share": 0.9,
-        "active_normalized_entropy": 0.1, WEIGHT: [4, 4, 1, 1],
+        "recent_primary_champion_name": ["Ahri", "Annie", "Ahri", "Ahri"],
+        "recent_playstyle": "specialist", "recent_hhi": 0.9, "recent_top1_share": 0.9,
+        "recent_normalized_entropy": 0.1, WEIGHT: [4, 4, 1, 1],
     })
-    comparison = tier_population_comparison(frame, "Ahri", "Active (60 days)").set_index("tier")
+    comparison = tier_population_comparison(frame, "Ahri", "Recent activity").set_index("tier")
     assert comparison.loc["IRON", "all_share"] == pytest.approx(0.8)
     assert comparison.loc["IRON", "champion_share"] == pytest.approx(4 / 6)
     assert comparison.loc["GOLD", "champion_players"] == 2
-    frame["total_mastery_points"] = 500_000
+    frame["lifetime_mastery_points"] = 500_000
     holders = pd.DataFrame({"champion_name": ["Ahri", "Ahri"], "tier": ["IRON", "GOLD"],
                             "minimum_mastery": 0, "player_count": [2, 2], WEIGHT: [4, 1]})
     otp = one_trick_tier_distribution(frame, holders).set_index("tier")
@@ -80,14 +80,14 @@ def test_primary_representation_weights_both_sides_and_retains_support():
 
 
 def test_activity_aggregates_use_weighted_numerators_and_observed_counts():
-    players = pd.DataFrame({"active_primary_champion_name": ["Ahri", "Ahri"], "rank_score": [100, 900], WEIGHT: [4, 1]})
-    activity = pd.DataFrame({"champion_name": "Ahri", "active_player_count": [1, 9],
-                             "active_pool_player_count": [10, 10], "mean_active_share": [0.8, 0.2],
+    players = pd.DataFrame({"recent_primary_champion_name": ["Ahri", "Ahri"], "rank_score": [100, 900], WEIGHT: [4, 1]})
+    activity = pd.DataFrame({"champion_name": "Ahri", "recent_player_count": [1, 9],
+                             "recent_pool_player_count": [10, 10], "mean_recent_share": [0.8, 0.2],
                              "role_sample_player_count": [1, 9], WEIGHT: [4, 1],
                              **{f"role_{role}_pct": [0.5, 0.1] for role in ["top", "jungle", "middle", "bottom", "support"]}})
     result = champion_estimates(pd.DataFrame({"champion_name": ["Ahri"]}), players, None, None, None, None, activity).iloc[0]
-    assert result["active_play_rate"] == pytest.approx(13 / 50)
-    assert result["active_player_count"] == 10
+    assert result["recent_pool_membership_rate"] == pytest.approx(13 / 50)
+    assert result["recent_player_count"] == 10
     assert result["avg_current_rank_score"] == 260
     assert result["role_top_pct"] == pytest.approx(2.9 / 13)
 
@@ -105,7 +105,7 @@ def test_overlap_probabilities_weight_counts_but_support_stays_observed():
     frame = pd.DataFrame({
         "champion_key_a": 1, "champion_name_a": "Ahri", "champion_key_b": 2, "champion_name_b": "Annie",
         "pair_player_count": [1, 1], "player_count_a": [5, 1], "player_count_b": [2, 8],
-        "pool_player_count": [10, 10], WEIGHT: [4, 1],
+        "recent_pool_player_count": [10, 10], WEIGHT: [4, 1],
     })
     pair = population_pairs(frame).iloc[0]
     assert pair["pair_player_count"] == 2

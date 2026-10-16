@@ -26,11 +26,11 @@ def growth_database():
                 "player_id": player,
                 "champion_key": 1,
                 "previous_tier": tier,
-                "playstyle": style,
+                "rank_period_playstyle": style,
                 "attribution_share": share,
                 "lp_per_game_lift_vs_tier": lift,
-                "pool_hhi": 0.5,
-                "pool_top1_share": 0.7,
+                "rank_period_hhi": 0.5,
+                "rank_period_top1_share": 0.7,
                 "attributed_games": float(games),
                 "attributed_wins": float(wins),
                 "attributed_lp_delta": float(games * lift),
@@ -63,9 +63,9 @@ def test_tier_growth_recomputes_each_style_instead_of_merging_subgroup_medians(g
     frame = execute_analysis(growth_database, "champion_tier_growth")
     gold = frame.loc[frame.starting_tier.eq("GOLD")]
     overall = gold.loc[gold.cohort_scope.eq("champion_tier")].iloc[0]
-    assert overall.observed_player_count == 2
+    assert overall.observed_player_tier_count == 2
     assert overall.climbing_efficiency == 20
-    styles = gold.loc[gold.cohort_scope.eq("champion_tier_playstyle")].set_index("playstyle")
+    styles = gold.loc[gold.cohort_scope.eq("champion_tier_playstyle")].set_index("rank_period_playstyle")
     assert styles.loc["specialist", "climbing_efficiency"] == 10
     assert styles.loc["versatile", "climbing_efficiency"] == 65
     assert overall.climbing_efficiency != styles.climbing_efficiency.mean()
@@ -84,7 +84,7 @@ def test_invalid_lp_does_not_remove_recent_games_or_win_rate():
     )
     eligibility = (REPO_ROOT / "league_pipeline/macros/lp_growth_eligible.sql").read_text()
     environment.globals["lp_growth_eligible"] = environment.from_string(eligibility).module.lp_growth_eligible
-    query = environment.from_string(recent + "select * from recent_form").render()
+    query = environment.from_string(recent + "select * from latest_rank_period").render()
     with sqlite3.connect(":memory:") as connection:
         pd.DataFrame(
             [
