@@ -7,6 +7,13 @@ import pytest
 import extract.run_pipeline as pipeline
 import load.load_compacted_to_databricks as loader
 
+JOB_CONFIG = {
+    "ingest_job_id": 123,
+    "ingestion_timeout_seconds": 900,
+    "dbt_job_id": 456,
+    "dbt_timeout_seconds": 1800,
+}
+
 
 def test_same_second_uploads_keep_both_collectors_files(tmp_path, monkeypatch):
     instant = datetime(2026, 10, 12, 12, 0, 0, tzinfo=timezone.utc)
@@ -47,7 +54,7 @@ def test_legacy_runner_retains_files_when_load_is_incomplete(tmp_path, monkeypat
         pipeline.verify, "verify_compaction_integrity",
         lambda: {"task_level_issues_count": 0, "pending_compaction_records_count": {"players": 0, "masteries": 0}},
     )
-    monkeypatch.setattr(pipeline, "run_load", lambda: {"status": load_status})
+    monkeypatch.setattr(pipeline, "run_load", lambda config: {"status": load_status})
     monkeypatch.setattr(pipeline.db, "count_incomplete_loads", lambda: pending_count)
     cleared = []
     monkeypatch.setattr(pipeline, "reset_local_data", lambda: cleared.append(True))
@@ -65,33 +72,33 @@ def test_legacy_runner_retains_files_when_load_is_incomplete(tmp_path, monkeypat
 
 def test_run_load_reports_failed_compacted_upload(monkeypatch):
     monkeypatch.setattr(pipeline, "load_champions", lambda: 10)
-    monkeypatch.setattr(pipeline, "load_compacted", lambda: False)
+    monkeypatch.setattr(pipeline, "load_compacted", lambda config: False)
 
-    assert pipeline.run_load()["status"] is False
+    assert pipeline.run_load(JOB_CONFIG)["status"] is False
 
 
 @pytest.mark.parametrize("ingested,built", [(False, None), (True, False), (True, True)])
 def test_dbt_runs_after_confirmed_load_and_has_a_separate_result(monkeypatch, ingested, built):
     events = []
     monkeypatch.setattr(pipeline, "load_champions", lambda: 10)
-    monkeypatch.setattr(pipeline, "load_compacted", lambda: events.append("load_and_commit") or ingested)
-    monkeypatch.setattr(pipeline, "run_dbt", lambda: events.append("dbt") or built)
-    result = pipeline.run_load()
+    monkeypatch.setattr(pipeline, "load_compacted", lambda config: events.append("load_and_commit") or ingested)
+    monkeypatch.setattr(pipeline, "run_job", lambda *args: events.append("dbt") or built)
+    result = pipeline.run_load(JOB_CONFIG)
     assert result["compacted_load_result"] is ingested
     assert result["dbt_build_result"] is built
     assert result["status"] is bool(ingested and built)
     assert events == (["load_and_commit", "dbt"] if ingested else ["load_and_commit"])
 
 
-def test_dbt_configuration_error_preserves_confirmed_load_result(monkeypatch):
+def test_dbt_error_preserves_confirmed_load_result(monkeypatch):
     monkeypatch.setattr(pipeline, "load_champions", lambda: 10)
-    monkeypatch.setattr(pipeline, "load_compacted", lambda: True)
+    monkeypatch.setattr(pipeline, "load_compacted", lambda config: True)
 
-    def bad_config():
-        raise ValueError("DBT_JOB_ID is not configured")
+    def bad_build(*args):
+        raise RuntimeError("dbt job unavailable")
 
-    monkeypatch.setattr(pipeline, "run_dbt", bad_config)
-    result = pipeline.run_load()
+    monkeypatch.setattr(pipeline, "run_job", bad_build)
+    result = pipeline.run_load(JOB_CONFIG)
     assert result["status"] is False
     assert result["compacted_load_result"] is True
 
@@ -121,10 +128,7 @@ def test_upload_alone_does_not_update_neon_or_mark_sqlite_complete(tmp_path, moc
 
 @pytest.mark.parametrize("failure", [None, "upload", "ingestion", "registry"])
 def test_load_updates_are_gated_by_ingestion_success(monkeypatch, failure):
-    from pydantic_models import IngestionConfigManifest
-
     events = []
-    monkeypatch.setattr(loader, "get_ingestion_config", lambda: IngestionConfigManifest(ingest_job_id=123))
 
     def upload(dataset):
         events.append(dataset)
@@ -144,11 +148,11 @@ def test_load_updates_are_gated_by_ingestion_success(monkeypatch, failure):
             raise RuntimeError("registry unavailable")
 
     monkeypatch.setattr(loader, "load_dataset", upload)
-    monkeypatch.setattr(loader, "run_ingestion", ingest)
+    monkeypatch.setattr(loader, "run_job", ingest)
     monkeypatch.setattr(loader.player_registry, "upsert_players", registry)
-    monkeypatch.setattr(loader, "mark_load_status", lambda results, status: events.append(status))
+    monkeypatch.setattr(loader.db, "mark_load_status", lambda results, status: events.append(status))
     monkeypatch.setattr(loader, "complete_loaded_rank_pages", lambda: events.append("cursor"))
-    assert loader.load_compacted() is (failure is None)
+    assert loader.load_compacted(JOB_CONFIG) is (failure is None)
     assert events[:2] == ["players", "masteries"]
     if failure == "upload":
         assert "ingestion" not in events
@@ -163,10 +167,7 @@ def test_load_updates_are_gated_by_ingestion_success(monkeypatch, failure):
 
 @pytest.mark.parametrize("is_refresh", [False, True])
 def test_failed_ingestion_preserves_files_and_sqlite_can_retry(tmp_path, mock_db, monkeypatch, is_refresh):
-    from pydantic_models import IngestionConfigManifest
-
     monkeypatch.setattr(loader, "COMPACTED_DIR", tmp_path)
-    monkeypatch.setattr(loader, "get_ingestion_config", lambda: IngestionConfigManifest(ingest_job_id=123))
     run_id = mock_db.start_run("ingestion_confirmation")
     task_id = mock_db.add_player_task(run_id, is_refresh=is_refresh)
     mock_db.add_player_records("p1", "players.parquet", task_id, "na1", "solo", "GOLD", "I", "15.1")
@@ -185,14 +186,14 @@ def test_failed_ingestion_preserves_files_and_sqlite_can_retry(tmp_path, mock_db
     )
     cursors = []
     monkeypatch.setattr(loader.player_registry, "complete_rank_page", lambda *args: cursors.append(args) or 2)
-    monkeypatch.setattr(loader, "run_ingestion", lambda *args: False)
-    assert loader.load_compacted() is False
+    monkeypatch.setattr(loader, "run_job", lambda *args: False)
+    assert loader.load_compacted(JOB_CONFIG) is False
     assert commits == []
     assert cursors == []
     assert mock_db.count_incomplete_loads() == 1
     assert len(list(tmp_path.glob("*.parquet"))) == 2
-    monkeypatch.setattr(loader, "run_ingestion", lambda *args: True)
-    assert loader.load_compacted() is True
+    monkeypatch.setattr(loader, "run_job", lambda *args: True)
+    assert loader.load_compacted(JOB_CONFIG) is True
     assert len(commits) == 1
     assert commits[0][1] is is_refresh
     assert commits[0][0][0]["observed_at"]
@@ -235,13 +236,43 @@ def test_old_local_schema_adds_task_details_without_reset(mock_conn):
 
 
 def test_empty_load_does_not_submit_an_ingestion_job(monkeypatch):
-    from pydantic_models import IngestionConfigManifest
-
-    monkeypatch.setattr(loader, "get_ingestion_config", lambda: IngestionConfigManifest(ingest_job_id=123))
     monkeypatch.setattr(loader, "load_dataset", lambda name: {"dataset": name, "status": "skipped"})
 
     def unexpected(*args):
         raise AssertionError("No job is needed when neither dataset has rows")
 
-    monkeypatch.setattr(loader, "run_ingestion", unexpected)
-    assert loader.load_compacted()
+    monkeypatch.setattr(loader, "run_job", unexpected)
+    assert loader.load_compacted(JOB_CONFIG)
+
+
+def test_load_status_updates_roll_back_together_on_failure(mock_db):
+    run_id = mock_db.start_run("atomic_load_status")
+    task_id = mock_db.add_player_task(run_id)
+    mock_db.add_player_records("p1", "players.parquet", task_id, "na1", "solo", "GOLD", "I", "15.1")
+    player = {"puuid": "p1", "region": "na1", "queueType": "solo"}
+
+    with pytest.raises(ValueError, match="Unknown load dataset"):
+        mock_db.mark_load_status([
+            {"dataset": "players", "records": [player]},
+            {"dataset": "invalid", "records": [player]},
+        ], "load_success")
+
+    conn = mock_db.get_connection()
+    try:
+        assert conn.execute("SELECT player_load_status FROM players_recorded").fetchone()[0] == "pending_compaction"
+    finally:
+        conn.close()
+
+
+def test_load_status_helper_leaves_supplied_transaction_to_caller(mock_conn):
+    db = loader.db
+    run_id = db.start_run("caller_load_status", conn=mock_conn)
+    task_id = db.add_player_task(run_id, conn=mock_conn)
+    db.add_player_records("p1", "players.parquet", task_id, "na1", "solo", "GOLD", "I", "15.1", conn=mock_conn)
+    mock_conn.commit()
+    db.mark_load_status([
+        {"dataset": "players", "records": [{"puuid": "p1", "region": "na1", "queueType": "solo"}]},
+    ], "load_success", conn=mock_conn)
+    assert mock_conn.execute("SELECT player_load_status FROM players_recorded").fetchone()[0] == "load_success"
+    mock_conn.rollback()
+    assert mock_conn.execute("SELECT player_load_status FROM players_recorded").fetchone()[0] == "pending_compaction"

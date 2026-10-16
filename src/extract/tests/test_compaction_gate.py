@@ -63,7 +63,7 @@ def test_runner_checks_compacted_output_before_any_upload(collection, tmp_path, 
     monkeypatch.setattr(pipeline, "run_stale_refresh", lambda *args: {"status": True})
     uploads = []
     cleared = []
-    monkeypatch.setattr(pipeline, "run_load", lambda: uploads.append(True) or {"status": True})
+    monkeypatch.setattr(pipeline, "run_load", lambda config: uploads.append(True) or {"status": True})
     monkeypatch.setattr(pipeline.db, "count_incomplete_loads", lambda: 0)
     monkeypatch.setattr(pipeline, "reset_local_data", lambda: cleared.append(True))
     real_compact = compact.run

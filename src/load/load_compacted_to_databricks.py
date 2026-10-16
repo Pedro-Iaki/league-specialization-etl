@@ -1,6 +1,5 @@
 import json
 import sys
-from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -10,9 +9,10 @@ from loguru import logger
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 
 import extract.extraction_db_helper as db
+from extract.config_helper import get_configs
 from load import player_registry
-from load.confirm_ingestion import get_ingestion_config, run_ingestion
-from load.databricks_helper import upload_parquet
+from load.databricks_helper import run_job, upload_parquet
+from pydantic_models import ExtractionConfigManifest
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 COMPACTED_DIR = BASE_DIR / "data" / "compacted"
@@ -76,37 +76,26 @@ def load_dataset(dataset: str) -> dict:
     return {"dataset": dataset, "status": status, "rows": table.num_rows, "players": len(players), "records": players}
 
 
-def mark_load_status(results: list[dict], status: str) -> None:
-    with closing(db.get_connection()) as conn, conn:
-        for result in results:
-            if result.get("records"):
-                db.update_load_status(result["dataset"], result["records"], status, conn=conn)
-
-
 def complete_loaded_rank_pages() -> None:
     """Advance only discovery tasks whose players have confirmed SQLite load flags."""
-    with closing(db.get_connection()) as conn, conn:
-        for task in db.get_loaded_rank_pages(conn):
-            claim = json.loads(task["rank_page_claim"])
-            next_page = player_registry.complete_rank_page(claim["claim_token"], claim["player_count"])
-            if not next_page:
-                logger.info(
-                    "Page claim for task {} expired or was already completed; keeping ingested data.", task["task_id"]
-                )
-            db.set_rank_page_claim(task["task_id"], None, conn=conn)
+    for task in db.get_loaded_rank_pages():
+        claim = json.loads(task["rank_page_claim"])
+        next_page = player_registry.complete_rank_page(claim["claim_token"], claim["player_count"])
+        if not next_page:
+            logger.debug(f"Page claim for task {task['task_id']} expired or was already completed; keeping ingested data.")
+        db.set_rank_page_claim(task["task_id"], None)
 
 
-def load_compacted() -> bool:
-    config = get_ingestion_config()
+def load_compacted(config_manifest: dict) -> bool:
     results = [load_dataset(dataset) for dataset in ("players", "masteries")]
     if not all(result["status"] in ("uploaded", "skipped") for result in results):
-        mark_load_status(results, "load_failed")
+        db.mark_load_status(results, "load_failed")
         logger.error("Upload failed; ingestion was not started. Retaining local files.")
         return False
     if all(result["status"] == "skipped" for result in results):
         return True
-    if not run_ingestion(config.ingest_job_id, config.ingestion_timeout_seconds):
-        mark_load_status(results, "load_failed")
+    if not run_job(config_manifest["ingest_job_id"], config_manifest["ingestion_timeout_seconds"], "Ingestion"):
+        db.mark_load_status(results, "load_failed")
         logger.error("Ingestion was not confirmed; retaining local files without applying the loader's Neon updates.")
         return False
 
@@ -119,10 +108,10 @@ def load_compacted() -> bool:
                     player_registry.upsert_players(discovered)
                 if refreshed:
                     player_registry.upsert_players(refreshed, is_refresh=True)
-        mark_load_status(results, "load_success")
+        db.mark_load_status(results, "load_success")
         complete_loaded_rank_pages()
     except Exception as error:  # noqa: BLE001 - registry/ledger failures must prevent local cleanup
-        mark_load_status(results, "load_failed")
+        db.mark_load_status(results, "load_failed")
         logger.error(f"Ingestion succeeded but registry/ledger updates failed: {error}. Retaining local files.")
         return False
     logger.info("Ingestion confirmed; Neon freshness and SQLite load status updated.")
@@ -130,4 +119,5 @@ def load_compacted() -> bool:
 
 
 if __name__ == "__main__":
-    sys.exit(0 if load_compacted() else 1)
+    config_manifest = ExtractionConfigManifest.model_validate(get_configs()).model_dump()
+    sys.exit(0 if load_compacted(config_manifest) else 1)

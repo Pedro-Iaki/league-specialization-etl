@@ -63,17 +63,7 @@ class ExtractionConfigManifest(BaseModel):
     freshness_threshold_minutes: int = Field(default=10080, ge=1)
     max_refresh_scale: float = Field(default=4, gt=0, allow_inf_nan=False)
     runs_per_load: int = Field(default=10, ge=1)
-
-
-class IngestionConfigManifest(BaseModel):
-    model_config = ConfigDict(hide_input_in_errors=True)
-
     ingest_job_id: int = Field(gt=0)
     ingestion_timeout_seconds: int = Field(default=900, gt=0)
-
-
-class DbtConfigManifest(BaseModel):
-    model_config = ConfigDict(hide_input_in_errors=True)
-
     dbt_job_id: int = Field(gt=0)
     dbt_timeout_seconds: int = Field(default=1800, gt=0)

@@ -31,6 +31,8 @@ class EnvFactory:
             "QUEUE": "RANKED_SOLO_5x5",
             "TIERS": "GOLD",
             "DIVISIONS": "I",
+            "INGEST_JOB_ID": "123",
+            "DBT_JOB_ID": "456",
         }
 
     @classmethod
@@ -72,6 +74,10 @@ def _clear_pipeline_env(monkeypatch: pytest.MonkeyPatch):
         "REGION",
         "QUEUE",
         "MAX_REFRESH_SCALE",
+        "INGEST_JOB_ID",
+        "INGESTION_TIMEOUT_SECONDS",
+        "DBT_JOB_ID",
+        "DBT_TIMEOUT_SECONDS",
     ]
     for key in keys:
         monkeypatch.delenv(key, raising=False)

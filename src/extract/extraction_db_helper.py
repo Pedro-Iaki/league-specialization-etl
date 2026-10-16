@@ -191,26 +191,33 @@ def set_rank_page_claim(task_id: int, claim: dict | None, conn: sqlite3.Connecti
             conn.close()
 
 
-def get_loaded_rank_pages(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+def get_loaded_rank_pages(conn: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
     """Find saved page claims whose tracked player records have all loaded."""
-    columns = {row["name"] for row in conn.execute("PRAGMA table_info(player_tasks)")}
-    if "rank_page_claim" not in columns:
-        return []
-    return conn.execute(
-        """
-        SELECT task_id, rank_page_claim FROM player_tasks AS task
-        WHERE task.status = 'success' AND task.rank_page_claim IS NOT NULL
-          AND EXISTS (
-              SELECT 1 FROM players_recorded, json_each(player_task_ids) AS ids
-              WHERE ids.value = task.task_id
-          )
-          AND NOT EXISTS (
-              SELECT 1 FROM players_recorded, json_each(player_task_ids) AS ids
-              WHERE ids.value = task.task_id AND player_load_status != 'load_success'
-          )
-        ORDER BY task_id
-        """
-    ).fetchall()
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(player_tasks)")}
+        if "rank_page_claim" not in columns:
+            return []
+        return conn.execute(
+            """
+            SELECT task_id, rank_page_claim FROM player_tasks AS task
+            WHERE task.status = 'success' AND task.rank_page_claim IS NOT NULL
+              AND EXISTS (
+                  SELECT 1 FROM players_recorded, json_each(player_task_ids) AS ids
+                  WHERE ids.value = task.task_id
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM players_recorded, json_each(player_task_ids) AS ids
+                  WHERE ids.value = task.task_id AND player_load_status != 'load_success'
+              )
+            ORDER BY task_id
+            """
+        ).fetchall()
+    finally:
+        if own_conn:
+            conn.close()
 
 
 def get_player_observations(
@@ -889,6 +896,22 @@ def get_pending_player_ids(
             (f"-{freshness_minutes} minutes", region, region, queue, queue),
         ).fetchall()
         return [row["player_id"] for row in rows]
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def mark_load_status(results: list[dict], status: str, conn: sqlite3.Connection | None = None) -> None:
+    """Update the loaded datasets together in one local transaction."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        for result in results:
+            if result.get("records"):
+                update_load_status(result["dataset"], result["records"], status, conn=conn)
+        if own_conn:
+            conn.commit()
     finally:
         if own_conn:
             conn.close()

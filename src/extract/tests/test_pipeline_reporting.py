@@ -19,7 +19,7 @@ def runner(tmp_path, monkeypatch):
         "verify_compaction_integrity",
         lambda: {"task_level_issues_count": 0, "pending_compaction_records_count": {"players": 0, "masteries": 0}},
     )
-    monkeypatch.setattr(pipeline, "run_load", lambda: {"status": True})
+    monkeypatch.setattr(pipeline, "run_load", lambda config: {"status": True})
     monkeypatch.setattr(pipeline.db, "count_incomplete_loads", lambda: 0)
     monkeypatch.setattr(pipeline, "reset_local_data", lambda: None)
     return {
@@ -43,7 +43,7 @@ def test_load_cadence_and_final_partial_group(runner, tmp_path, monkeypatch, rou
         pipeline, "run_snapshot_fetchers",
         lambda config, n, *args: collected.append(n + 1) or {"status": "success", "snapshot_size": 100},
     )
-    monkeypatch.setattr(pipeline, "run_load", lambda: loads.append(collected[-1]) or {"status": True})
+    monkeypatch.setattr(pipeline, "run_load", lambda config: loads.append(collected[-1]) or {"status": True})
     runner["players_fetch_depth"] = rounds
     assert pipeline.extraction_loop(runner, object())
     assert loads == loaded_at
@@ -91,7 +91,7 @@ def test_failed_round_is_saved_and_prevents_cleanup(runner, tmp_path, monkeypatc
         monkeypatch.setattr(
             pipeline,
             "run_load",
-            lambda: {"status": False, "compacted_load_result": stage == "dbt_build", "dbt_build_result": False,
+            lambda config: {"status": False, "compacted_load_result": stage == "dbt_build", "dbt_build_result": False,
                      "error": "warehouse technical failure"},
         )
     else:

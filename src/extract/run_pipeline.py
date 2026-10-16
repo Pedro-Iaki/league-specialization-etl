@@ -4,14 +4,12 @@ SQLite records collection tasks and file/load status throughout the pipeline.
 """
 
 import json
-import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import ceil
 from pathlib import Path
 
-from dotenv import dotenv_values
 from loguru import logger
 from pydantic import ValidationError
 
@@ -22,16 +20,16 @@ import extract.init_extraction_db as init_db
 import extract.refresh_stale_players as refresh_stale
 import extract.verify_integrity as verify
 import pydantic_models as models
+from extract.config_helper import CONFIG_PATH, get_configs
 from extract.get_masteries import run as extract_masteries
 from extract.get_players import run as extract_players
 from extract.reset_extraction_state import reset_local_data
 from load import player_registry
-from load.build_dbt import run_dbt
+from load.databricks_helper import run_job
 from load.load_champions_to_databricks import load_champions
 from load.load_compacted_to_databricks import load_compacted
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-CONFIG_PATH = BASE_DIR / "config" / "EXTRACTION_CONFIG.env"
 # Give stale-player work three times its observed share of the registry.
 STALENESS_INTENSITY = 3
 # Estimated full page, used when discovery is skipped or returns no players.
@@ -148,7 +146,7 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
 
                 result.stage = "load"
                 stage_result = result.load_result
-                result.load_result.update(run_load())
+                result.load_result.update(run_load(config_manifest))
                 if not result.load_result["status"] or db.count_incomplete_loads():
                     if result.load_result.get("compacted_load_result") and not result.load_result.get("dbt_build_result"):
                         result.stage = "dbt_build"
@@ -258,7 +256,7 @@ def run_stale_refresh(config_manifest: dict, run_n, date, api_client, limit: int
         return {"status": False, "claimed": 0, "players_refreshed": 0, "masteries_refreshed": 0, "error": error}
 
 
-def run_load() -> dict:
+def run_load(config_manifest: dict) -> dict:
     result = {
         "status": False,
         "champion_load_result": None,
@@ -269,10 +267,12 @@ def run_load() -> dict:
         logger.info("Loading champion reference data...")
         result["champion_load_result"] = load_champions()
         logger.info("Uploading and loading collected player files...")
-        result["compacted_load_result"] = load_compacted()
+        result["compacted_load_result"] = load_compacted(config_manifest)
         if result["compacted_load_result"]:
             logger.info("Building analytical tables...")
-            result["dbt_build_result"] = run_dbt()
+            result["dbt_build_result"] = run_job(
+                config_manifest["dbt_job_id"], config_manifest["dbt_timeout_seconds"], "dbt",
+            )
             result["status"] = result["dbt_build_result"]
             if result["status"]:
                 logger.info("Player files loaded and analytical tables built.")
@@ -294,27 +294,6 @@ def get_refresh_scale(staleness_fraction: float, max_refresh_scale: float) -> fl
 def get_refresh_limit(snapshot_size: int, refresh_scale: float) -> int:
     """Round the snapshot-relative allocation up to a whole number of players."""
     return ceil(snapshot_size * refresh_scale)
-
-
-def get_configs(config_path: Path) -> dict:
-    """Read the local file without mutating process settings; explicit environment values override it."""
-    settings = {**dotenv_values(config_path), **os.environ}
-    fields = {
-        "RIOT_API_KEY": "api_key",
-        "PLAYERS_FETCH_DEPTH": "players_fetch_depth",
-        "MASTERY_TASK_LIMIT": "mastery_task_limit",
-        "FULL_VERIFICATION": "full_check",
-        "REGION": "region",
-        "QUEUE": "queue",
-        "FRESHNESS_THRESHOLD_MINUTES": "freshness_threshold_minutes",
-        "RUNS_PER_LOAD": "runs_per_load",
-        "MAX_REFRESH_SCALE": "max_refresh_scale",
-    }
-    config = {field: settings[key] for key, field in fields.items() if key in settings}
-    for key in ("TIERS", "DIVISIONS"):
-        if key in settings:
-            config[key.lower()] = [value.strip() for value in (settings[key] or "").split(",")]
-    return config
 
 
 if __name__ == "__main__":

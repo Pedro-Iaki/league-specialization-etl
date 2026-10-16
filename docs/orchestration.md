@@ -33,6 +33,12 @@ Credentials remain in local ignored files.
 | `INGESTION_TIMEOUT_SECONDS` | Local ingestion wait | 900 |
 | `DBT_TIMEOUT_SECONDS` | Local dbt wait | 1800 |
 
+Python reads `config/EXTRACTION_CONFIG.env` and validates collection and job
+settings together before starting work. Each stage receives those validated
+settings; it does not reread the file. The standalone load command uses
+the same complete configuration through the shared reader. Explicit process
+environment values still take precedence over file values.
+
 Claim expiry is a program constant of 30 minutes. Upload, ingestion, dbt and
 transient compaction retries are capped at three attempts. Adaptive scheduling
 uses the observed snapshot size and `MAX_REFRESH_SCALE`, with the runner's
@@ -81,8 +87,7 @@ python -m extract.run_pipeline
   player; these estimates do not measure throughput or change rate limiting.
 - Pending and stale mastery work share the configured task limit. Patch lookup
   happens before claiming, so a lookup failure leaves that work available.
-- A dbt failure preserves confirmed ingestion status and local files. Retry the
-  build with `python -m load.build_dbt`.
+- A dbt failure preserves confirmed ingestion status and local files.
 - A job timeout stops the local stage and logs its remote run ID when available.
   Inspect that run in Databricks before retrying; a timed-out remote run may still
   be running.
@@ -99,7 +104,7 @@ python -m pytest src/extract/tests/test_adaptive_refresh.py src/load/tests/test_
 python -m pytest src/extract/tests/test_refresh_tracking.py -q
 python -m pytest src/extract/tests/test_fetch_status.py src/extract/tests/test_cleanup_behavior.py src/extract/tests/test_startup_state.py src/extract/tests/test_mastery_claim_limits.py -q
 python -m pytest src/extract/tests/test_pipeline_reporting.py -q
-python -m pytest src/extract/tests/test_load_boundaries.py src/load/tests/test_confirm_ingestion.py src/load/tests/test_build_dbt.py -q
+python -m pytest src/extract/tests/test_load_boundaries.py src/load/tests/test_confirm_ingestion.py -q
 ```
 
 The tests use temporary SQLite databases/Parquet and mocked cloud calls. Registry

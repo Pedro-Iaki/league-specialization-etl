@@ -5,9 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from databricks.sdk.service.jobs import Run, RunResultState, RunState
-from pydantic import ValidationError
 
-from load import confirm_ingestion as ingestion
 from load import databricks_helper
 
 
@@ -35,7 +33,7 @@ def test_job_result_controls_success_and_retry_limit(monkeypatch, outcome, expec
 
     workspace = SimpleNamespace(jobs=SimpleNamespace(run_now=submit))
     monkeypatch.setattr(databricks_helper, "get_workspace_client", lambda: workspace)
-    assert ingestion.run_ingestion(123, 900) is expected
+    assert databricks_helper.run_job(123, 900, "Ingestion") is expected
     assert submissions == [{"job_id": 123}] * attempts
 
 
@@ -53,22 +51,8 @@ def test_transient_job_failure_can_be_retried(monkeypatch):
     monkeypatch.setattr(
         databricks_helper, "get_workspace_client", lambda: SimpleNamespace(jobs=SimpleNamespace(run_now=submit))
     )
-    assert ingestion.run_ingestion(123, 900)
+    assert databricks_helper.run_job(123, 900, "Ingestion")
     assert len(attempts) == 2
-
-
-def test_job_settings_load_from_the_local_config_file(tmp_path, monkeypatch):
-    for key in ("INGEST_JOB_ID", "INGESTION_TIMEOUT_SECONDS"):
-        monkeypatch.delenv(key, raising=False)
-    path = tmp_path / "extraction.env"
-    path.write_text("INGEST_JOB_ID=123\nINGESTION_TIMEOUT_SECONDS=600\n")
-    monkeypatch.setattr(ingestion, "CONFIG_PATH", path)
-    config = ingestion.get_ingestion_config()
-    assert config.ingest_job_id == 123
-    assert config.ingestion_timeout_seconds == 600
-    path.write_text("INGEST_JOB_ID=0\n")
-    with pytest.raises(ValidationError):
-        ingestion.get_ingestion_config()
 
 
 def test_notebook_landing_access_failure_is_not_swallowed():

@@ -53,7 +53,7 @@ def test_round_uses_observed_size_or_logged_fallback_and_skips_entire_snapshot(
         pipeline.verify, "verify_compaction_integrity",
         lambda: {"task_level_issues_count": 0, "pending_compaction_records_count": {"players": 0, "masteries": 0}},
     )
-    monkeypatch.setattr(pipeline, "run_load", lambda: {"status": True})
+    monkeypatch.setattr(pipeline, "run_load", lambda config: {"status": True})
     monkeypatch.setattr(pipeline.db, "count_incomplete_loads", lambda: 0)
     monkeypatch.setattr(pipeline, "reset_local_data", lambda: None)
     config = {
@@ -154,4 +154,5 @@ def test_refresh_scale_configuration_rejects_nonpositive_or_nonfinite_values(val
         ExtractionConfigManifest(
             api_key="test", players_fetch_depth=1, mastery_task_limit=400,
             full_check=False, region="na1", queue="solo", max_refresh_scale=value,
+            ingest_job_id=123, dbt_job_id=456,
         )

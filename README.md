@@ -284,18 +284,14 @@ To activate this change:
 3. Put their numeric IDs in `INGEST_JOB_ID` and `DBT_JOB_ID` in
    `config/EXTRACTION_CONFIG.env`. `INGESTION_TIMEOUT_SECONDS` defaults to 900
    and `DBT_TIMEOUT_SECONDS` to 1800.
-   The loader reads that file directly; no shell export is required. Existing
+   Python reads that file directly; no shell export is required. Existing
    Databricks credentials remain in `config/DATABRICKS_CONFIG.env`.
 4. Run the existing Python extractor command above. Ingestion failures retry up
    to three times. A timeout stops local loading immediately and logs the remote
    run ID, when available; inspect that run in Databricks before retrying.
    After confirmed ingestion and registry updates, Python starts the dbt job and
    checks its result. A failed build stops the pipeline without changing the
-   confirmed ingestion flags. The build can be retried independently:
-
-   ```powershell
-   python -m load.build_dbt
-   ```
+   confirmed ingestion flags.
 
 No ready markers, batch framework, completion receipts or submission-deduplication
 system are added. Ingestion and dbt are separate jobs, sequenced by Python rather
