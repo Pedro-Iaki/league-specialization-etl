@@ -24,16 +24,37 @@ ID_COLUMN = "puuid"
 MAX_UPLOAD_ATTEMPTS = 3
 
 
-@retry(
-    wait=wait_exponential(multiplier=1, min=2, max=30),
-    stop=stop_after_attempt(MAX_UPLOAD_ATTEMPTS),
-    before_sleep=before_sleep_log(logger, "WARNING"),  # type: ignore
-    reraise=True,
-)
-def _upload(dataset: str, compacted_path: Path) -> None:
-    time = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S")
-    parquet_name = f"{dataset}_{time}_{uuid4().hex}.parquet"
-    upload_parquet(str(compacted_path), f"/Volumes/league_pipeline/landing_zone/{dataset}/{parquet_name}")
+def load_compacted(config_manifest: dict) -> bool:
+    results = [load_dataset(dataset) for dataset in ("players", "masteries")]
+    if not all(result["status"] in ("uploaded", "skipped") for result in results):
+        db.mark_load_status(results, "load_failed")
+        logger.error("Upload failed; ingestion was not started. Retaining local files.")
+        return False
+    if all(result["status"] == "skipped" for result in results):
+        logger.info("No collected files to ingest.")
+        return True
+    if not run_job(config_manifest["ingest_job_id"], config_manifest["ingestion_timeout_seconds"], "Ingestion"):
+        db.mark_load_status(results, "load_failed")
+        logger.error("Ingestion was not confirmed; retaining local files without applying the loader's Neon updates.")
+        return False
+
+    try:
+        for result in results:
+            if result["dataset"] == "players" and result.get("records"):
+                discovered = [player for player in result["records"] if not player.get("is_refresh")]
+                refreshed = [player for player in result["records"] if player.get("is_refresh")]
+                if discovered:
+                    player_registry.upsert_players(discovered)
+                if refreshed:
+                    player_registry.upsert_players(refreshed, is_refresh=True)
+        db.mark_load_status(results, "load_success")
+        complete_loaded_rank_pages()
+    except Exception as error:  # noqa: BLE001 - registry/ledger failures must prevent local cleanup
+        db.mark_load_status(results, "load_failed")
+        logger.error(f"Ingestion succeeded but registry/ledger updates failed: {error}. Retaining local files.")
+        return False
+    logger.info("Ingestion confirmed; collection state updated.")
+    return True
 
 
 def load_dataset(dataset: str) -> dict:
@@ -89,37 +110,16 @@ def complete_loaded_rank_pages() -> None:
         db.set_rank_page_claim(task["task_id"], None)
 
 
-def load_compacted(config_manifest: dict) -> bool:
-    results = [load_dataset(dataset) for dataset in ("players", "masteries")]
-    if not all(result["status"] in ("uploaded", "skipped") for result in results):
-        db.mark_load_status(results, "load_failed")
-        logger.error("Upload failed; ingestion was not started. Retaining local files.")
-        return False
-    if all(result["status"] == "skipped" for result in results):
-        logger.info("No collected files to ingest.")
-        return True
-    if not run_job(config_manifest["ingest_job_id"], config_manifest["ingestion_timeout_seconds"], "Ingestion"):
-        db.mark_load_status(results, "load_failed")
-        logger.error("Ingestion was not confirmed; retaining local files without applying the loader's Neon updates.")
-        return False
-
-    try:
-        for result in results:
-            if result["dataset"] == "players" and result.get("records"):
-                discovered = [player for player in result["records"] if not player.get("is_refresh")]
-                refreshed = [player for player in result["records"] if player.get("is_refresh")]
-                if discovered:
-                    player_registry.upsert_players(discovered)
-                if refreshed:
-                    player_registry.upsert_players(refreshed, is_refresh=True)
-        db.mark_load_status(results, "load_success")
-        complete_loaded_rank_pages()
-    except Exception as error:  # noqa: BLE001 - registry/ledger failures must prevent local cleanup
-        db.mark_load_status(results, "load_failed")
-        logger.error(f"Ingestion succeeded but registry/ledger updates failed: {error}. Retaining local files.")
-        return False
-    logger.info("Ingestion confirmed; collection state updated.")
-    return True
+@retry(
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=stop_after_attempt(MAX_UPLOAD_ATTEMPTS),
+    before_sleep=before_sleep_log(logger, "WARNING"),  # type: ignore
+    reraise=True,
+)
+def _upload(dataset: str, compacted_path: Path) -> None:
+    time = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S")
+    parquet_name = f"{dataset}_{time}_{uuid4().hex}.parquet"
+    upload_parquet(str(compacted_path), f"/Volumes/league_pipeline/landing_zone/{dataset}/{parquet_name}")
 
 
 if __name__ == "__main__":

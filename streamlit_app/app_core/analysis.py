@@ -19,6 +19,12 @@ AXIS_LABELS = {
     "champion_commitment": "Champion mastery share",
 }
 
+RANKED_SHARE_DIMENSIONS = {
+    "Role": "current_main_role",
+    "Tier": "starting_tier",
+    "Champion": "favoured_champions",
+}
+
 
 def profile_basis(players: pd.DataFrame, basis: str) -> pd.DataFrame:
     """Expose active or lifetime profiles, optionally requiring an observed LP delta."""
@@ -35,40 +41,6 @@ def profile_basis(players: pd.DataFrame, basis: str) -> pd.DataFrame:
     )
     frame["inverse_entropy"] = 1 - frame["normalized_entropy"]
     return frame
-
-
-def growth_scatter_data(
-    players: pd.DataFrame,
-    growth_players: pd.DataFrame | None,
-    basis: str,
-) -> tuple[pd.DataFrame, str, str]:
-    """Return a player-level scatter with an explicit outcome and time basis."""
-    if basis == "Observed rank periods" and growth_players is not None:
-        frame = growth_players.copy()
-        frame["tier"] = frame["starting_tier"]
-        frame["main_role"] = frame.get("current_main_role")
-        frame["inverse_entropy"] = 1 - frame["normalized_entropy"]
-        frame["outcome"] = frame["climbing_efficiency"]
-        frame["support_games"] = frame["games"]
-        return frame, "LP/game above starting-tier baseline", "Observed rank periods"
-
-    frame = profile_basis(players, basis)
-    frame["outcome"] = frame["lp_per_game_recent"]
-    frame["support_games"] = frame["games_recent"]
-    return frame, "Recent rank LP/game (unadjusted)", f"{basis} pool × latest rank week"
-
-
-def composition_cells(frame: pd.DataFrame, group: str) -> pd.DataFrame:
-    frame = frame.copy()
-    frame["_weight"] = row_weights(frame)
-    frame = frame.loc[frame["_weight"].notna()]
-    grouped = frame.groupby([group, "playstyle"], observed=True).agg(
-        players=("_weight", "size"), weighted_mass=("_weight", "sum"),
-    ).reset_index()
-    grouped["share"] = grouped["weighted_mass"] / grouped.groupby(group, observed=True)["weighted_mass"].transform("sum")
-    effective = frame.groupby(group, observed=True)["_weight"].agg(effective_sample_size)
-    grouped["effective_group_players"] = grouped[group].map(effective).astype(float)
-    return grouped
 
 
 def playstyle_composition(
@@ -89,6 +61,19 @@ def playstyle_composition(
     order = TIER_ORDER if group == "tier" else ROLE_ORDER if group == "main_role" else sorted(frame[group].dropna().unique())
     grouped[group] = pd.Categorical(grouped[group], categories=order, ordered=True)
     return grouped.sort_values([group, "playstyle"])
+
+
+def composition_cells(frame: pd.DataFrame, group: str) -> pd.DataFrame:
+    frame = frame.copy()
+    frame["_weight"] = row_weights(frame)
+    frame = frame.loc[frame["_weight"].notna()]
+    grouped = frame.groupby([group, "playstyle"], observed=True).agg(
+        players=("_weight", "size"), weighted_mass=("_weight", "sum"),
+    ).reset_index()
+    grouped["share"] = grouped["weighted_mass"] / grouped.groupby(group, observed=True)["weighted_mass"].transform("sum")
+    effective = frame.groupby(group, observed=True)["_weight"].agg(effective_sample_size)
+    grouped["effective_group_players"] = grouped[group].map(effective).astype(float)
+    return grouped
 
 
 def role_playstyle_skew(players: pd.DataFrame, basis: str) -> pd.DataFrame:
@@ -208,6 +193,90 @@ def mastery_normalized_composition(
     return result.sort_values([group, "playstyle"])
 
 
+def playstyle_mastery_bands(players: pd.DataFrame, basis: str, minimum_mastery: int, bins: int = 8, tier: str | None = None) -> pd.DataFrame:
+    frame = profile_basis(players, basis)
+    if tier is not None:
+        frame = frame.loc[frame["tier"] == tier]
+    frame = frame.loc[(frame["total_mastery_points"] >= max(1, minimum_mastery)) & frame["playstyle"].isin(PLAYSTYLE_ORDER)].copy()
+    if frame.empty or frame["total_mastery_points"].nunique() < 2:
+        return pd.DataFrame(columns=["mastery", "log_mean_mastery", "playstyle", "players", "share"])
+    frame["band"] = pd.qcut(frame["total_mastery_points"], q=min(bins, frame["total_mastery_points"].nunique()), duplicates="drop")
+    frame["_weight"] = row_weights(frame)
+    band_mastery = frame.groupby("band", observed=True).apply(
+        lambda rows: pd.Series({
+            "mastery": weighted_quantile(rows["total_mastery_points"], rows["_weight"]),
+            "mean_mastery": weighted_mean(rows["total_mastery_points"], rows["_weight"]),
+        }), include_groups=False,
+    ).reset_index()
+    grouped = frame.groupby(["band", "playstyle"], observed=True).agg(
+        players=("_weight", "size"), weighted_mass=("_weight", "sum"),
+    ).reset_index().merge(band_mastery, on="band", how="left")
+    grouped["log_mean_mastery"] = np.log10(grouped["mean_mastery"].clip(lower=1))
+    grouped["share"] = grouped["weighted_mass"] / grouped.groupby("band", observed=True)["weighted_mass"].transform("sum")
+    return grouped
+
+
+def composition_vs_population(champion: pd.DataFrame, population: pd.DataFrame, group: str) -> pd.DataFrame:
+    baseline = population.loc[
+        population[group].isin(champion[group]), [group, "playstyle", "share"]
+    ].rename(columns={"share": "population_share"})
+    result = baseline.merge(champion, on=[group, "playstyle"], how="left")
+    result["share"] = result["share"].fillna(0)
+    result["players"] = result["players"].fillna(0)
+    result["difference_pp"] = 100 * (result["share"] - result["population_share"])
+    return result
+
+
+def growth_scatter_data(
+    players: pd.DataFrame,
+    growth_players: pd.DataFrame | None,
+    basis: str,
+) -> tuple[pd.DataFrame, str, str]:
+    """Return a player-level scatter with an explicit outcome and time basis."""
+    if basis == "Observed rank periods" and growth_players is not None:
+        frame = growth_players.copy()
+        frame["tier"] = frame["starting_tier"]
+        frame["main_role"] = frame.get("current_main_role")
+        frame["inverse_entropy"] = 1 - frame["normalized_entropy"]
+        frame["outcome"] = frame["climbing_efficiency"]
+        frame["support_games"] = frame["games"]
+        return frame, "LP/game above starting-tier baseline", "Observed rank periods"
+
+    frame = profile_basis(players, basis)
+    frame["outcome"] = frame["lp_per_game_recent"]
+    frame["support_games"] = frame["games_recent"]
+    return frame, "Recent rank LP/game (unadjusted)", f"{basis} pool × latest rank week"
+
+
+def growth_column(frame: pd.DataFrame) -> str:
+    return "climbing_efficiency" if "climbing_efficiency" in frame else "lp_per_game_lift_vs_tier"
+
+
+def specialization_trend(players: pd.DataFrame) -> dict[str, float]:
+    """Linear association matching the champion's unfiltered player scatter."""
+    valid = eligible_weighted_rows(players)
+    valid = valid.loc[valid["champion_commitment"].notna() & valid["climbing_efficiency"].notna()].copy()
+    if len(valid) < 3:
+        return {"players": len(valid), "slope_per_10pp": np.nan, "correlation": np.nan, "r_squared": np.nan}
+    weights = row_weights(valid)
+    valid["x"] = valid["champion_commitment"] - weighted_mean(valid["champion_commitment"], weights)
+    valid["y"] = valid["climbing_efficiency"] - weighted_mean(valid["climbing_efficiency"], weights)
+    x = valid["x"].to_numpy(dtype=float)
+    y = valid["y"].to_numpy(dtype=float)
+    x_sum_squares = float(np.dot(weights * x, x))
+    y_sum_squares = float(np.dot(weights * y, y))
+    if x_sum_squares <= 0 or y_sum_squares <= 0:
+        return {"players": len(valid), "slope_per_10pp": np.nan, "correlation": np.nan, "r_squared": np.nan}
+    cross = float(np.dot(weights * x, y))
+    correlation = cross / np.sqrt(x_sum_squares * y_sum_squares)
+    return {
+        "players": len(valid),
+        "slope_per_10pp": 0.1 * (cross / x_sum_squares),
+        "correlation": correlation,
+        "r_squared": correlation**2,
+    }
+
+
 def binned_relationship(frame: pd.DataFrame, x: str, bins: int = 10) -> pd.DataFrame:
     valid = eligible_weighted_rows(frame)
     valid = valid.loc[valid[x].notna() & valid["outcome"].notna()].copy()
@@ -240,32 +309,6 @@ def smoothed_relationship(frame: pd.DataFrame, x: str) -> pd.DataFrame:
     kernel = np.array([1, 2, 3, 2, 1], dtype=float) / 9
     smoothed = np.convolve(np.pad(medians, (2, 2), mode="edge"), kernel, mode="valid")
     return pd.DataFrame({x: grid, "outcome": smoothed, "players": neighbors})
-
-
-def champion_landscape_data(champions: pd.DataFrame, players: pd.DataFrame) -> tuple[pd.DataFrame, str]:
-    frame = champions.copy()
-    growth_column = "climbing_efficiency" if "climbing_efficiency" in frame else "lp_per_game_lift_vs_tier"
-    frame["outcome"] = frame[growth_column]
-    if "mean_commitment" in frame:
-        frame["specialization_axis"] = frame["mean_commitment"]
-        return frame, "Mean champion mastery share in favoured periods"
-
-    active = players.loc[players["active_primary_champion_name"].notna()].groupby(
-        "active_primary_champion_name", observed=True
-    ).apply(lambda rows: weighted_mean(rows["active_hhi"], row_weights(rows)), include_groups=False)
-    frame["specialization_axis"] = frame["champion_name"].map(active)
-    return frame, "Current primary players’ mean active HHI (preview)"
-
-
-def growth_column(frame: pd.DataFrame) -> str:
-    return "climbing_efficiency" if "climbing_efficiency" in frame else "lp_per_game_lift_vs_tier"
-
-
-RANKED_SHARE_DIMENSIONS = {
-    "Role": "current_main_role",
-    "Tier": "starting_tier",
-    "Champion": "favoured_champions",
-}
 
 
 def ranked_share_by_dimensions(
@@ -304,42 +347,6 @@ def ranked_share_by_dimensions(
     return summary.loc[summary["player_count"] >= minimum_players]
 
 
-def specialization_trend(players: pd.DataFrame) -> dict[str, float]:
-    """Linear association matching the champion's unfiltered player scatter."""
-    valid = eligible_weighted_rows(players)
-    valid = valid.loc[valid["champion_commitment"].notna() & valid["climbing_efficiency"].notna()].copy()
-    if len(valid) < 3:
-        return {"players": len(valid), "slope_per_10pp": np.nan, "correlation": np.nan, "r_squared": np.nan}
-    weights = row_weights(valid)
-    valid["x"] = valid["champion_commitment"] - weighted_mean(valid["champion_commitment"], weights)
-    valid["y"] = valid["climbing_efficiency"] - weighted_mean(valid["climbing_efficiency"], weights)
-    x = valid["x"].to_numpy(dtype=float)
-    y = valid["y"].to_numpy(dtype=float)
-    x_sum_squares = float(np.dot(weights * x, x))
-    y_sum_squares = float(np.dot(weights * y, y))
-    if x_sum_squares <= 0 or y_sum_squares <= 0:
-        return {"players": len(valid), "slope_per_10pp": np.nan, "correlation": np.nan, "r_squared": np.nan}
-    cross = float(np.dot(weights * x, y))
-    correlation = cross / np.sqrt(x_sum_squares * y_sum_squares)
-    return {
-        "players": len(valid),
-        "slope_per_10pp": 0.1 * (cross / x_sum_squares),
-        "correlation": correlation,
-        "r_squared": correlation**2,
-    }
-
-
-def composition_vs_population(champion: pd.DataFrame, population: pd.DataFrame, group: str) -> pd.DataFrame:
-    baseline = population.loc[
-        population[group].isin(champion[group]), [group, "playstyle", "share"]
-    ].rename(columns={"share": "population_share"})
-    result = baseline.merge(champion, on=[group, "playstyle"], how="left")
-    result["share"] = result["share"].fillna(0)
-    result["players"] = result["players"].fillna(0)
-    result["difference_pp"] = 100 * (result["share"] - result["population_share"])
-    return result
-
-
 def champion_ranked_share_by_tier(players: pd.DataFrame, champion_name: str) -> pd.DataFrame:
     frame = eligible_weighted_rows(players)
     frame = frame.loc[frame["starting_tier"].notna()].copy()
@@ -361,6 +368,21 @@ def champion_ranked_share_by_tier(players: pd.DataFrame, champion_name: str) -> 
     champion["baseline_share"] = champion["starting_tier"].map(baseline)
     champion["difference_pp"] = 100 * (champion["share"] - champion["baseline_share"])
     return champion
+
+
+def champion_landscape_data(champions: pd.DataFrame, players: pd.DataFrame) -> tuple[pd.DataFrame, str]:
+    frame = champions.copy()
+    growth_column = "climbing_efficiency" if "climbing_efficiency" in frame else "lp_per_game_lift_vs_tier"
+    frame["outcome"] = frame[growth_column]
+    if "mean_commitment" in frame:
+        frame["specialization_axis"] = frame["mean_commitment"]
+        return frame, "Mean champion mastery share in favoured periods"
+
+    active = players.loc[players["active_primary_champion_name"].notna()].groupby(
+        "active_primary_champion_name", observed=True
+    ).apply(lambda rows: weighted_mean(rows["active_hhi"], row_weights(rows)), include_groups=False)
+    frame["specialization_axis"] = frame["champion_name"].map(active)
+    return frame, "Current primary players’ mean active HHI (preview)"
 
 
 def tier_population_comparison(players: pd.DataFrame, champion_name: str, basis: str) -> pd.DataFrame:
@@ -488,26 +510,3 @@ def expert_share_vs_sample(tier_mastery: pd.DataFrame, champion_name: str, minim
         selected["expert_share"] / selected["sample_expert_share"].replace(0, np.nan) - 1
     )
     return selected
-
-
-def playstyle_mastery_bands(players: pd.DataFrame, basis: str, minimum_mastery: int, bins: int = 8, tier: str | None = None) -> pd.DataFrame:
-    frame = profile_basis(players, basis)
-    if tier is not None:
-        frame = frame.loc[frame["tier"] == tier]
-    frame = frame.loc[(frame["total_mastery_points"] >= max(1, minimum_mastery)) & frame["playstyle"].isin(PLAYSTYLE_ORDER)].copy()
-    if frame.empty or frame["total_mastery_points"].nunique() < 2:
-        return pd.DataFrame(columns=["mastery", "log_mean_mastery", "playstyle", "players", "share"])
-    frame["band"] = pd.qcut(frame["total_mastery_points"], q=min(bins, frame["total_mastery_points"].nunique()), duplicates="drop")
-    frame["_weight"] = row_weights(frame)
-    band_mastery = frame.groupby("band", observed=True).apply(
-        lambda rows: pd.Series({
-            "mastery": weighted_quantile(rows["total_mastery_points"], rows["_weight"]),
-            "mean_mastery": weighted_mean(rows["total_mastery_points"], rows["_weight"]),
-        }), include_groups=False,
-    ).reset_index()
-    grouped = frame.groupby(["band", "playstyle"], observed=True).agg(
-        players=("_weight", "size"), weighted_mass=("_weight", "sum"),
-    ).reset_index().merge(band_mastery, on="band", how="left")
-    grouped["log_mean_mastery"] = np.log10(grouped["mean_mastery"].clip(lower=1))
-    grouped["share"] = grouped["weighted_mass"] / grouped.groupby("band", observed=True)["weighted_mass"].transform("sum")
-    return grouped

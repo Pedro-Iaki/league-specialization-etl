@@ -28,6 +28,10 @@ def get_connection(direct: bool = False) -> psycopg.Connection:
     return psycopg.connect(database_url)
 
 
+def ensure_schema(conn: psycopg.Connection) -> None:
+    conn.execute(_SCHEMA_PATH.read_text())  # type: ignore
+
+
 def _normalize_row(row: tuple[Any, ...] | None) -> dict[str, Any] | None:
     if row is None:
         return None
@@ -35,8 +39,123 @@ def _normalize_row(row: tuple[Any, ...] | None) -> dict[str, Any] | None:
     return dict(zip(keys, row))
 
 
-def ensure_schema(conn: psycopg.Connection) -> None:
-    conn.execute(_SCHEMA_PATH.read_text())  # type: ignore
+def get_player_state(
+    puuid: str,
+    region: str,
+    queue: str,
+    threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
+    conn: psycopg.Connection | None = None,
+) -> dict[str, Any] | None:
+    """Return registry timestamps and freshness for one player in a region/queue."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT
+                puuid,
+                first_loaded_at,
+                last_updated_at,
+                last_updated_at >= (now() - (%s * interval '1 minute')) AS is_fresh
+            FROM player_state_registry
+            WHERE puuid = %s
+              AND region = %s
+              AND queue = %s
+            """,
+            (threshold_minutes, puuid, region, queue),
+        ).fetchone()
+        return _normalize_row(row)
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def get_fresh_players(
+    threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
+    *,
+    puuids: list[str],
+    region: str,
+    queue: str,
+    conn: psycopg.Connection | None = None,
+) -> list[dict[str, Any]]:
+    if not puuids:
+        return []
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT puuid, first_loaded_at, last_updated_at
+            FROM player_state_registry
+            WHERE last_updated_at >= (now() - (%s * interval '1 minute'))
+              AND region = %s AND queue = %s
+              AND puuid = ANY(%s::text[])
+            """,
+            (threshold_minutes, region, queue, puuids),
+        ).fetchall()
+        return [normalized for row in rows if (normalized := _normalize_row(row)) is not None]
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def get_stale_players(
+    threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
+    conn: psycopg.Connection | None = None,
+) -> list[dict[str, Any]]:
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                puuid,
+                first_loaded_at,
+                last_updated_at
+            FROM player_state_registry
+            WHERE last_updated_at < (now() - (%s * interval '1 minute'))
+        """,
+            (threshold_minutes,),
+        ).fetchall()
+        return [normalized for row in rows if (normalized := _normalize_row(row)) is not None]
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def get_staleness_fraction(
+    region: str,
+    queue: str,
+    threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
+    claim_timeout_minutes: int = CLAIM_TIMEOUT_MINUTES,
+    conn: psycopg.Connection | None = None,
+) -> float:
+    """Weighted claimable stale players divided by all tracked players in this scope."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT COALESCE(SUM(
+                CASE WHEN last_updated_at < now() - (%s * interval '1 minute')
+                     AND (claim_status = 'idle' OR claimed_at < now() - (%s * interval '1 minute'))
+                THEN power(2.0, -greatest(
+                    inactive_streak - floor(extract(epoch FROM (now() - last_updated_at)) / (%s * 60))::integer,
+                    0
+                )) ELSE 0 END
+            ) / NULLIF(COUNT(*), 0), 0)
+            FROM player_state_registry WHERE region = %s AND queue = %s
+            """,
+            (threshold_minutes, claim_timeout_minutes, threshold_minutes, region, queue),
+        ).fetchone()
+        return float(row[0])
+    finally:
+        if own_conn:
+            conn.close()
 
 
 def upsert_players(players: list[dict], conn: psycopg.Connection | None = None, *, is_refresh: bool = False) -> int:
@@ -129,125 +248,6 @@ def record_refresh_result(
             conn.close()
 
 
-def get_fresh_players(
-    threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
-    *,
-    puuids: list[str],
-    region: str,
-    queue: str,
-    conn: psycopg.Connection | None = None,
-) -> list[dict[str, Any]]:
-    if not puuids:
-        return []
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        rows = conn.execute(
-            """
-            SELECT puuid, first_loaded_at, last_updated_at
-            FROM player_state_registry
-            WHERE last_updated_at >= (now() - (%s * interval '1 minute'))
-              AND region = %s AND queue = %s
-              AND puuid = ANY(%s::text[])
-            """,
-            (threshold_minutes, region, queue, puuids),
-        ).fetchall()
-        return [normalized for row in rows if (normalized := _normalize_row(row)) is not None]
-    finally:
-        if own_conn:
-            conn.close()
-
-
-def get_stale_players(
-    threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
-    conn: psycopg.Connection | None = None,
-) -> list[dict[str, Any]]:
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        rows = conn.execute(
-            """
-            SELECT
-                puuid,
-                first_loaded_at,
-                last_updated_at
-            FROM player_state_registry
-            WHERE last_updated_at < (now() - (%s * interval '1 minute'))
-        """,
-            (threshold_minutes,),
-        ).fetchall()
-        return [normalized for row in rows if (normalized := _normalize_row(row)) is not None]
-    finally:
-        if own_conn:
-            conn.close()
-
-
-def get_player_state(
-    puuid: str,
-    region: str,
-    queue: str,
-    threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
-    conn: psycopg.Connection | None = None,
-) -> dict[str, Any] | None:
-    """Return registry timestamps and freshness for one player in a region/queue."""
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        row = conn.execute(
-            """
-            SELECT
-                puuid,
-                first_loaded_at,
-                last_updated_at,
-                last_updated_at >= (now() - (%s * interval '1 minute')) AS is_fresh
-            FROM player_state_registry
-            WHERE puuid = %s
-              AND region = %s
-              AND queue = %s
-            """,
-            (threshold_minutes, puuid, region, queue),
-        ).fetchone()
-        return _normalize_row(row)
-    finally:
-        if own_conn:
-            conn.close()
-
-
-def get_staleness_fraction(
-    region: str,
-    queue: str,
-    threshold_minutes: int = DEFAULT_FRESHNESS_MINUTES,
-    claim_timeout_minutes: int = CLAIM_TIMEOUT_MINUTES,
-    conn: psycopg.Connection | None = None,
-) -> float:
-    """Weighted claimable stale players divided by all tracked players in this scope."""
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        row = conn.execute(
-            """
-            SELECT COALESCE(SUM(
-                CASE WHEN last_updated_at < now() - (%s * interval '1 minute')
-                     AND (claim_status = 'idle' OR claimed_at < now() - (%s * interval '1 minute'))
-                THEN power(2.0, -greatest(
-                    inactive_streak - floor(extract(epoch FROM (now() - last_updated_at)) / (%s * 60))::integer,
-                    0
-                )) ELSE 0 END
-            ) / NULLIF(COUNT(*), 0), 0)
-            FROM player_state_registry WHERE region = %s AND queue = %s
-            """,
-            (threshold_minutes, claim_timeout_minutes, threshold_minutes, region, queue),
-        ).fetchone()
-        return float(row[0])
-    finally:
-        if own_conn:
-            conn.close()
-
-
 def claim_stale_players(
     limit: int,
     run_id: str,
@@ -312,6 +312,25 @@ def claim_stale_players(
             conn.close()
 
 
+def heartbeat_claims(claimed_by: str, conn: psycopg.Connection | None = None) -> int:
+    """Renew only the refresh claims this worker still owns."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        cur = conn.execute(
+            """UPDATE player_state_registry SET claimed_at = now()
+               WHERE claimed_by = %s AND claim_status = 'claimed'""",
+            (claimed_by,),
+        )
+        if own_conn:
+            conn.commit()
+        return cur.rowcount
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def release_claims(puuids: list[str], claimed_by: str, conn: psycopg.Connection | None = None) -> int:
     """Release only claims still owned by this refresh worker."""
     if not puuids:
@@ -328,25 +347,6 @@ def release_claims(puuids: list[str], claimed_by: str, conn: psycopg.Connection 
             WHERE puuid = ANY(%s::text[]) AND claimed_by = %s
             """,
             (puuids, claimed_by),
-        )
-        if own_conn:
-            conn.commit()
-        return cur.rowcount
-    finally:
-        if own_conn:
-            conn.close()
-
-
-def heartbeat_claims(claimed_by: str, conn: psycopg.Connection | None = None) -> int:
-    """Renew only the refresh claims this worker still owns."""
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        cur = conn.execute(
-            """UPDATE player_state_registry SET claimed_at = now()
-               WHERE claimed_by = %s AND claim_status = 'claimed'""",
-            (claimed_by,),
         )
         if own_conn:
             conn.commit()

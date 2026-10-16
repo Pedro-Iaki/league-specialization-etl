@@ -11,19 +11,6 @@ VOLUME = "champions"
 TABLE_NAME = "champions"
 
 
-def create_table_if_not_exists(cursor, df):
-    use_catalog_and_schema(cursor, CATALOG, SCHEMA)
-    sql_columns = infer_sql_schema(df)
-    cursor.execute(
-        f"""
-        CREATE TABLE IF NOT EXISTS {CATALOG}.{SCHEMA}.{TABLE_NAME} (
-            {sql_columns}
-        )
-        USING DELTA
-        """
-    )
-
-
 def load_champions():
     df = get_champions_dataframe()
 
@@ -65,6 +52,19 @@ def load_champions():
     logger.info(f"Loaded {len(records)} champion reference rows.")
     logger.debug(f"Champion reference table: {CATALOG}.{SCHEMA}.{TABLE_NAME}.")
     return len(records)
+
+
+def create_table_if_not_exists(cursor, df):
+    use_catalog_and_schema(cursor, CATALOG, SCHEMA)
+    sql_columns = infer_sql_schema(df)
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {CATALOG}.{SCHEMA}.{TABLE_NAME} (
+            {sql_columns}
+        )
+        USING DELTA
+        """
+    )
 
 
 if __name__ == "__main__":

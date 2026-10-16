@@ -11,6 +11,32 @@ REQUEST_PARAMS = {
 }
 
 
+def get_champions_dataframe():
+    """Join Data Dragon names, IDs and patch with wiki reference positions by champion key."""
+    with requests.Session() as session:
+        latest_patch = session.get("https://ddragon.leagueoflegends.com/api/versions.json").json()[0]
+        champions_url = f"https://ddragon.leagueoflegends.com/cdn/{latest_patch}/data/en_US/champion.json"
+        champions_data = session.get(champions_url).json()
+
+    champions_by_name = {c["key"]: {"name": c["name"], "id": c["id"]} for c in champions_data["data"].values()}
+    champions_by_name_df = (
+        pd.DataFrame.from_dict(champions_by_name, orient="index")
+        .reset_index()
+        .rename(columns={"index": "key"})
+        .assign(key=lambda df: df["key"].astype(str))
+        .assign(patch=latest_patch)
+    )
+
+    champions_positions = get_champion_positions()
+    champions_positions["champion"] = champions_positions["champion"].astype(str)
+
+    champions_clean_data = champions_by_name_df.merge(
+        champions_positions, left_on="key", right_on="champion", how="left"
+    ).drop(columns=["champion"])
+
+    return champions_clean_data
+
+
 def get_champion_positions() -> pd.DataFrame:
     lua = LuaRuntime(unpack_returned_tuples=True)
     champion_data = dict_from_lua(lua.execute(get_champions_lua()))
@@ -79,32 +105,6 @@ def lua_to_python(value):
             return [lua_to_python(value[i]) for i in keys]
 
     return {lua_to_python(key): lua_to_python(val) for key, val in items}
-
-
-def get_champions_dataframe():
-    """Join Data Dragon names, IDs and patch with wiki reference positions by champion key."""
-    with requests.Session() as session:
-        latest_patch = session.get("https://ddragon.leagueoflegends.com/api/versions.json").json()[0]
-        champions_url = f"https://ddragon.leagueoflegends.com/cdn/{latest_patch}/data/en_US/champion.json"
-        champions_data = session.get(champions_url).json()
-
-    champions_by_name = {c["key"]: {"name": c["name"], "id": c["id"]} for c in champions_data["data"].values()}
-    champions_by_name_df = (
-        pd.DataFrame.from_dict(champions_by_name, orient="index")
-        .reset_index()
-        .rename(columns={"index": "key"})
-        .assign(key=lambda df: df["key"].astype(str))
-        .assign(patch=latest_patch)
-    )
-
-    champions_positions = get_champion_positions()
-    champions_positions["champion"] = champions_positions["champion"].astype(str)
-
-    champions_clean_data = champions_by_name_df.merge(
-        champions_positions, left_on="key", right_on="champion", how="left"
-    ).drop(columns=["champion"])
-
-    return champions_clean_data
 
 
 if __name__ == "__main__":

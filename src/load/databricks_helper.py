@@ -17,6 +17,20 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = BASE_DIR / "config" / "DATABRICKS_CONFIG.env"
 MAX_JOB_ATTEMPTS = 3
 
+PANDAS_TO_SPARK_TYPES = {
+    "object": "STRING",
+    "string": "STRING",
+    "int64": "BIGINT",
+    "int32": "INT",
+    "int16": "SMALLINT",
+    "int8": "TINYINT",
+    "float64": "DOUBLE",
+    "float32": "FLOAT",
+    "bool": "BOOLEAN",
+    "datetime64[ns]": "TIMESTAMP",
+    "timedelta64[ns]": "STRING",
+}
+
 
 def get_config() -> dict[str, str | None]:
     """Read config/DATABRICKS_CONFIG.env, preserving process environment overrides."""
@@ -26,6 +40,11 @@ def get_config() -> dict[str, str | None]:
         "http_path": os.getenv("HTTP_PATH"),
         "token": os.getenv("TOKEN"),
     }
+
+
+def get_workspace_client() -> WorkspaceClient:
+    cfg = get_config()
+    return WorkspaceClient(config=Config(host=cfg["host"], token=cfg["token"]))
 
 
 def get_connection():
@@ -48,13 +67,26 @@ def use_catalog_and_schema(cursor: Any, catalog: str, schema: str) -> None:
     cursor.execute(f"USE SCHEMA {schema}")
 
 
+def infer_sql_schema(df: pd.DataFrame) -> str:
+    column_defs = []
+    for col_name, dtype in df.dtypes.items():
+        if str(dtype).lower() == "object" and _is_list_like_column(df[col_name]):
+            sql_type = "ARRAY<STRING>"
+        else:
+            sql_type = PANDAS_TO_SPARK_TYPES.get(str(dtype).lower(), "STRING")
+        column_defs.append(f"`{col_name}` {sql_type}")
+    return ",\n            ".join(column_defs)
+
+
+def _is_list_like_column(series: pd.Series) -> bool:
+    non_null = series.dropna()
+    if non_null.empty:
+        return False
+    return bool(non_null.apply(lambda v: isinstance(v, (list, tuple))).all())
+
+
 def upload_parquet(local_path: str, dbfs_path: str) -> None:
     get_workspace_client().files.upload_from(dbfs_path, local_path, overwrite=True)
-
-
-def get_workspace_client() -> WorkspaceClient:
-    cfg = get_config()
-    return WorkspaceClient(config=Config(host=cfg["host"], token=cfg["token"]))
 
 
 def run_job(job_id: int, timeout_seconds: int, job_name: str) -> bool:
@@ -84,36 +116,3 @@ def run_job(job_id: int, timeout_seconds: int, job_name: str) -> bool:
         except Exception as error:  # noqa: BLE001 - SDK submission and job failures have several error types
             logger.error(f"{job_name} job {job_id}, run {run_id}, attempt {attempt} failed: {error}")
     return False
-
-
-PANDAS_TO_SPARK_TYPES = {
-    "object": "STRING",
-    "string": "STRING",
-    "int64": "BIGINT",
-    "int32": "INT",
-    "int16": "SMALLINT",
-    "int8": "TINYINT",
-    "float64": "DOUBLE",
-    "float32": "FLOAT",
-    "bool": "BOOLEAN",
-    "datetime64[ns]": "TIMESTAMP",
-    "timedelta64[ns]": "STRING",
-}
-
-
-def infer_sql_schema(df: pd.DataFrame) -> str:
-    column_defs = []
-    for col_name, dtype in df.dtypes.items():
-        if str(dtype).lower() == "object" and _is_list_like_column(df[col_name]):
-            sql_type = "ARRAY<STRING>"
-        else:
-            sql_type = PANDAS_TO_SPARK_TYPES.get(str(dtype).lower(), "STRING")
-        column_defs.append(f"`{col_name}` {sql_type}")
-    return ",\n            ".join(column_defs)
-
-
-def _is_list_like_column(series: pd.Series) -> bool:
-    non_null = series.dropna()
-    if non_null.empty:
-        return False
-    return bool(non_null.apply(lambda v: isinstance(v, (list, tuple))).all())

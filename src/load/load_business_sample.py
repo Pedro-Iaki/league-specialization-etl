@@ -11,21 +11,16 @@ from sample.validation import validate_files, warehouse_metadata
 VOLUME = "/Volumes/league_pipeline/landing_zone/business_sample"
 
 
-def replace_sample_table(cursor, table_name: str, schema, file_path: str | None = None) -> None:
-    if table_name not in SAMPLE_TABLES.values():
-        raise ValueError(f"Refusing to write a non-sample table: {table_name}")
-    ddl = sql_schema(schema)
-    statement = f"CREATE OR REPLACE TABLE {table_name} ({ddl}) USING DELTA"
-    if file_path is not None:
-        if not file_path.startswith(VOLUME + "/") or "'" in file_path:
-            raise ValueError("Only the dedicated business_sample volume can be read")
-        columns = ", ".join(f"`{field.name}`" for field in schema)
-        # Databricks RTAS takes its types from the statically declared reader schema,
-        # and prohibits a separate table column declaration in the same statement.
-        statement = (f"CREATE OR REPLACE TABLE {table_name} USING DELTA AS SELECT {columns} "
-                     f"FROM read_files('{file_path}', format => 'parquet', "
-                     f"schema => '{ddl}', schemaEvolutionMode => 'none')")
-    cursor.execute(statement)
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input-dir", type=Path, default=SAMPLE_DIR)
+    parser.add_argument("--validate-only", action="store_true", help="Check private files without connecting or writing")
+    args = parser.parse_args()
+    if args.validate_only:
+        players, events, _ = validate_files(args.input_dir)
+        print(f"Validated {players.num_rows:,} players and {events.num_rows:,} transactions; no warehouse writes")
+    else:
+        load_sample(args.input_dir)
 
 
 def load_sample(directory: Path) -> dict:
@@ -54,16 +49,21 @@ def load_sample(directory: Path) -> dict:
     return result
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input-dir", type=Path, default=SAMPLE_DIR)
-    parser.add_argument("--validate-only", action="store_true", help="Check private files without connecting or writing")
-    args = parser.parse_args()
-    if args.validate_only:
-        players, events, _ = validate_files(args.input_dir)
-        print(f"Validated {players.num_rows:,} players and {events.num_rows:,} transactions; no warehouse writes")
-    else:
-        load_sample(args.input_dir)
+def replace_sample_table(cursor, table_name: str, schema, file_path: str | None = None) -> None:
+    if table_name not in SAMPLE_TABLES.values():
+        raise ValueError(f"Refusing to write a non-sample table: {table_name}")
+    ddl = sql_schema(schema)
+    statement = f"CREATE OR REPLACE TABLE {table_name} ({ddl}) USING DELTA"
+    if file_path is not None:
+        if not file_path.startswith(VOLUME + "/") or "'" in file_path:
+            raise ValueError("Only the dedicated business_sample volume can be read")
+        columns = ", ".join(f"`{field.name}`" for field in schema)
+        # Databricks RTAS takes its types from the statically declared reader schema,
+        # and prohibits a separate table column declaration in the same statement.
+        statement = (f"CREATE OR REPLACE TABLE {table_name} USING DELTA AS SELECT {columns} "
+                     f"FROM read_files('{file_path}', format => 'parquet', "
+                     f"schema => '{ddl}', schemaEvolutionMode => 'none')")
+    cursor.execute(statement)
 
 
 if __name__ == "__main__":

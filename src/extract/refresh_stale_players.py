@@ -141,48 +141,6 @@ def run(
     }
 
 
-def fetch_player_rank(
-    puuid: str,
-    region: str,
-    queue: str,
-    task_id: int,
-    api_client: APIClient,
-) -> dict | None:
-    """Fetch and validate a single player's current league entry for `queue`."""
-    if api_client is None:
-        logger.error(
-            "No API client provided. Please set the RIOT_API_KEY environment variable and provide a valid API client."
-        )
-        return None
-    db.update_player_task(task_id, "in_progress")
-    url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/by-puuid/{puuid}"
-    try:
-        response = api_client.get(url)
-    except TimeoutError as e:
-        logger.error(f"Error fetching rank for player {puuid}: {e}")
-        db.update_player_task(task_id, "failed", error_message="retry limit reached.")
-        return None
-
-    if not response.ok:
-        logger.error(f"Error fetching rank for player {puuid}: {response.status_code} - {response.text}")
-        db.update_player_task(task_id, "failed", error_message=f"Error: {response.status_code} - {response.text}")
-        return None
-
-    raw_payload = response.json()
-    matching = [entry for entry in raw_payload if entry.get("queueType") == queue]
-    if not matching:
-        logger.warning(f"No {queue} entry found for player {puuid}; may be unranked or removed.")
-        db.update_player_task(task_id, "success", file_path=None)
-        raise MissingQueueEntry
-
-    try:
-        return models.RiotPlayerEntry.model_validate(matching[0]).model_dump()
-    except RuntimeError as e:
-        logger.error(f"Error validating rank data for player {puuid}: {e}")
-        db.update_player_task(task_id, "failed", error_message=f"Validation error: {e}")
-        return None
-
-
 def handle_player_extraction(info: dict, task_id: int, api_client: APIClient) -> dict | None:
     puuid = str(info.get("puuid"))
     region = str(info.get("region"))
@@ -269,3 +227,45 @@ def handle_mastery_extraction(info: dict, task_id: int, api_client: APIClient) -
         logger.error(f"Failed to save mastery data for player {puuid} in {region} {queue}.")
         return False
     return True
+
+
+def fetch_player_rank(
+    puuid: str,
+    region: str,
+    queue: str,
+    task_id: int,
+    api_client: APIClient,
+) -> dict | None:
+    """Fetch and validate a single player's current league entry for `queue`."""
+    if api_client is None:
+        logger.error(
+            "No API client provided. Please set the RIOT_API_KEY environment variable and provide a valid API client."
+        )
+        return None
+    db.update_player_task(task_id, "in_progress")
+    url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/by-puuid/{puuid}"
+    try:
+        response = api_client.get(url)
+    except TimeoutError as e:
+        logger.error(f"Error fetching rank for player {puuid}: {e}")
+        db.update_player_task(task_id, "failed", error_message="retry limit reached.")
+        return None
+
+    if not response.ok:
+        logger.error(f"Error fetching rank for player {puuid}: {response.status_code} - {response.text}")
+        db.update_player_task(task_id, "failed", error_message=f"Error: {response.status_code} - {response.text}")
+        return None
+
+    raw_payload = response.json()
+    matching = [entry for entry in raw_payload if entry.get("queueType") == queue]
+    if not matching:
+        logger.warning(f"No {queue} entry found for player {puuid}; may be unranked or removed.")
+        db.update_player_task(task_id, "success", file_path=None)
+        raise MissingQueueEntry
+
+    try:
+        return models.RiotPlayerEntry.model_validate(matching[0]).model_dump()
+    except RuntimeError as e:
+        logger.error(f"Error validating rank data for player {puuid}: {e}")
+        db.update_player_task(task_id, "failed", error_message=f"Validation error: {e}")
+        return None

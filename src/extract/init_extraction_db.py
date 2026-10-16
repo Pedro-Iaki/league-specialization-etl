@@ -26,28 +26,6 @@ def db_exists():
     return all(os.path.exists(path) for path in (DB_PATH, PLAYERS_DIR, MASTERIES_DIR, COMPACTED_DIR))
 
 
-def clear_directory_contents(dir_path: str):
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
-        return
-
-    for entry in os.scandir(dir_path):
-        try:
-            if entry.is_file() or entry.is_symlink():
-                os.remove(entry.path)
-            elif entry.is_dir():
-                shutil.rmtree(entry.path)
-        except RuntimeError as e:
-            logger.error(f"Failed to delete {entry.path}. Reason: {e}")
-
-
-def clear_raw_and_compacted_data():
-    """Delete all extracted raw data and compacted outputs without touching the database."""
-    clear_directory_contents(PLAYERS_DIR)
-    clear_directory_contents(MASTERIES_DIR)
-    clear_directory_contents(COMPACTED_DIR)
-
-
 def initialize_database():
     """Create missing folders and a new ledger without clearing existing data."""
     for directory in (os.path.dirname(DB_PATH), PLAYERS_DIR, MASTERIES_DIR, COMPACTED_DIR):
@@ -74,3 +52,25 @@ def reset_database():
     clear_raw_and_compacted_data()
     initialize_database()
     logger.info("Database and raw directories reset successfully.")
+
+
+def clear_raw_and_compacted_data():
+    """Delete all extracted raw data and compacted outputs without touching the database."""
+    clear_directory_contents(PLAYERS_DIR)
+    clear_directory_contents(MASTERIES_DIR)
+    clear_directory_contents(COMPACTED_DIR)
+
+
+def clear_directory_contents(dir_path: str):
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+        return
+
+    for entry in os.scandir(dir_path):
+        try:
+            if entry.is_file() or entry.is_symlink():
+                os.remove(entry.path)
+            elif entry.is_dir():
+                shutil.rmtree(entry.path)
+        except RuntimeError as e:
+            logger.error(f"Failed to delete {entry.path}. Reason: {e}")

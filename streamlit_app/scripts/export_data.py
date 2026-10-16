@@ -38,62 +38,11 @@ FORBIDDEN_PUBLIC_COLUMNS = {
 }
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Export anonymized Streamlit datasets from Databricks gold marts.")
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=APP_ROOT / "data",
-        help="Destination directory for Parquet snapshots and manifest.json.",
-    )
-    parser.add_argument("--dataset", choices=sorted(DATASET_QUERIES), action="append", help="Export only the named dataset; can be repeated.")
-    return parser.parse_args()
-
-
-def json_value(value: Any) -> Any:
-    if isinstance(value, (datetime, date, pd.Timestamp)):
-        return value.isoformat()
-    if hasattr(value, "item"):
-        return value.item()
-    return value
-
-
-def fetch_frame(cursor: Any, query: str) -> pd.DataFrame:
-    cursor.execute(query)
-    try:
-        return cursor.fetchall_arrow().to_pandas()
-    except AttributeError:
-        rows = cursor.fetchall()
-        columns = [column[0] for column in cursor.description]
-        return pd.DataFrame(rows, columns=columns)
-
-
-def validate_public_frame(name: str, frame: pd.DataFrame) -> None:
-    missing = REQUIRED_COLUMNS[name].difference(frame.columns)
-    forbidden = FORBIDDEN_PUBLIC_COLUMNS.intersection(frame.columns)
-    if missing:
-        raise ValueError(f"{name} is missing required columns: {sorted(missing)}")
-    if forbidden:
-        raise ValueError(f"{name} contains forbidden public columns: {sorted(forbidden)}")
-    if frame.empty:
-        raise ValueError(f"{name} returned no rows")
-    if name == "business_players" and set(frame.columns) != set(BUSINESS_PUBLIC_COLUMNS):
-        raise ValueError("Business export must use the explicit anonymous column allowlist")
-
-
-def dataset_metadata(path: Path, frame: pd.DataFrame) -> dict[str, Any]:
-    metadata: dict[str, Any] = {
-        "file": path.name,
-        "rows": len(frame),
-        "columns": len(frame.columns),
-        "size_bytes": path.stat().st_size,
-    }
-    for column in ("as_of_date", "snapshot_date", "previous_snapshot_date"):
-        if column in frame and frame[column].notna().any():
-            values = pd.to_datetime(frame[column])
-            metadata[f"min_{column}"] = json_value(values.min())
-            metadata[f"max_{column}"] = json_value(values.max())
-    return metadata
+def main() -> None:
+    args = parse_args()
+    manifest = export_snapshots(args.output_dir.resolve(), args.dataset)
+    total_bytes = sum(item["size_bytes"] for item in manifest["datasets"].values())
+    print(f"Export complete: {total_bytes / 1_048_576:.2f} MiB", flush=True)
 
 
 def export_snapshots(output_dir: Path, datasets: list[str] | None = None) -> dict[str, Any]:
@@ -146,11 +95,62 @@ def export_snapshots(output_dir: Path, datasets: list[str] | None = None) -> dic
     return manifest
 
 
-def main() -> None:
-    args = parse_args()
-    manifest = export_snapshots(args.output_dir.resolve(), args.dataset)
-    total_bytes = sum(item["size_bytes"] for item in manifest["datasets"].values())
-    print(f"Export complete: {total_bytes / 1_048_576:.2f} MiB", flush=True)
+def fetch_frame(cursor: Any, query: str) -> pd.DataFrame:
+    cursor.execute(query)
+    try:
+        return cursor.fetchall_arrow().to_pandas()
+    except AttributeError:
+        rows = cursor.fetchall()
+        columns = [column[0] for column in cursor.description]
+        return pd.DataFrame(rows, columns=columns)
+
+
+def validate_public_frame(name: str, frame: pd.DataFrame) -> None:
+    missing = REQUIRED_COLUMNS[name].difference(frame.columns)
+    forbidden = FORBIDDEN_PUBLIC_COLUMNS.intersection(frame.columns)
+    if missing:
+        raise ValueError(f"{name} is missing required columns: {sorted(missing)}")
+    if forbidden:
+        raise ValueError(f"{name} contains forbidden public columns: {sorted(forbidden)}")
+    if frame.empty:
+        raise ValueError(f"{name} returned no rows")
+    if name == "business_players" and set(frame.columns) != set(BUSINESS_PUBLIC_COLUMNS):
+        raise ValueError("Business export must use the explicit anonymous column allowlist")
+
+
+def dataset_metadata(path: Path, frame: pd.DataFrame) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "file": path.name,
+        "rows": len(frame),
+        "columns": len(frame.columns),
+        "size_bytes": path.stat().st_size,
+    }
+    for column in ("as_of_date", "snapshot_date", "previous_snapshot_date"):
+        if column in frame and frame[column].notna().any():
+            values = pd.to_datetime(frame[column])
+            metadata[f"min_{column}"] = json_value(values.min())
+            metadata[f"max_{column}"] = json_value(values.max())
+    return metadata
+
+
+def json_value(value: Any) -> Any:
+    if isinstance(value, (datetime, date, pd.Timestamp)):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        return value.item()
+    return value
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Export anonymized Streamlit datasets from Databricks gold marts.")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=APP_ROOT / "data",
+        help="Destination directory for Parquet snapshots and manifest.json.",
+    )
+    parser.add_argument("--dataset", choices=sorted(DATASET_QUERIES), action="append", help="Export only the named dataset; can be repeated.")
+    return parser.parse_args()
 
 
 if __name__ == "__main__":

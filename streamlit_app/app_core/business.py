@@ -38,52 +38,6 @@ SYNTHETIC_CAPTION = (
 )
 
 
-def tier_purchasers(frame: pd.DataFrame) -> pd.DataFrame:
-    data = frame.assign(cash_buyer=frame["cash_purchase_count_60d"].gt(0))
-    result = data.groupby("tier", observed=True).agg(
-        players=("cash_buyer", "size"), cash_purchasers=("cash_buyer", "sum")
-    ).reset_index()
-    result["cash_purchaser_share"] = result["cash_purchasers"] / result["players"]
-    return result
-
-
-def tenure_spending(frame: pd.DataFrame) -> pd.DataFrame:
-    days = (pd.to_datetime(frame["as_of_date"]) - pd.to_datetime(frame["first_purchase_at"], utc=True).dt.tz_localize(None)).dt.days
-    data = frame.assign(
-        tenure_band=pd.cut(days, [0, 365, 3 * 365, float("inf")], right=False,
-                           labels=["Under 1 year", "1–3 years", "3+ years"]),
-        purchaser_usd=frame["cash_spent_usd_60d"].astype(float).where(frame["cash_purchase_count_60d"].gt(0)),
-    )
-    return data.groupby("tenure_band", observed=True).agg(
-        players=("cash_purchase_count_60d", "size"),
-        cash_purchasers=("purchaser_usd", "count"),
-        mean_usd_per_cash_purchaser=("purchaser_usd", "mean"),
-    ).reset_index()
-
-
-def with_tenure(frame: pd.DataFrame) -> pd.DataFrame:
-    days = (pd.to_datetime(frame["as_of_date"], utc=True)
-            - pd.to_datetime(frame["first_purchase_at"], utc=True)).dt.days
-    return frame.assign(tenure_band=pd.cut(
-        days, [0, 365, 3 * 365, float("inf")], right=False, labels=TENURE_ORDER,
-    ))
-
-
-def cash_summary(frame: pd.DataFrame, groups: list[str]) -> pd.DataFrame:
-    data = frame.assign(
-        cash_buyer=frame["cash_purchase_count_60d"].gt(0),
-        cash_usd=frame["cash_spent_usd_60d"].astype(float),
-    )
-    result = data.groupby(groups, observed=True, dropna=False).agg(
-        players=("cash_buyer", "size"), cash_purchasers=("cash_buyer", "sum"),
-        cash_usd=("cash_usd", "sum"),
-    ).reset_index()
-    result["cash_purchaser_share"] = result["cash_purchasers"] / result["players"]
-    result["usd_per_player"] = result["cash_usd"] / result["players"]
-    result["usd_per_purchaser"] = result["cash_usd"] / result["cash_purchasers"].where(result["cash_purchasers"].gt(0))
-    return result
-
-
 def audience_summary(frame: pd.DataFrame, dimension: str) -> pd.DataFrame:
     """One group per selected trait. Playtime uses relative score bands, never invented hours."""
     if dimension not in AUDIENCE_DIMENSIONS.values():
@@ -106,6 +60,15 @@ def audience_summary(frame: pd.DataFrame, dimension: str) -> pd.DataFrame:
     return result
 
 
+def tier_purchasers(frame: pd.DataFrame) -> pd.DataFrame:
+    data = frame.assign(cash_buyer=frame["cash_purchase_count_60d"].gt(0))
+    result = data.groupby("tier", observed=True).agg(
+        players=("cash_buyer", "size"), cash_purchasers=("cash_buyer", "sum")
+    ).reset_index()
+    result["cash_purchaser_share"] = result["cash_purchasers"] / result["players"]
+    return result
+
+
 def experience_summary(frame: pd.DataFrame, bins: int = 8) -> pd.DataFrame:
     data = with_tenure(frame).dropna(subset=["total_mastery_points", "tenure_band"])
     data = data.loc[data["total_mastery_points"] > 0].copy()
@@ -120,6 +83,28 @@ def experience_summary(frame: pd.DataFrame, bins: int = 8) -> pd.DataFrame:
         min_mastery=("total_mastery_points", "min"), max_mastery=("total_mastery_points", "max"),
     ).reset_index()
     return result.merge(bounds, on=groups, validate="one_to_one").sort_values(["tenure_band", "mastery_points"])
+
+
+def tenure_spending(frame: pd.DataFrame) -> pd.DataFrame:
+    days = (pd.to_datetime(frame["as_of_date"]) - pd.to_datetime(frame["first_purchase_at"], utc=True).dt.tz_localize(None)).dt.days
+    data = frame.assign(
+        tenure_band=pd.cut(days, [0, 365, 3 * 365, float("inf")], right=False,
+                           labels=["Under 1 year", "1–3 years", "3+ years"]),
+        purchaser_usd=frame["cash_spent_usd_60d"].astype(float).where(frame["cash_purchase_count_60d"].gt(0)),
+    )
+    return data.groupby("tenure_band", observed=True).agg(
+        players=("cash_purchase_count_60d", "size"),
+        cash_purchasers=("purchaser_usd", "count"),
+        mean_usd_per_cash_purchaser=("purchaser_usd", "mean"),
+    ).reset_index()
+
+
+def with_tenure(frame: pd.DataFrame) -> pd.DataFrame:
+    days = (pd.to_datetime(frame["as_of_date"], utc=True)
+            - pd.to_datetime(frame["first_purchase_at"], utc=True)).dt.days
+    return frame.assign(tenure_band=pd.cut(
+        days, [0, 365, 3 * 365, float("inf")], right=False, labels=TENURE_ORDER,
+    ))
 
 
 def cosmetic_summary(frame: pd.DataFrame, axis: str, dimension: str) -> pd.DataFrame:
@@ -155,4 +140,19 @@ def discount_summary(frame: pd.DataFrame, dimension: str) -> pd.DataFrame:
     ).reset_index()
     result["cash_discount_share"] = result["discounted_events"] / result["cash_events"]
     result["cash_discount_mean"] = result["discount_fraction_sum"] / result["discounted_events"].where(result["discounted_events"].gt(0))
+    return result
+
+
+def cash_summary(frame: pd.DataFrame, groups: list[str]) -> pd.DataFrame:
+    data = frame.assign(
+        cash_buyer=frame["cash_purchase_count_60d"].gt(0),
+        cash_usd=frame["cash_spent_usd_60d"].astype(float),
+    )
+    result = data.groupby(groups, observed=True, dropna=False).agg(
+        players=("cash_buyer", "size"), cash_purchasers=("cash_buyer", "sum"),
+        cash_usd=("cash_usd", "sum"),
+    ).reset_index()
+    result["cash_purchaser_share"] = result["cash_purchasers"] / result["players"]
+    result["usd_per_player"] = result["cash_usd"] / result["players"]
+    result["usd_per_purchaser"] = result["cash_usd"] / result["cash_purchasers"].where(result["cash_purchasers"].gt(0))
     return result

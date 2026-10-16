@@ -13,6 +13,14 @@ DB_PATH = "data/database/extraction.db"
 OptStr = str | None
 
 
+def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA foreign_keys=ON;")
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 def is_active(db_path: str = DB_PATH) -> bool:
     """Check that SQLite can open the path and execute a query, not that tables exist."""
     conn = None
@@ -26,14 +34,6 @@ def is_active(db_path: str = DB_PATH) -> bool:
     finally:
         if conn is not None:
             conn.close()
-
-
-def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA foreign_keys=ON;")
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 def now() -> str:
@@ -96,6 +96,26 @@ def finish_run(
             conn.close()
 
 
+def run_tasks_succeeded(run_id: int, conn: sqlite3.Connection | None = None) -> bool:
+    """Check this run's extraction tasks, including failed or unfinished work."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        row = conn.execute(
+            """SELECT NOT EXISTS (
+                SELECT 1 FROM player_tasks WHERE run_id = ? AND status != 'success'
+                UNION ALL
+                SELECT 1 FROM mastery_tasks WHERE run_id = ? AND status != 'success'
+            )""",
+            (run_id, run_id),
+        ).fetchone()
+        return bool(row[0])
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def add_player_task(run_id: int, is_refresh: bool = False, conn: sqlite3.Connection | None = None) -> int:
     own_conn = conn is None
     if own_conn:
@@ -115,26 +135,6 @@ def add_player_task(run_id: int, is_refresh: bool = False, conn: sqlite3.Connect
     if int_id < 0:
         logger.error(f"Failed to add a new player task for run {run_id}.")
     return int_id
-
-
-def run_tasks_succeeded(run_id: int, conn: sqlite3.Connection | None = None) -> bool:
-    """Check this run's extraction tasks, including failed or unfinished work."""
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        row = conn.execute(
-            """SELECT NOT EXISTS (
-                SELECT 1 FROM player_tasks WHERE run_id = ? AND status != 'success'
-                UNION ALL
-                SELECT 1 FROM mastery_tasks WHERE run_id = ? AND status != 'success'
-            )""",
-            (run_id, run_id),
-        ).fetchone()
-        return bool(row[0])
-    finally:
-        if own_conn:
-            conn.close()
 
 
 def update_player_task(
@@ -217,87 +217,6 @@ def get_loaded_rank_pages(conn: sqlite3.Connection | None = None) -> list[sqlite
             ORDER BY task_id
             """
         ).fetchall()
-    finally:
-        if own_conn:
-            conn.close()
-
-
-def get_player_observations(
-    players: list[dict], conn: sqlite3.Connection | None = None
-) -> dict[tuple[str, str, str], dict]:
-    """Return collection times and refresh flags from each player's latest task."""
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        rows = conn.execute(
-            """
-            SELECT player_id, region, queue, task.finished_at, task.is_refresh
-            FROM players_recorded AS player
-            JOIN player_tasks AS task ON task.task_id = json_extract(player.player_task_ids, '$[#-1]')
-            WHERE player_id IN (SELECT value FROM json_each(?)) AND task.status = 'success'
-            """,
-            (json.dumps([player["puuid"] for player in players]),),
-        ).fetchall()
-        return {(row["player_id"], row["region"], row["queue"]): dict(row) for row in rows}
-    finally:
-        if own_conn:
-            conn.close()
-
-
-def add_player_records(
-    player_id: str,
-    file_path: str,
-    player_task_id: int,
-    region: str,
-    queue: str,
-    tier: str,
-    division: str,
-    patch: str,
-    conn: sqlite3.Connection | None = None,
-):
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        conn.execute(
-            """
-			INSERT INTO players_recorded (player_id, player_task_ids, paths, paths_logged_at, patches_logged, mastery_status, region, queue, tier, division, player_load_status)
-			VALUES (?, json_array(?), json_array(?), json_array(?), json_array(?), 'pending', ?, ?, ?, ?, 'pending_compaction')
-
-			ON CONFLICT(player_id) DO UPDATE SET
-				player_task_ids = json_insert(player_task_ids, '$[#]', ?),
-				paths = json_insert(paths, '$[#]', ?),
-				paths_logged_at = json_insert(paths_logged_at, '$[#]', ?),
-				patches_logged = json_insert(patches_logged, '$[#]', ?),
-				region = ?,
-				queue = ?,
-				tier = ?,
-				division = ?,
-				player_load_status = 'pending_compaction'
-			""",
-            (
-                player_id,
-                player_task_id,
-                file_path,
-                now(),
-                patch,
-                region,
-                queue,
-                tier,
-                division,
-                player_task_id,
-                file_path,
-                now(),
-                patch,
-                region,
-                queue,
-                tier,
-                division,
-            ),
-        )
-        if own_conn:
-            conn.commit()
     finally:
         if own_conn:
             conn.close()
@@ -420,108 +339,6 @@ def get_mastery_id_from_list(task_ids: list[int], puuid: str, conn: sqlite3.Conn
     return int_id
 
 
-def cleanup_stale_runs(conn: sqlite3.Connection | None = None):
-    """Fail runs silent for over an hour and clean their unfinished work.
-
-    Older rows without a heartbeat use their start time. Successful tasks survive.
-    """
-    conn_supplied = conn
-    if not conn_supplied:
-        conn = get_connection()
-    try:
-        cur = conn.execute(
-            """
-			UPDATE runs
-			SET status = 'failed',
-				finished_at = ?,
-				error_message = 'Run stalled or silent cancelled'
-			WHERE status = 'running'
-              AND datetime(COALESCE(last_heartbeat, started_at)) < datetime('now', '-1 hour')
-			RETURNING run_id
-			""",
-            (now(),),
-        )
-        stalled_run_ids = [row["run_id"] for row in cur.fetchall()]
-
-        if stalled_run_ids:
-            logger.warning(f"Cleaning up {len(stalled_run_ids)} stalled runs.")
-        else:
-            logger.debug("No stalled runs to clean up.")
-        for run in stalled_run_ids:
-            cleanup_failed_run(run, conn)
-
-        if not conn_supplied:
-            conn.commit()
-    finally:
-        if not conn_supplied:
-            conn.close()
-
-
-def cleanup_failed_run(run_id: int, conn: sqlite3.Connection | None = None):
-    """Fail unfinished tasks while preserving successful work from this run.
-
-    Delete player records supported only by a failed player task; retain records
-    with other task history and mark failed mastery work for retry.
-    """
-    conn_supplied = conn
-    if not conn_supplied:
-        conn = get_connection()
-    try:
-        logger.debug(f"Cleaning up failed run {run_id}.")
-        failed_player_tasks = conn.execute(
-            "SELECT task_id FROM player_tasks WHERE run_id = ? AND status != 'success'",
-            (run_id,),
-        ).fetchall()
-        failed_mastery_tasks = conn.execute(
-            "SELECT task_id FROM mastery_tasks WHERE run_id = ? AND status != 'success'",
-            (run_id,),
-        ).fetchall()
-        failed_player_task_ids = [row["task_id"] for row in failed_player_tasks]
-        failed_mastery_task_ids = [row["task_id"] for row in failed_mastery_tasks]
-
-        if failed_player_task_ids:
-            conn.execute(
-                """
-				DELETE FROM players_recorded
-				WHERE json_array_length(player_task_ids) = 1
-				AND json_extract(player_task_ids, '$[0]') IN ({seq})
-				""".format(seq=",".join(["?"] * len(failed_player_task_ids))),
-                tuple(failed_player_task_ids),
-            )
-
-        if failed_mastery_task_ids:
-            conn.execute(
-                """
-				UPDATE players_recorded
-				SET mastery_status='failed'
-				WHERE mastery_task_id IN ({seq})
-				""".format(seq=",".join(["?"] * len(failed_mastery_task_ids))),
-                tuple(failed_mastery_task_ids),
-            )
-
-        conn.execute(
-            """
-			UPDATE player_tasks
-			SET status='failed', finished_at=?, error_message='Run failed or cancelled'
-			WHERE run_id = ? AND status IN ('pending', 'in_progress')
-			""",
-            (now(), run_id),
-        )
-        conn.execute(
-            """
-			UPDATE mastery_tasks
-			SET status='failed', finished_at=?, error_message='Run failed or cancelled'
-			WHERE run_id = ? AND status IN ('pending', 'in_progress')
-			""",
-            (now(), run_id),
-        )
-        if not conn_supplied:
-            conn.commit()
-    finally:
-        if not conn_supplied:
-            conn.close()
-
-
 def claim_players_missing_masteries(
     include_stale_success: bool = False,
     limit: int | None = None,
@@ -589,6 +406,87 @@ def get_mastery_status_for_player(player_id: str, conn: sqlite3.Connection | Non
         if own_conn:
             conn.close()
     return str(result["mastery_status"] if result else None)
+
+
+def add_player_records(
+    player_id: str,
+    file_path: str,
+    player_task_id: int,
+    region: str,
+    queue: str,
+    tier: str,
+    division: str,
+    patch: str,
+    conn: sqlite3.Connection | None = None,
+):
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        conn.execute(
+            """
+			INSERT INTO players_recorded (player_id, player_task_ids, paths, paths_logged_at, patches_logged, mastery_status, region, queue, tier, division, player_load_status)
+			VALUES (?, json_array(?), json_array(?), json_array(?), json_array(?), 'pending', ?, ?, ?, ?, 'pending_compaction')
+
+			ON CONFLICT(player_id) DO UPDATE SET
+				player_task_ids = json_insert(player_task_ids, '$[#]', ?),
+				paths = json_insert(paths, '$[#]', ?),
+				paths_logged_at = json_insert(paths_logged_at, '$[#]', ?),
+				patches_logged = json_insert(patches_logged, '$[#]', ?),
+				region = ?,
+				queue = ?,
+				tier = ?,
+				division = ?,
+				player_load_status = 'pending_compaction'
+			""",
+            (
+                player_id,
+                player_task_id,
+                file_path,
+                now(),
+                patch,
+                region,
+                queue,
+                tier,
+                division,
+                player_task_id,
+                file_path,
+                now(),
+                patch,
+                region,
+                queue,
+                tier,
+                division,
+            ),
+        )
+        if own_conn:
+            conn.commit()
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def get_player_observations(
+    players: list[dict], conn: sqlite3.Connection | None = None
+) -> dict[tuple[str, str, str], dict]:
+    """Return collection times and refresh flags from each player's latest task."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT player_id, region, queue, task.finished_at, task.is_refresh
+            FROM players_recorded AS player
+            JOIN player_tasks AS task ON task.task_id = json_extract(player.player_task_ids, '$[#-1]')
+            WHERE player_id IN (SELECT value FROM json_each(?)) AND task.status = 'success'
+            """,
+            (json.dumps([player["puuid"] for player in players]),),
+        ).fetchall()
+        return {(row["player_id"], row["region"], row["queue"]): dict(row) for row in rows}
+    finally:
+        if own_conn:
+            conn.close()
 
 
 def get_player_info(player_id: str, conn: sqlite3.Connection | None = None) -> dict | None:
@@ -700,6 +598,32 @@ def get_players_recorded(
     return players
 
 
+def get_pending_player_ids(
+    region: OptStr = None, queue: OptStr = None, conn: sqlite3.Connection | None = None,
+    *, freshness_minutes: int,
+) -> list[str]:
+    """Fresh local players awaiting rank ingestion, without a current failure."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT player_id FROM players_recorded AS player
+               JOIN player_tasks AS task
+                 ON task.task_id = json_extract(player.player_task_ids, '$[#-1]')
+               WHERE player_load_status IN ('pending_compaction', 'pending_load')
+                 AND task.status != 'failed'
+                 AND mastery_status != 'failed' AND mastery_load_status != 'load_failed'
+                 AND datetime(json_extract(paths_logged_at, '$[#-1]')) > datetime('now', ?)
+                 AND (? IS NULL OR region = ?) AND (? IS NULL OR queue = ?)""",
+            (f"-{freshness_minutes} minutes", region, region, queue, queue),
+        ).fetchall()
+        return [row["player_id"] for row in rows]
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def add_compaction_task(
     dataset: str,
     output_path: str,
@@ -769,6 +693,36 @@ def update_compaction_task(
             conn.close()
 
 
+def complete_compaction_task(
+    task_id: int,
+    dataset: str,
+    player_ids: list[str],
+    new_path: str,
+    paths_compressed: list[str],
+    rows_written: int,
+    conn: sqlite3.Connection | None = None,
+):
+    """Commit the compacted records and successful task together."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        update_compaction_records(task_id, dataset, player_ids, new_path, conn=conn)
+        update_compaction_task(
+            task_id,
+            "success",
+            paths_compressed=paths_compressed,
+            source_file_count=len(paths_compressed),
+            rows_written=rows_written,
+            conn=conn,
+        )
+        if own_conn:
+            conn.commit()
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def update_compaction_records(
     task_id: int,
     dataset: str,
@@ -822,74 +776,39 @@ def update_compaction_records(
             conn.close()
 
 
-def complete_compaction_task(
-    task_id: int,
-    dataset: str,
-    player_ids: list[str],
-    new_path: str,
-    paths_compressed: list[str],
-    rows_written: int,
-    conn: sqlite3.Connection | None = None,
-):
-    """Commit the compacted records and successful task together."""
+def get_uncompacted_players(conn: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
+    """Players with no compaction recorded yet, paired with their latest raw path."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
     try:
-        update_compaction_records(task_id, dataset, player_ids, new_path, conn=conn)
-        update_compaction_task(
-            task_id,
-            "success",
-            paths_compressed=paths_compressed,
-            source_file_count=len(paths_compressed),
-            rows_written=rows_written,
-            conn=conn,
-        )
-        if own_conn:
-            conn.commit()
-    finally:
-        if own_conn:
-            conn.close()
-
-
-def count_incomplete_loads(conn: sqlite3.Connection | None = None) -> int:
-    """Count tracked players whose rank or mastery has not completed loading."""
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        row = conn.execute(
-            """SELECT COUNT(*) FROM players_recorded
-               WHERE player_load_status != 'load_success'
-                  OR mastery_load_status != 'load_success'"""
-        ).fetchone()
-        return int(row[0])
-    finally:
-        if own_conn:
-            conn.close()
-
-
-def get_pending_player_ids(
-    region: OptStr = None, queue: OptStr = None, conn: sqlite3.Connection | None = None,
-    *, freshness_minutes: int,
-) -> list[str]:
-    """Fresh local players awaiting rank ingestion, without a current failure."""
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection()
-    try:
-        rows = conn.execute(
-            """SELECT player_id FROM players_recorded AS player
-               JOIN player_tasks AS task
-                 ON task.task_id = json_extract(player.player_task_ids, '$[#-1]')
-               WHERE player_load_status IN ('pending_compaction', 'pending_load')
-                 AND task.status != 'failed'
-                 AND mastery_status != 'failed' AND mastery_load_status != 'load_failed'
-                 AND datetime(json_extract(paths_logged_at, '$[#-1]')) > datetime('now', ?)
-                 AND (? IS NULL OR region = ?) AND (? IS NULL OR queue = ?)""",
-            (f"-{freshness_minutes} minutes", region, region, queue, queue),
+        return conn.execute(
+            """
+			SELECT player_id, json_extract(paths, '$[' || (json_array_length(paths) - 1) || ']') AS latest_path
+			FROM players_recorded
+			WHERE player_load_status = 'pending_compaction'
+			AND paths IS NOT NULL AND json_array_length(paths) > 0
+			"""
         ).fetchall()
-        return [row["player_id"] for row in rows]
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def get_uncompacted_masteries(conn: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
+    """Players whose mastery snapshot is ready but not yet compacted."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        return conn.execute(
+            """
+			SELECT player_id, mastery_path AS latest_path
+			FROM players_recorded
+			WHERE mastery_load_status = 'pending_compaction'
+			AND mastery_status = 'success' AND mastery_path IS NOT NULL
+			"""
+        ).fetchall()
     finally:
         if own_conn:
             conn.close()
@@ -944,39 +863,120 @@ def update_load_status(
             conn.close()
 
 
-def get_uncompacted_players(conn: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
-    """Players with no compaction recorded yet, paired with their latest raw path."""
+def count_incomplete_loads(conn: sqlite3.Connection | None = None) -> int:
+    """Count tracked players whose rank or mastery has not completed loading."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
     try:
-        return conn.execute(
-            """
-			SELECT player_id, json_extract(paths, '$[' || (json_array_length(paths) - 1) || ']') AS latest_path
-			FROM players_recorded
-			WHERE player_load_status = 'pending_compaction'
-			AND paths IS NOT NULL AND json_array_length(paths) > 0
-			"""
-        ).fetchall()
+        row = conn.execute(
+            """SELECT COUNT(*) FROM players_recorded
+               WHERE player_load_status != 'load_success'
+                  OR mastery_load_status != 'load_success'"""
+        ).fetchone()
+        return int(row[0])
     finally:
         if own_conn:
             conn.close()
 
 
-def get_uncompacted_masteries(conn: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
-    """Players whose mastery snapshot is ready but not yet compacted."""
-    own_conn = conn is None
-    if own_conn:
+def cleanup_stale_runs(conn: sqlite3.Connection | None = None):
+    """Fail runs silent for over an hour and clean their unfinished work.
+
+    Older rows without a heartbeat use their start time. Successful tasks survive.
+    """
+    conn_supplied = conn
+    if not conn_supplied:
         conn = get_connection()
     try:
-        return conn.execute(
+        cur = conn.execute(
             """
-			SELECT player_id, mastery_path AS latest_path
-			FROM players_recorded
-			WHERE mastery_load_status = 'pending_compaction'
-			AND mastery_status = 'success' AND mastery_path IS NOT NULL
-			"""
-        ).fetchall()
+			UPDATE runs
+			SET status = 'failed',
+				finished_at = ?,
+				error_message = 'Run stalled or silent cancelled'
+			WHERE status = 'running'
+              AND datetime(COALESCE(last_heartbeat, started_at)) < datetime('now', '-1 hour')
+			RETURNING run_id
+			""",
+            (now(),),
+        )
+        stalled_run_ids = [row["run_id"] for row in cur.fetchall()]
+
+        if stalled_run_ids:
+            logger.warning(f"Cleaning up {len(stalled_run_ids)} stalled runs.")
+        else:
+            logger.debug("No stalled runs to clean up.")
+        for run in stalled_run_ids:
+            cleanup_failed_run(run, conn)
+
+        if not conn_supplied:
+            conn.commit()
     finally:
-        if own_conn:
+        if not conn_supplied:
+            conn.close()
+
+
+def cleanup_failed_run(run_id: int, conn: sqlite3.Connection | None = None):
+    """Fail unfinished tasks while preserving successful work from this run.
+
+    Delete player records supported only by a failed player task; retain records
+    with other task history and mark failed mastery work for retry.
+    """
+    conn_supplied = conn
+    if not conn_supplied:
+        conn = get_connection()
+    try:
+        logger.debug(f"Cleaning up failed run {run_id}.")
+        failed_player_tasks = conn.execute(
+            "SELECT task_id FROM player_tasks WHERE run_id = ? AND status != 'success'",
+            (run_id,),
+        ).fetchall()
+        failed_mastery_tasks = conn.execute(
+            "SELECT task_id FROM mastery_tasks WHERE run_id = ? AND status != 'success'",
+            (run_id,),
+        ).fetchall()
+        failed_player_task_ids = [row["task_id"] for row in failed_player_tasks]
+        failed_mastery_task_ids = [row["task_id"] for row in failed_mastery_tasks]
+
+        if failed_player_task_ids:
+            conn.execute(
+                """
+				DELETE FROM players_recorded
+				WHERE json_array_length(player_task_ids) = 1
+				AND json_extract(player_task_ids, '$[0]') IN ({seq})
+				""".format(seq=",".join(["?"] * len(failed_player_task_ids))),
+                tuple(failed_player_task_ids),
+            )
+
+        if failed_mastery_task_ids:
+            conn.execute(
+                """
+				UPDATE players_recorded
+				SET mastery_status='failed'
+				WHERE mastery_task_id IN ({seq})
+				""".format(seq=",".join(["?"] * len(failed_mastery_task_ids))),
+                tuple(failed_mastery_task_ids),
+            )
+
+        conn.execute(
+            """
+			UPDATE player_tasks
+			SET status='failed', finished_at=?, error_message='Run failed or cancelled'
+			WHERE run_id = ? AND status IN ('pending', 'in_progress')
+			""",
+            (now(), run_id),
+        )
+        conn.execute(
+            """
+			UPDATE mastery_tasks
+			SET status='failed', finished_at=?, error_message='Run failed or cancelled'
+			WHERE run_id = ? AND status IN ('pending', 'in_progress')
+			""",
+            (now(), run_id),
+        )
+        if not conn_supplied:
+            conn.commit()
+    finally:
+        if not conn_supplied:
             conn.close()

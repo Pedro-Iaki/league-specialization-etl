@@ -294,11 +294,6 @@ def verify_db_integrity(conn: sqlite3.Connection | None = None) -> dict[any]:  #
     return log_data
 
 
-def _read_puuid_set(path: Path) -> set[str]:
-    table = pq.read_table(path, columns=["puuid"])
-    return {p for p in table.column("puuid").to_pylist() if p}
-
-
 def verify_compaction_integrity() -> dict:
     """Check outputs still awaiting ingestion; retain raw-file diagnostics separately."""
     conn = db.get_connection()
@@ -460,6 +455,11 @@ def verify_compaction_integrity() -> dict:
     )
     logger.debug(f"Compaction check pending records by dataset: {pending}")
     return log_data
+
+
+def _read_puuid_set(path: Path) -> set[str]:
+    table = pq.read_table(path, columns=["puuid"])
+    return {p for p in table.column("puuid").to_pylist() if p}
 
 
 if __name__ == "__main__":

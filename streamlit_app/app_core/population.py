@@ -130,12 +130,31 @@ def calibrate_population(
     return frame, diagnostics
 
 
-def row_weights(frame: pd.DataFrame) -> pd.Series:
-    """Absent weights mean sample mode; invalid explicit weights exclude the row."""
-    if WEIGHT not in frame:
-        return pd.Series(1.0, index=frame.index)
-    values = pd.to_numeric(frame[WEIGHT], errors="coerce")
-    return values.where(np.isfinite(values) & values.gt(0))
+def population_weights(players: pd.DataFrame, reference: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Calculate weights from the local reference, replacing cached weight values."""
+    return calibrate_population(players, reference)
+
+
+def apply_tier_weights(
+    frame: pd.DataFrame, diagnostics: pd.DataFrame, tier_column: str = "tier",
+) -> pd.DataFrame:
+    """Transfer unfiltered cohort weights to subsets or tier-preserving aggregates.
+
+    Legacy exports without scope columns are supported only for a single source
+    scope. Never recalibrate a champion or role subset to the full reference.
+    """
+    scopes = [column for column in ("region", "queue") if column in diagnostics]
+    missing = [column for column in scopes if column not in frame]
+    for column in missing:
+        if diagnostics[column].nunique(dropna=False) != 1:
+            raise ValueError("Population estimates need region and queue in this export when multiple scopes are present.")
+    keys = [column for column in scopes if column in frame] + [tier_column]
+    mapping = diagnostics.rename(columns={"tier": tier_column})[keys + [WEIGHT]].drop_duplicates()
+    if mapping.duplicated(keys).any():
+        raise ValueError("Population weight mapping is ambiguous for this export.")
+    result = frame.drop(columns=[WEIGHT], errors="ignore").merge(mapping, how="left", on=keys, validate="many_to_one")
+    result.attrs.update(frame.attrs)
+    return eligible_weighted_rows(result)
 
 
 def direct_standardized_means(
@@ -210,31 +229,17 @@ def direct_standardized_means(
     )
 
 
-def population_weights(players: pd.DataFrame, reference: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Calculate weights from the local reference, replacing cached weight values."""
-    return calibrate_population(players, reference)
+def row_weights(frame: pd.DataFrame) -> pd.Series:
+    """Absent weights mean sample mode; invalid explicit weights exclude the row."""
+    if WEIGHT not in frame:
+        return pd.Series(1.0, index=frame.index)
+    values = pd.to_numeric(frame[WEIGHT], errors="coerce")
+    return values.where(np.isfinite(values) & values.gt(0))
 
 
-def apply_tier_weights(
-    frame: pd.DataFrame, diagnostics: pd.DataFrame, tier_column: str = "tier",
-) -> pd.DataFrame:
-    """Transfer unfiltered cohort weights to subsets or tier-preserving aggregates.
-
-    Legacy exports without scope columns are supported only for a single source
-    scope. Never recalibrate a champion or role subset to the full reference.
-    """
-    scopes = [column for column in ("region", "queue") if column in diagnostics]
-    missing = [column for column in scopes if column not in frame]
-    for column in missing:
-        if diagnostics[column].nunique(dropna=False) != 1:
-            raise ValueError("Population estimates need region and queue in this export when multiple scopes are present.")
-    keys = [column for column in scopes if column in frame] + [tier_column]
-    mapping = diagnostics.rename(columns={"tier": tier_column})[keys + [WEIGHT]].drop_duplicates()
-    if mapping.duplicated(keys).any():
-        raise ValueError("Population weight mapping is ambiguous for this export.")
-    result = frame.drop(columns=[WEIGHT], errors="ignore").merge(mapping, how="left", on=keys, validate="many_to_one")
-    result.attrs.update(frame.attrs)
-    return eligible_weighted_rows(result)
+def eligible_weighted_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    """Remove unsupported rows before both estimates and observed support counts."""
+    return frame.loc[row_weights(frame).notna()].copy()
 
 
 def weighted_summary(frame: pd.DataFrame, group: str, metrics: dict[str, str]) -> pd.DataFrame:
@@ -252,9 +257,24 @@ def weighted_summary(frame: pd.DataFrame, group: str, metrics: dict[str, str]) -
     ).reset_index()
 
 
-def eligible_weighted_rows(frame: pd.DataFrame) -> pd.DataFrame:
-    """Remove unsupported rows before both estimates and observed support counts."""
-    return frame.loc[row_weights(frame).notna()].copy()
+def category_summary(frame: pd.DataFrame, group: str, categories: list[str] | None = None) -> pd.DataFrame:
+    valid = frame.loc[frame[group].notna()].copy()
+    if categories is not None:
+        valid = valid.loc[valid[group].isin(categories)]
+    valid["_weight"] = row_weights(valid)
+    valid = valid.loc[valid["_weight"].notna()]
+    summary = valid.groupby(group, observed=True).agg(
+        players=("_weight", "size"),
+        weighted_mass=("_weight", "sum"),
+        weight_squares=("_weight", lambda w: w.pow(2).sum()),
+    )
+    if categories is not None:
+        summary = summary.reindex(categories, fill_value=0)
+    summary["sample_share"] = summary["players"] / summary["players"].sum() if len(valid) else np.nan
+    summary["estimated_share"] = summary["weighted_mass"] / summary["weighted_mass"].sum() if len(valid) else np.nan
+    summary["effective_players"] = summary["weighted_mass"].pow(2) / summary["weight_squares"].replace(0, np.nan)
+    summary["difference_pp"] = (summary["estimated_share"] - summary["sample_share"]) * 100
+    return summary.drop(columns="weight_squares").reset_index()
 
 
 def effective_sample_size(weights: pd.Series) -> float:
@@ -277,23 +297,3 @@ def weighted_quantile(values: pd.Series, weights: pd.Series, quantile: float = 0
     # Midpoint cumulative mass interpolation; invariant to uniform rescaling.
     centers = (ordered["weight"].cumsum() - ordered["weight"] / 2) / ordered["weight"].sum()
     return float(np.interp(quantile, centers, ordered["value"]))
-
-
-def category_summary(frame: pd.DataFrame, group: str, categories: list[str] | None = None) -> pd.DataFrame:
-    valid = frame.loc[frame[group].notna()].copy()
-    if categories is not None:
-        valid = valid.loc[valid[group].isin(categories)]
-    valid["_weight"] = row_weights(valid)
-    valid = valid.loc[valid["_weight"].notna()]
-    summary = valid.groupby(group, observed=True).agg(
-        players=("_weight", "size"),
-        weighted_mass=("_weight", "sum"),
-        weight_squares=("_weight", lambda w: w.pow(2).sum()),
-    )
-    if categories is not None:
-        summary = summary.reindex(categories, fill_value=0)
-    summary["sample_share"] = summary["players"] / summary["players"].sum() if len(valid) else np.nan
-    summary["estimated_share"] = summary["weighted_mass"] / summary["weighted_mass"].sum() if len(valid) else np.nan
-    summary["effective_players"] = summary["weighted_mass"].pow(2) / summary["weight_squares"].replace(0, np.nan)
-    summary["difference_pp"] = (summary["estimated_share"] - summary["sample_share"]) * 100
-    return summary.drop(columns="weight_squares").reset_index()

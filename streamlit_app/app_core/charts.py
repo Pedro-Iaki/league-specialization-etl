@@ -48,34 +48,6 @@ def style_figure(fig: go.Figure, *, height: int = 440, legend_title: str = "") -
     return fig
 
 
-def population_box_chart(frame: pd.DataFrame, value: str, group: str = "tier", *, horizontal: bool = False) -> go.Figure:
-    """Weighted quartiles and Tukey whiskers; hover counts remain observed."""
-    frame = eligible_weighted_rows(frame)
-    frame = frame.loc[frame[value].notna() & frame[group].notna()]
-    rows = []
-    for label, data in frame.groupby(group, observed=True):
-        weights = row_weights(data)
-        q1, median, q3 = [weighted_quantile(data[value], weights, q) for q in (0.25, 0.5, 0.75)]
-        in_fences = data[value].between(q1 - 1.5 * (q3 - q1), q3 + 1.5 * (q3 - q1))
-        rows.append({"group": label, "q1": q1, "median": median, "q3": q3,
-                     "lower": min(q1, data.loc[in_fences, value].min()),
-                     "upper": max(q3, data.loc[in_fences, value].max()), "n": len(data)})
-    data = pd.DataFrame(rows, columns=["group", "q1", "median", "q3", "lower", "upper", "n"])
-    fig = go.Figure(go.Box(
-        **{"y" if horizontal else "x": data["group"]},
-        q1=data["q1"], median=data["median"], q3=data["q3"],
-        lowerfence=data["lower"], upperfence=data["upper"], boxpoints=False,
-        orientation="h" if horizontal else "v", marker_color=GOLD,
-        customdata=data[["n"]].to_numpy(), name="Player distribution",
-        hovertemplate="Median: %{median}<br>Players: %{customdata[0]:,}<extra></extra>",
-    ))
-    if horizontal:
-        fig.update_yaxes(categoryorder="array", categoryarray=TIER_ORDER, title="Current tier")
-    else:
-        fig.update_xaxes(categoryorder="array", categoryarray=TIER_ORDER, title="Current tier")
-    return style_figure(fig, height=490)
-
-
 def annotate_sparse_cells(
     fig: go.Figure, x_values: list[str], y_values: list[str], values: np.ndarray, labels: np.ndarray
 ) -> None:
@@ -87,31 +59,6 @@ def annotate_sparse_cells(
                     x=x_label, y=y_label, text=labels[row, column],
                     showarrow=False, font={"color": MUTED, "size": 11},
                 )
-
-
-def playstyle_composition_chart(composition: pd.DataFrame) -> go.Figure:
-    frame = composition.copy()
-    frame["Playstyle"] = frame["active_playstyle"].map(PLAYSTYLE_LABELS)
-    color_map = {PLAYSTYLE_LABELS[key]: value for key, value in PLAYSTYLE_COLORS.items()}
-    fig = px.bar(
-        frame,
-        x="tier",
-        y="share",
-        color="Playstyle",
-        color_discrete_map=color_map,
-        category_orders={
-            "tier": TIER_ORDER,
-            "Playstyle": [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER],
-        },
-        custom_data=["players"],
-    )
-    fig.update_traces(
-        hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{y:.1%}<br>Players: %{customdata[0]:,}<extra></extra>"
-    )
-    fig.update_layout(barmode="stack")
-    fig.update_yaxes(tickformat=".0%", title="Share of classified players")
-    fig.update_xaxes(title="Current tier")
-    return style_figure(fig, legend_title="")
 
 
 def rank_distribution_chart(players: pd.DataFrame) -> go.Figure:
@@ -131,42 +78,6 @@ def rank_distribution_chart(players: pd.DataFrame) -> go.Figure:
     fig.update_xaxes(title="")
     fig.update_yaxes(title="Analytical rank score")
     return style_figure(fig)
-
-
-def champion_landscape_chart(champions: pd.DataFrame, minimum_games: int = 100) -> go.Figure:
-    frame = champions.loc[champions["observed_games"].fillna(0) >= minimum_games].copy()
-    dominant_role_columns = {
-        "role_top_pct": "Top",
-        "role_jungle_pct": "Jungle",
-        "role_middle_pct": "Middle",
-        "role_bottom_pct": "Bottom",
-        "role_support_pct": "Support",
-    }
-    available = [column for column in dominant_role_columns if column in frame]
-    frame["Dominant role"] = frame[available].idxmax(axis=1).map(dominant_role_columns) if available else "Unknown"
-    frame["Observed games"] = frame["observed_games"].fillna(0)
-    fig = px.scatter(
-        frame,
-        x="active_play_rate",
-        y="lp_per_game_lift_vs_tier",
-        size="Observed games",
-        color="Dominant role",
-        color_discrete_map=ROLE_COLORS,
-        hover_name="champion_name",
-        custom_data=["primary_player_count", "observed_games", "observed_win_rate"],
-        size_max=34,
-    )
-    fig.add_hline(y=0, line_dash="dot", line_color=MUTED, opacity=0.7)
-    fig.update_traces(
-        hovertemplate=(
-            "<b>%{hovertext}</b><br>Active play rate: %{x:.2%}<br>"
-            "LP/game lift: %{y:+.2f}<br>Primary players: %{customdata[0]:,}<br>"
-            "Observed games: %{customdata[1]:,}<br>Observed win rate: %{customdata[2]:.1%}<extra></extra>"
-        )
-    )
-    fig.update_xaxes(title="Active-pool play rate", tickformat=".1%")
-    fig.update_yaxes(title="LP/game lift vs starting-tier baseline")
-    return style_figure(fig, height=520, legend_title="Dominant role")
 
 
 def concentration_distribution_chart(players: pd.DataFrame) -> go.Figure:
@@ -197,6 +108,59 @@ def concentration_distribution_chart(players: pd.DataFrame) -> go.Figure:
             )
     fig.update_layout(boxmode="group")
     return style_figure(fig, height=680)
+
+
+def population_box_chart(frame: pd.DataFrame, value: str, group: str = "tier", *, horizontal: bool = False) -> go.Figure:
+    """Weighted quartiles and Tukey whiskers; hover counts remain observed."""
+    frame = eligible_weighted_rows(frame)
+    frame = frame.loc[frame[value].notna() & frame[group].notna()]
+    rows = []
+    for label, data in frame.groupby(group, observed=True):
+        weights = row_weights(data)
+        q1, median, q3 = [weighted_quantile(data[value], weights, q) for q in (0.25, 0.5, 0.75)]
+        in_fences = data[value].between(q1 - 1.5 * (q3 - q1), q3 + 1.5 * (q3 - q1))
+        rows.append({"group": label, "q1": q1, "median": median, "q3": q3,
+                     "lower": min(q1, data.loc[in_fences, value].min()),
+                     "upper": max(q3, data.loc[in_fences, value].max()), "n": len(data)})
+    data = pd.DataFrame(rows, columns=["group", "q1", "median", "q3", "lower", "upper", "n"])
+    fig = go.Figure(go.Box(
+        **{"y" if horizontal else "x": data["group"]},
+        q1=data["q1"], median=data["median"], q3=data["q3"],
+        lowerfence=data["lower"], upperfence=data["upper"], boxpoints=False,
+        orientation="h" if horizontal else "v", marker_color=GOLD,
+        customdata=data[["n"]].to_numpy(), name="Player distribution",
+        hovertemplate="Median: %{median}<br>Players: %{customdata[0]:,}<extra></extra>",
+    ))
+    if horizontal:
+        fig.update_yaxes(categoryorder="array", categoryarray=TIER_ORDER, title="Current tier")
+    else:
+        fig.update_xaxes(categoryorder="array", categoryarray=TIER_ORDER, title="Current tier")
+    return style_figure(fig, height=490)
+
+
+def playstyle_composition_chart(composition: pd.DataFrame) -> go.Figure:
+    frame = composition.copy()
+    frame["Playstyle"] = frame["active_playstyle"].map(PLAYSTYLE_LABELS)
+    color_map = {PLAYSTYLE_LABELS[key]: value for key, value in PLAYSTYLE_COLORS.items()}
+    fig = px.bar(
+        frame,
+        x="tier",
+        y="share",
+        color="Playstyle",
+        color_discrete_map=color_map,
+        category_orders={
+            "tier": TIER_ORDER,
+            "Playstyle": [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER],
+        },
+        custom_data=["players"],
+    )
+    fig.update_traces(
+        hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{y:.1%}<br>Players: %{customdata[0]:,}<extra></extra>"
+    )
+    fig.update_layout(barmode="stack")
+    fig.update_yaxes(tickformat=".0%", title="Share of classified players")
+    fig.update_xaxes(title="Current tier")
+    return style_figure(fig, legend_title="")
 
 
 def transition_heatmap(matrix: pd.DataFrame, counts: pd.DataFrame | None = None) -> go.Figure:
@@ -246,6 +210,67 @@ def transition_heatmap(matrix: pd.DataFrame, counts: pd.DataFrame | None = None)
     fig.update_xaxes(title="All-time mastery playstyle")
     fig.update_yaxes(title="Active-pool playstyle", autorange="reversed")
     return style_figure(fig, height=500)
+
+
+def composition_view_chart(frame: pd.DataFrame, group: str, *, normalized: bool = False) -> go.Figure:
+    plot = frame.copy()
+    plot["Playstyle"] = plot["playstyle"].map(PLAYSTYLE_LABELS)
+    fig = px.bar(
+        plot,
+        x=group,
+        y="relative_share" if normalized else "share",
+        color="Playstyle",
+        color_discrete_map={PLAYSTYLE_LABELS[key]: color for key, color in PLAYSTYLE_COLORS.items()},
+        category_orders={
+            group: TIER_ORDER if group == "tier" else ROLE_ORDER if group == "main_role" else sorted(plot[group].dropna().unique()),
+            "Playstyle": [PLAYSTYLE_LABELS[key] for key in PLAYSTYLE_ORDER],
+        },
+        custom_data=["players", "share", "baseline_share", "median_mastery"] if normalized else ["players"],
+    )
+    fig.update_layout(barmode="group" if normalized else "stack")
+    fig.update_traces(
+        hovertemplate="%{x}<br>%{fullData.name}: %{y:.1%}<br>Players: %{customdata[0]:,}<extra></extra>"
+    )
+    fig.update_yaxes(title="Share within group", tickformat=".0%")
+    if normalized:
+        fig.update_traces(hovertemplate=(
+            "%{x}<br>%{fullData.name}: %{y:.2f}× baseline"
+            "<br>Players: %{customdata[0]:,}<br>Observed share: %{customdata[1]:.1%}"
+            "<br>Expected share: %{customdata[2]:.1%}<br>Median mastery: %{customdata[3]:,.0f}<extra></extra>"
+        ))
+        fig.update_yaxes(title="Observed / mastery-expected share", tickformat=".2f")
+        fig.add_hline(y=1, line_dash="dot", line_color=MUTED)
+    fig.update_xaxes(title="Current tier" if group == "tier" else "Current inferred role" if group == "main_role" else "Rank-score band")
+    return style_figure(fig, height=460)
+
+
+def composition_delta_chart(frame: pd.DataFrame, group: str) -> go.Figure:
+    plot = frame.copy()
+    plot["Playstyle"] = plot["playstyle"].map(PLAYSTYLE_LABELS)
+    fig = px.bar(
+        plot,
+        x=group,
+        y="difference_pp",
+        color="Playstyle",
+        barmode="group",
+        color_discrete_map={PLAYSTYLE_LABELS[key]: color for key, color in PLAYSTYLE_COLORS.items()},
+        category_orders={
+            group: TIER_ORDER if group == "tier" else ROLE_ORDER if group == "main_role" else sorted(plot[group].dropna().unique()),
+            "Playstyle": [PLAYSTYLE_LABELS[key] for key in PLAYSTYLE_ORDER],
+        },
+        custom_data=["share", "population_share", "players"],
+    )
+    fig.add_hline(y=0, line_dash="dot", line_color=MUTED)
+    fig.update_traces(
+        hovertemplate=(
+            "%{x} · %{fullData.name}<br>Difference: %{y:+.1f} pp<br>"
+            "Champion players: %{customdata[0]:.1%}<br>All players: %{customdata[1]:.1%}<br>"
+            "Champion player count: %{customdata[2]:,}<extra></extra>"
+        )
+    )
+    fig.update_xaxes(title="Current tier" if group == "tier" else "Current inferred role" if group == "main_role" else "Rank-score band")
+    fig.update_yaxes(title="Difference from all players in same group (pp)")
+    return style_figure(fig, height=460)
 
 
 def role_difference_heatmap(matrix: pd.DataFrame, counts: pd.DataFrame | None = None) -> go.Figure:
@@ -347,128 +372,6 @@ def champion_role_chart(champion: pd.Series, over_under: bool = False) -> go.Fig
     return style_figure(fig, height=270)
 
 
-def champion_playstyle_chart(profile: pd.DataFrame) -> go.Figure:
-    frame = profile.loc[profile["playstyle"].isin(PLAYSTYLE_ORDER)].copy()
-    frame["Playstyle"] = frame["playstyle"].map(PLAYSTYLE_LABELS)
-    color_map = {PLAYSTYLE_LABELS[key]: value for key, value in PLAYSTYLE_COLORS.items()}
-    fig = px.bar(
-        frame,
-        x="Playstyle",
-        y="lp_per_game_lift_vs_tier",
-        color="Playstyle",
-        color_discrete_map=color_map,
-        category_orders={"Playstyle": [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER]},
-        custom_data=["observed_games", "observed_player_count", "current_player_count"],
-    )
-    fig.add_hline(y=0, line_dash="dot", line_color=MUTED)
-    fig.update_traces(
-        hovertemplate=(
-            "%{x}<br>LP/game lift: %{y:+.2f}<br>Observed games: %{customdata[0]:,}<br>"
-            "Observed players: %{customdata[1]:,}<br>Current players: %{customdata[2]:,}<extra></extra>"
-        )
-    )
-    fig.update_layout(showlegend=False)
-    fig.update_xaxes(title="")
-    fig.update_yaxes(title="LP/game lift vs tier")
-    return style_figure(fig, height=420)
-
-
-def cooccurrence_chart(neighbors: pd.DataFrame, top_n: int = 12) -> go.Figure:
-    frame = neighbors.head(top_n).sort_values("npmi")
-    fig = px.scatter(
-        frame,
-        x="npmi",
-        y="related_champion",
-        size="pair_player_count",
-        color="lift",
-        color_continuous_scale=[[0, BLUE], [1, GOLD]],
-        custom_data=["pair_player_count", "lift", "conditional_probability", "jaccard"],
-        size_max=28,
-    )
-    fig.update_traces(
-        hovertemplate=(
-            "<b>%{y}</b><br>NPMI: %{x:.3f}<br>Shared players: %{customdata[0]:,}<br>"
-            "Lift: %{customdata[1]:.2f}×<br>Conditional overlap: %{customdata[2]:.1%}<br>"
-            "Jaccard: %{customdata[3]:.1%}<extra></extra>"
-        )
-    )
-    fig.update_xaxes(title="Normalized pointwise mutual information")
-    fig.update_yaxes(title="")
-    fig.update_coloraxes(colorbar_title="Lift")
-    return style_figure(fig, height=max(390, 34 * len(frame) + 120))
-
-
-def growth_by_tier_chart(summary: pd.DataFrame) -> go.Figure:
-    frame = summary.copy()
-    frame["Playstyle"] = frame["playstyle"].map(PLAYSTYLE_LABELS)
-    color_map = {PLAYSTYLE_LABELS[key]: value for key, value in PLAYSTYLE_COLORS.items()}
-    fig = px.bar(
-        frame,
-        x="previous_tier",
-        y="lp_per_game_lift_vs_tier",
-        color="Playstyle",
-        barmode="group",
-        color_discrete_map=color_map,
-        category_orders={
-            "previous_tier": TIER_ORDER,
-            "Playstyle": [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER],
-        },
-        custom_data=["observed_games", "intervals", "observed_win_rate"],
-    )
-    fig.add_hline(y=0, line_dash="dot", line_color=MUTED)
-    fig.update_traces(
-        hovertemplate=(
-            "<b>%{x} · %{fullData.name}</b><br>LP/game lift: %{y:+.2f}<br>"
-            "Observed games: %{customdata[0]:,}<br>Intervals: %{customdata[1]:,}<br>"
-            "Observed win rate: %{customdata[2]:.1%}<extra></extra>"
-        )
-    )
-    fig.update_xaxes(title="Starting tier")
-    fig.update_yaxes(title="LP/game lift vs tier baseline")
-    return style_figure(fig, height=520)
-
-
-def champion_playstyle_heatmap(summary: pd.DataFrame) -> go.Figure:
-    pivot = summary.pivot(
-        index="primary_champion_name", columns="playstyle", values="lp_per_game_lift_vs_tier"
-    ).reindex(columns=PLAYSTYLE_ORDER)
-    game_pivot = summary.pivot(index="primary_champion_name", columns="playstyle", values="observed_games").reindex(
-        index=pivot.index, columns=PLAYSTYLE_ORDER
-    )
-    labels = [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER]
-    values = pivot.to_numpy()
-    finite_values = np.abs(values[np.isfinite(values)])
-    max_abs = max(float(np.percentile(finite_values, 95)) if finite_values.size else 1.0, 1.0)
-    text = np.empty(values.shape, dtype=object)
-    for row in range(values.shape[0]):
-        for col in range(values.shape[1]):
-            value = values[row, col]
-            games = game_pivot.iloc[row, col]
-            text[row, col] = "" if pd.isna(value) else f"{value:+.1f}<br>n={games:,.0f}"
-    fig = go.Figure(
-        go.Heatmap(
-            z=values,
-            x=labels,
-            y=pivot.index,
-            zmid=0,
-            zmin=-max_abs,
-            zmax=max_abs,
-            colorscale=[[0, "#C95364"], [0.5, PANEL], [1, "#2EC4B6"]],
-            text=text,
-            texttemplate="%{text}",
-            customdata=game_pivot.to_numpy(),
-            hovertemplate=(
-                "Champion: %{y}<br>Playstyle: %{x}<br>LP/game lift: %{z:+.2f}<br>"
-                "Observed games: %{customdata:,.0f}<extra></extra>"
-            ),
-            colorbar={"title": "LP/game lift"},
-        )
-    )
-    fig.update_xaxes(title="")
-    fig.update_yaxes(title="", autorange="reversed")
-    return style_figure(fig, height=max(520, 32 * len(pivot) + 130))
-
-
 def specialization_relationship_chart(
     frame: pd.DataFrame,
     x: str,
@@ -544,63 +447,34 @@ def specialization_relationship_chart(
     return style_figure(fig, height=580, legend_title=tier_label)
 
 
-def composition_view_chart(frame: pd.DataFrame, group: str, *, normalized: bool = False) -> go.Figure:
-    plot = frame.copy()
-    plot["Playstyle"] = plot["playstyle"].map(PLAYSTYLE_LABELS)
+def growth_by_tier_chart(summary: pd.DataFrame) -> go.Figure:
+    frame = summary.copy()
+    frame["Playstyle"] = frame["playstyle"].map(PLAYSTYLE_LABELS)
+    color_map = {PLAYSTYLE_LABELS[key]: value for key, value in PLAYSTYLE_COLORS.items()}
     fig = px.bar(
-        plot,
-        x=group,
-        y="relative_share" if normalized else "share",
+        frame,
+        x="previous_tier",
+        y="lp_per_game_lift_vs_tier",
         color="Playstyle",
-        color_discrete_map={PLAYSTYLE_LABELS[key]: color for key, color in PLAYSTYLE_COLORS.items()},
+        barmode="group",
+        color_discrete_map=color_map,
         category_orders={
-            group: TIER_ORDER if group == "tier" else ROLE_ORDER if group == "main_role" else sorted(plot[group].dropna().unique()),
-            "Playstyle": [PLAYSTYLE_LABELS[key] for key in PLAYSTYLE_ORDER],
+            "previous_tier": TIER_ORDER,
+            "Playstyle": [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER],
         },
-        custom_data=["players", "share", "baseline_share", "median_mastery"] if normalized else ["players"],
+        custom_data=["observed_games", "intervals", "observed_win_rate"],
     )
-    fig.update_layout(barmode="group" if normalized else "stack")
-    fig.update_traces(
-        hovertemplate="%{x}<br>%{fullData.name}: %{y:.1%}<br>Players: %{customdata[0]:,}<extra></extra>"
-    )
-    fig.update_yaxes(title="Share within group", tickformat=".0%")
-    if normalized:
-        fig.update_traces(hovertemplate=(
-            "%{x}<br>%{fullData.name}: %{y:.2f}× baseline"
-            "<br>Players: %{customdata[0]:,}<br>Observed share: %{customdata[1]:.1%}"
-            "<br>Expected share: %{customdata[2]:.1%}<br>Median mastery: %{customdata[3]:,.0f}<extra></extra>"
-        ))
-        fig.update_yaxes(title="Observed / mastery-expected share", tickformat=".2f")
-        fig.add_hline(y=1, line_dash="dot", line_color=MUTED)
-    fig.update_xaxes(title="Current tier" if group == "tier" else "Current inferred role" if group == "main_role" else "Rank-score band")
-    return style_figure(fig, height=460)
-
-
-def champion_efficiency_landscape(frame: pd.DataFrame, x_label: str, y_label: str) -> go.Figure:
-    plot = frame.loc[frame["specialization_axis"].notna() & frame["outcome"].notna()].copy()
-    fig = px.scatter(
-        plot,
-        x="specialization_axis",
-        y="outcome",
-        size="observed_player_count",
-        hover_name="champion_name",
-        color="observed_win_rate",
-        color_continuous_scale="Tealgrn",
-        custom_data=["observed_player_count", "observed_period_count"],
-        size_max=36,
-    )
-    fig.add_hline(y=0, line_dash="dot", line_color=MUTED, opacity=0.65)
+    fig.add_hline(y=0, line_dash="dot", line_color=MUTED)
     fig.update_traces(
         hovertemplate=(
-            f"<b>%{{hovertext}}</b><br>{x_label}: %{{x:.2f}}<br>"
-            f"{y_label}: %{{y:+.2f}}<br>Players: %{{customdata[0]:,}}<br>"
-            "Periods: %{customdata[1]:,}<extra></extra>"
+            "<b>%{x} · %{fullData.name}</b><br>LP/game lift: %{y:+.2f}<br>"
+            "Observed games: %{customdata[0]:,}<br>Intervals: %{customdata[1]:,}<br>"
+            "Observed win rate: %{customdata[2]:.1%}<extra></extra>"
         )
     )
-    fig.update_xaxes(title=x_label)
-    fig.update_yaxes(title=y_label)
-    fig.update_coloraxes(colorbar_title="Mean player win rate", colorbar_tickformat=".0%")
-    return style_figure(fig, height=590)
+    fig.update_xaxes(title="Starting tier")
+    fig.update_yaxes(title="LP/game lift vs tier baseline")
+    return style_figure(fig, height=520)
 
 
 def playstyle_outcome_chart(frame: pd.DataFrame, value: str, title: str) -> go.Figure:
@@ -631,33 +505,31 @@ def playstyle_outcome_chart(frame: pd.DataFrame, value: str, title: str) -> go.F
     return style_figure(fig, height=430)
 
 
-def composition_delta_chart(frame: pd.DataFrame, group: str) -> go.Figure:
-    plot = frame.copy()
-    plot["Playstyle"] = plot["playstyle"].map(PLAYSTYLE_LABELS)
-    fig = px.bar(
+def champion_efficiency_landscape(frame: pd.DataFrame, x_label: str, y_label: str) -> go.Figure:
+    plot = frame.loc[frame["specialization_axis"].notna() & frame["outcome"].notna()].copy()
+    fig = px.scatter(
         plot,
-        x=group,
-        y="difference_pp",
-        color="Playstyle",
-        barmode="group",
-        color_discrete_map={PLAYSTYLE_LABELS[key]: color for key, color in PLAYSTYLE_COLORS.items()},
-        category_orders={
-            group: TIER_ORDER if group == "tier" else ROLE_ORDER if group == "main_role" else sorted(plot[group].dropna().unique()),
-            "Playstyle": [PLAYSTYLE_LABELS[key] for key in PLAYSTYLE_ORDER],
-        },
-        custom_data=["share", "population_share", "players"],
+        x="specialization_axis",
+        y="outcome",
+        size="observed_player_count",
+        hover_name="champion_name",
+        color="observed_win_rate",
+        color_continuous_scale="Tealgrn",
+        custom_data=["observed_player_count", "observed_period_count"],
+        size_max=36,
     )
-    fig.add_hline(y=0, line_dash="dot", line_color=MUTED)
+    fig.add_hline(y=0, line_dash="dot", line_color=MUTED, opacity=0.65)
     fig.update_traces(
         hovertemplate=(
-            "%{x} · %{fullData.name}<br>Difference: %{y:+.1f} pp<br>"
-            "Champion players: %{customdata[0]:.1%}<br>All players: %{customdata[1]:.1%}<br>"
-            "Champion player count: %{customdata[2]:,}<extra></extra>"
+            f"<b>%{{hovertext}}</b><br>{x_label}: %{{x:.2f}}<br>"
+            f"{y_label}: %{{y:+.2f}}<br>Players: %{{customdata[0]:,}}<br>"
+            "Periods: %{customdata[1]:,}<extra></extra>"
         )
     )
-    fig.update_xaxes(title="Current tier" if group == "tier" else "Current inferred role" if group == "main_role" else "Rank-score band")
-    fig.update_yaxes(title="Difference from all players in same group (pp)")
-    return style_figure(fig, height=460)
+    fig.update_xaxes(title=x_label)
+    fig.update_yaxes(title=y_label)
+    fig.update_coloraxes(colorbar_title="Mean player win rate", colorbar_tickformat=".0%")
+    return style_figure(fig, height=590)
 
 
 def champion_tier_outcome_heatmap(
@@ -753,6 +625,134 @@ def champion_tier_outcome_heatmap(
     fig.update_xaxes(title="Starting tier")
     fig.update_yaxes(title="Observed playstyle", autorange="reversed")
     return style_figure(fig, height=max(390, 65 * len(styles) + 130))
+
+
+def champion_playstyle_heatmap(summary: pd.DataFrame) -> go.Figure:
+    pivot = summary.pivot(
+        index="primary_champion_name", columns="playstyle", values="lp_per_game_lift_vs_tier"
+    ).reindex(columns=PLAYSTYLE_ORDER)
+    game_pivot = summary.pivot(index="primary_champion_name", columns="playstyle", values="observed_games").reindex(
+        index=pivot.index, columns=PLAYSTYLE_ORDER
+    )
+    labels = [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER]
+    values = pivot.to_numpy()
+    finite_values = np.abs(values[np.isfinite(values)])
+    max_abs = max(float(np.percentile(finite_values, 95)) if finite_values.size else 1.0, 1.0)
+    text = np.empty(values.shape, dtype=object)
+    for row in range(values.shape[0]):
+        for col in range(values.shape[1]):
+            value = values[row, col]
+            games = game_pivot.iloc[row, col]
+            text[row, col] = "" if pd.isna(value) else f"{value:+.1f}<br>n={games:,.0f}"
+    fig = go.Figure(
+        go.Heatmap(
+            z=values,
+            x=labels,
+            y=pivot.index,
+            zmid=0,
+            zmin=-max_abs,
+            zmax=max_abs,
+            colorscale=[[0, "#C95364"], [0.5, PANEL], [1, "#2EC4B6"]],
+            text=text,
+            texttemplate="%{text}",
+            customdata=game_pivot.to_numpy(),
+            hovertemplate=(
+                "Champion: %{y}<br>Playstyle: %{x}<br>LP/game lift: %{z:+.2f}<br>"
+                "Observed games: %{customdata:,.0f}<extra></extra>"
+            ),
+            colorbar={"title": "LP/game lift"},
+        )
+    )
+    fig.update_xaxes(title="")
+    fig.update_yaxes(title="", autorange="reversed")
+    return style_figure(fig, height=max(520, 32 * len(pivot) + 130))
+
+
+def champion_landscape_chart(champions: pd.DataFrame, minimum_games: int = 100) -> go.Figure:
+    frame = champions.loc[champions["observed_games"].fillna(0) >= minimum_games].copy()
+    dominant_role_columns = {
+        "role_top_pct": "Top",
+        "role_jungle_pct": "Jungle",
+        "role_middle_pct": "Middle",
+        "role_bottom_pct": "Bottom",
+        "role_support_pct": "Support",
+    }
+    available = [column for column in dominant_role_columns if column in frame]
+    frame["Dominant role"] = frame[available].idxmax(axis=1).map(dominant_role_columns) if available else "Unknown"
+    frame["Observed games"] = frame["observed_games"].fillna(0)
+    fig = px.scatter(
+        frame,
+        x="active_play_rate",
+        y="lp_per_game_lift_vs_tier",
+        size="Observed games",
+        color="Dominant role",
+        color_discrete_map=ROLE_COLORS,
+        hover_name="champion_name",
+        custom_data=["primary_player_count", "observed_games", "observed_win_rate"],
+        size_max=34,
+    )
+    fig.add_hline(y=0, line_dash="dot", line_color=MUTED, opacity=0.7)
+    fig.update_traces(
+        hovertemplate=(
+            "<b>%{hovertext}</b><br>Active play rate: %{x:.2%}<br>"
+            "LP/game lift: %{y:+.2f}<br>Primary players: %{customdata[0]:,}<br>"
+            "Observed games: %{customdata[1]:,}<br>Observed win rate: %{customdata[2]:.1%}<extra></extra>"
+        )
+    )
+    fig.update_xaxes(title="Active-pool play rate", tickformat=".1%")
+    fig.update_yaxes(title="LP/game lift vs starting-tier baseline")
+    return style_figure(fig, height=520, legend_title="Dominant role")
+
+
+def champion_playstyle_chart(profile: pd.DataFrame) -> go.Figure:
+    frame = profile.loc[profile["playstyle"].isin(PLAYSTYLE_ORDER)].copy()
+    frame["Playstyle"] = frame["playstyle"].map(PLAYSTYLE_LABELS)
+    color_map = {PLAYSTYLE_LABELS[key]: value for key, value in PLAYSTYLE_COLORS.items()}
+    fig = px.bar(
+        frame,
+        x="Playstyle",
+        y="lp_per_game_lift_vs_tier",
+        color="Playstyle",
+        color_discrete_map=color_map,
+        category_orders={"Playstyle": [PLAYSTYLE_LABELS[item] for item in PLAYSTYLE_ORDER]},
+        custom_data=["observed_games", "observed_player_count", "current_player_count"],
+    )
+    fig.add_hline(y=0, line_dash="dot", line_color=MUTED)
+    fig.update_traces(
+        hovertemplate=(
+            "%{x}<br>LP/game lift: %{y:+.2f}<br>Observed games: %{customdata[0]:,}<br>"
+            "Observed players: %{customdata[1]:,}<br>Current players: %{customdata[2]:,}<extra></extra>"
+        )
+    )
+    fig.update_layout(showlegend=False)
+    fig.update_xaxes(title="")
+    fig.update_yaxes(title="LP/game lift vs tier")
+    return style_figure(fig, height=420)
+
+
+def cooccurrence_chart(neighbors: pd.DataFrame, top_n: int = 12) -> go.Figure:
+    frame = neighbors.head(top_n).sort_values("npmi")
+    fig = px.scatter(
+        frame,
+        x="npmi",
+        y="related_champion",
+        size="pair_player_count",
+        color="lift",
+        color_continuous_scale=[[0, BLUE], [1, GOLD]],
+        custom_data=["pair_player_count", "lift", "conditional_probability", "jaccard"],
+        size_max=28,
+    )
+    fig.update_traces(
+        hovertemplate=(
+            "<b>%{y}</b><br>NPMI: %{x:.3f}<br>Shared players: %{customdata[0]:,}<br>"
+            "Lift: %{customdata[1]:.2f}×<br>Conditional overlap: %{customdata[2]:.1%}<br>"
+            "Jaccard: %{customdata[3]:.1%}<extra></extra>"
+        )
+    )
+    fig.update_xaxes(title="Normalized pointwise mutual information")
+    fig.update_yaxes(title="")
+    fig.update_coloraxes(colorbar_title="Lift")
+    return style_figure(fig, height=max(390, 34 * len(frame) + 120))
 
 
 def champion_ranked_share_chart(frame: pd.DataFrame, over_under: bool) -> go.Figure:

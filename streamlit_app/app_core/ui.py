@@ -247,6 +247,25 @@ def insight(copy: str) -> None:
     st.markdown(f'<div class="insight">{copy}</div>', unsafe_allow_html=True)
 
 
+def architecture_flow() -> None:
+    st.markdown(
+        """
+        <div class="flow">
+          <div class="flow-step"><strong>Riot API</strong><span>rank & mastery snapshots</span></div>
+          <div class="flow-step"><strong>Extraction</strong><span>rate limits, retries, state</span></div>
+          <div class="flow-step"><strong>Bronze</strong><span>raw Delta records</span></div>
+          <div class="flow-step"><strong>Silver</strong><span>history & dimensions</span></div>
+          <div class="flow-step"><strong>Gold</strong><span>analytical marts</span></div>
+          <div class="flow-step"><strong>Streamlit</strong><span>public-safe data product</span></div>
+        </div>
+        <p class="section-copy"><strong>Synthetic business branch:</strong>
+          freeze real Gold profiles → seeded fictional purchases → dedicated sample raw tables
+          → transaction models + player spending mart → anonymous business export.</p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def source_pills(*models: str) -> None:
     pills = "".join(f'<span class="source-pill">{model}</span>' for model in models)
     st.markdown(pills, unsafe_allow_html=True)
@@ -277,6 +296,16 @@ def support_warning(message: str, key: str) -> bool:
     return shown
 
 
+def render_load_error(error: Exception) -> None:
+    st.error("The dashboard data could not be loaded.")
+    st.code(str(error), language=None)
+    st.info(
+        "The dashboard uses local snapshots. Generate the extracts with "
+        "`python scripts/export_data.py` from the `streamlit_app` directory."
+    )
+    st.stop()
+
+
 def format_compact(value: float | None) -> str:
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return "—"
@@ -304,32 +333,3 @@ def playstyle_name(value: str | None) -> str:
     if not value or pd.isna(value):
         return "Insufficient activity"
     return PLAYSTYLE_LABELS.get(str(value), str(value).title())
-
-
-def render_load_error(error: Exception) -> None:
-    st.error("The dashboard data could not be loaded.")
-    st.code(str(error), language=None)
-    st.info(
-        "The dashboard uses local snapshots. Generate the extracts with "
-        "`python scripts/export_data.py` from the `streamlit_app` directory."
-    )
-    st.stop()
-
-
-def architecture_flow() -> None:
-    st.markdown(
-        """
-        <div class="flow">
-          <div class="flow-step"><strong>Riot API</strong><span>rank & mastery snapshots</span></div>
-          <div class="flow-step"><strong>Extraction</strong><span>rate limits, retries, state</span></div>
-          <div class="flow-step"><strong>Bronze</strong><span>raw Delta records</span></div>
-          <div class="flow-step"><strong>Silver</strong><span>history & dimensions</span></div>
-          <div class="flow-step"><strong>Gold</strong><span>analytical marts</span></div>
-          <div class="flow-step"><strong>Streamlit</strong><span>public-safe data product</span></div>
-        </div>
-        <p class="section-copy"><strong>Synthetic business branch:</strong>
-          freeze real Gold profiles → seeded fictional purchases → dedicated sample raw tables
-          → transaction models + player spending mart → anonymous business export.</p>
-        """,
-        unsafe_allow_html=True,
-    )

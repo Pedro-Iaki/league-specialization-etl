@@ -30,59 +30,36 @@ DEFAULT_QUEUE = "RANKED_SOLO_5x5"  # matches dbt's ranked_queue; --queue can ove
 NONPAYER_PROBABILITIES = {"sardine": 0.32, "dolphin": 0.06, "whale": 0.01}
 
 
-def cohort_row_error(row: dict, queue: str) -> str | None:
-    missing = [column for column in REQUIRED_REAL_FEATURES if row[column] is None
-               or isinstance(row[column], str) and not row[column].strip()]
-    if missing:
-        return f"Missing required real features: {', '.join(missing)}"
-    if row["queue"] != queue:
-        return "Player must have the configured ranked queue"
-    if row["main_role"] not in {"Top", "Jungle", "Middle", "Bottom", "Support"} \
-            or row["active_playstyle"] not in {"specialist", "multispecialist", "versatile", "generalist"}:
-        return "Unclassified role or active playstyle"
-    if row["tier"] not in {"IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD",
-                           "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"}:
-        return "Invalid ranked tier"
-    if row["snapshot_date"] > row["as_of_date"]:
-        return "Profile snapshot is later than the reference date"
-    for column in ("active_top1_share", "active_normalized_entropy", "alltime_top1_share", "ranked_mastery_share"):
-        if row[column] is not None and (not math.isfinite(row[column]) or not 0 <= row[column] <= 1):
-            return f"Invalid cohort fraction: {column}"
-    for column in ("active_primary_champion_key", "champions_with_mastery", "total_mastery_points"):
-        if row[column] <= 0:
-            return f"Invalid cohort mastery/champion value: {column}"
-    if row["games_per_day_recent"] is not None and (
-        not math.isfinite(row["games_per_day_recent"]) or row["games_per_day_recent"] < 0
-    ):
-        return "Invalid recent gameplay activity"
-    return None
-
-
-def select_complete_cohort(table: pa.Table, queue: str = DEFAULT_QUEUE) -> pa.Table:
-    table = table.select(COHORT_SCHEMA.names).cast(COHORT_SCHEMA)
-    rows = [row for row in table.to_pylist() if cohort_row_error(row, queue) is None]
-    return normalize_cohort(pa.Table.from_pylist(rows, schema=COHORT_SCHEMA), queue)
-
-
-def normalize_cohort(table: pa.Table, queue: str = DEFAULT_QUEUE) -> pa.Table:
-    missing = set(COHORT_SCHEMA.names) - set(table.column_names)
-    if missing:
-        raise ValueError(f"Frozen cohort is missing {sorted(missing)}")
-    table = table.select(COHORT_SCHEMA.names).cast(COHORT_SCHEMA)
-    rows = table.to_pylist()
-    if not rows:
-        raise ValueError("The selected cohort is empty")
-    ids = [row["player_id"] for row in rows]
-    if any(not value for value in ids) or len(set(ids)) != len(ids):
-        raise ValueError("Frozen cohort must have unique non-null player_id values")
-    dates = {row["as_of_date"] for row in rows}
-    if None in dates or len(dates) != 1:
-        raise ValueError("Select one real as_of_date; mixed or missing reference dates are not allowed")
-    for row in rows:
-        error = cohort_row_error(row, queue)
-        if error:
-            raise ValueError(error + "; refresh the complete cohort or supply a valid offline cohort")
-    return pa.Table.from_pylist(sorted(rows, key=lambda row: row["player_id"]), schema=COHORT_SCHEMA)
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cohort", type=Path, help="Reuse an existing private cohort completely offline")
+    parser.add_argument("--refresh-cohort", action="store_true", help="Explicitly replace the frozen cohort from Gold")
+    parser.add_argument("--output-dir", type=Path, default=SAMPLE_DIR)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--queue", default=DEFAULT_QUEUE)
+    args = parser.parse_args()
+    if args.cohort and args.refresh_cohort:
+        parser.error("--cohort and --refresh-cohort are mutually exclusive")
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    frozen = args.cohort or args.output_dir / "cohort.parquet"
+    if args.refresh_cohort or not frozen.exists():
+        if args.cohort:
+            parser.error("--cohort does not exist; offline mode never fetches from the warehouse")
+        cohort, source = fetch_cohort(args.queue)
+        pq.write_table(cohort, frozen, compression="zstd")
+        print(f"Frozen {cohort.num_rows:,} complete real players at one as-of date")
+    else:
+        cohort = normalize_cohort(pq.read_table(frozen), args.queue)
+        source = "reused complete frozen ranked_mastery_share"
+    transactions, players, manifest = generate(cohort, args.seed, args.queue)
+    manifest["cohort_ranked_share_export"] = source
+    for filename, table in (("transactions.parquet", transactions), ("business_sample_players.parquet", players)):
+        temporary = args.output_dir / f".{filename}.tmp"
+        pq.write_table(table, temporary, compression="zstd")
+        temporary.replace(args.output_dir / filename)
+    (args.output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    print(f"{manifest['scenario_id']}: {players.num_rows:,} players, {transactions.num_rows:,} transactions, "
+          f"USD {manifest['cash_spent_usd_alltime']} hypothetical source cash")
 
 
 def fetch_cohort(queue: str) -> tuple[pa.Table, str]:
@@ -122,66 +99,6 @@ def fetch_cohort(queue: str) -> tuple[pa.Table, str]:
           f"excluded {table.num_rows - complete.num_rows:,} incomplete/invalid profiles; no row cap")
     return complete, ("median valid observed estimated_ranked_mastery_share by player and queue"
                       if share_available else "unavailable; optional field retained as null")
-
-
-def band(value: float | None, low: float, high: float) -> str:
-    if value is None:
-        return "default"
-    return "low" if value < low else "high" if value >= high else "medium"
-
-
-def player_controls(row: dict, tenure_days: int, customer: str, rng: random.Random) -> dict[str, float]:
-    groups = {
-        "tier": row["tier"], "main_role": row["main_role"],
-        "primary_champion": str(row["active_primary_champion_key"]),
-        "active_playstyle": row["active_playstyle"],
-        "account_age": "new" if tenure_days < 365 else "veteran" if tenure_days >= 3 * 365 else "established",
-        "mastery_sum": band(row["total_mastery_points"], 500_000, 2_000_000),
-        "ranked_share": band(row["ranked_mastery_share"], 0.35, 0.75),
-        "top1_champion_share": band(row["active_top1_share"], 0.3, 0.7),
-        "active_entropy": band(row["active_normalized_entropy"], 0.35, 0.75),
-        "customer_type": customer,
-    }
-    weights = BASE_WEIGHTS.copy()
-    for group, bucket in groups.items():
-        offsets = WEIGHT_OFFSETS[group].get(bucket, WEIGHT_OFFSETS[group]["default"])
-        for control, offset in offsets.items():
-            weights[control] += offset
-    for control, (lower, upper) in CONTROL_BOUNDS.items():
-        # Add residual variation after summing and clamping the configured offsets.
-        value = min(upper, max(lower, weights[control]))
-        noise = 3 if control == "owned_champions" else 0.22 if control == "payment_intensity" else 0.06
-        weights[control] = min(upper, max(lower, rng.gauss(value, noise)))
-    return weights
-
-
-def month_windows(start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
-    windows = []
-    current = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    while current < end:
-        following = (current + timedelta(days=calendar.monthrange(current.year, current.month)[1]))
-        windows.append((max(start, current), min(end, following)))
-        current = following
-    return windows
-
-
-def append_event(player_events: list, row: dict, controls: dict, rng: random.Random,
-                 scenario_id: str, product: dict, when: datetime) -> None:
-    discount = min(0.8, max(0.01, rng.gauss(controls["discount_mean"], 0.06))) \
-        if rng.random() < controls["discount_share"] else 0
-    factor = Decimal(str(1 - discount))
-    price = product["sample_original_price"]
-    amount = (price * factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    usd = product["sample_amount_usd"]
-    usd = (usd * factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if usd is not None else None
-    sequence = len(player_events)
-    player_events.append({
-        "transaction_id": fingerprint([scenario_id, row["player_id"], sequence])[:40],
-        "player_id": row["player_id"], "product_id": product["product_id"],
-        "region_at_purchase": row["region"], "currency_id": product["purchase_currency_id"],
-        "original_price": price, "amount_spent": amount, "amount_usd": usd,
-        "occurred_at": when.replace(microsecond=0), "scenario_id": scenario_id,
-    })
 
 
 def generate(cohort: pa.Table, seed: int = 42, queue: str = DEFAULT_QUEUE) -> tuple[pa.Table, pa.Table, dict]:
@@ -280,36 +197,119 @@ def generate(cohort: pa.Table, seed: int = 42, queue: str = DEFAULT_QUEUE) -> tu
             pa.Table.from_pylist(players, schema=PLAYER_SCHEMA), private_manifest)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cohort", type=Path, help="Reuse an existing private cohort completely offline")
-    parser.add_argument("--refresh-cohort", action="store_true", help="Explicitly replace the frozen cohort from Gold")
-    parser.add_argument("--output-dir", type=Path, default=SAMPLE_DIR)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--queue", default=DEFAULT_QUEUE)
-    args = parser.parse_args()
-    if args.cohort and args.refresh_cohort:
-        parser.error("--cohort and --refresh-cohort are mutually exclusive")
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    frozen = args.cohort or args.output_dir / "cohort.parquet"
-    if args.refresh_cohort or not frozen.exists():
-        if args.cohort:
-            parser.error("--cohort does not exist; offline mode never fetches from the warehouse")
-        cohort, source = fetch_cohort(args.queue)
-        pq.write_table(cohort, frozen, compression="zstd")
-        print(f"Frozen {cohort.num_rows:,} complete real players at one as-of date")
-    else:
-        cohort = normalize_cohort(pq.read_table(frozen), args.queue)
-        source = "reused complete frozen ranked_mastery_share"
-    transactions, players, manifest = generate(cohort, args.seed, args.queue)
-    manifest["cohort_ranked_share_export"] = source
-    for filename, table in (("transactions.parquet", transactions), ("business_sample_players.parquet", players)):
-        temporary = args.output_dir / f".{filename}.tmp"
-        pq.write_table(table, temporary, compression="zstd")
-        temporary.replace(args.output_dir / filename)
-    (args.output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    print(f"{manifest['scenario_id']}: {players.num_rows:,} players, {transactions.num_rows:,} transactions, "
-          f"USD {manifest['cash_spent_usd_alltime']} hypothetical source cash")
+def select_complete_cohort(table: pa.Table, queue: str = DEFAULT_QUEUE) -> pa.Table:
+    table = table.select(COHORT_SCHEMA.names).cast(COHORT_SCHEMA)
+    rows = [row for row in table.to_pylist() if cohort_row_error(row, queue) is None]
+    return normalize_cohort(pa.Table.from_pylist(rows, schema=COHORT_SCHEMA), queue)
+
+
+def normalize_cohort(table: pa.Table, queue: str = DEFAULT_QUEUE) -> pa.Table:
+    missing = set(COHORT_SCHEMA.names) - set(table.column_names)
+    if missing:
+        raise ValueError(f"Frozen cohort is missing {sorted(missing)}")
+    table = table.select(COHORT_SCHEMA.names).cast(COHORT_SCHEMA)
+    rows = table.to_pylist()
+    if not rows:
+        raise ValueError("The selected cohort is empty")
+    ids = [row["player_id"] for row in rows]
+    if any(not value for value in ids) or len(set(ids)) != len(ids):
+        raise ValueError("Frozen cohort must have unique non-null player_id values")
+    dates = {row["as_of_date"] for row in rows}
+    if None in dates or len(dates) != 1:
+        raise ValueError("Select one real as_of_date; mixed or missing reference dates are not allowed")
+    for row in rows:
+        error = cohort_row_error(row, queue)
+        if error:
+            raise ValueError(error + "; refresh the complete cohort or supply a valid offline cohort")
+    return pa.Table.from_pylist(sorted(rows, key=lambda row: row["player_id"]), schema=COHORT_SCHEMA)
+
+
+def cohort_row_error(row: dict, queue: str) -> str | None:
+    missing = [column for column in REQUIRED_REAL_FEATURES if row[column] is None
+               or isinstance(row[column], str) and not row[column].strip()]
+    if missing:
+        return f"Missing required real features: {', '.join(missing)}"
+    if row["queue"] != queue:
+        return "Player must have the configured ranked queue"
+    if row["main_role"] not in {"Top", "Jungle", "Middle", "Bottom", "Support"} \
+            or row["active_playstyle"] not in {"specialist", "multispecialist", "versatile", "generalist"}:
+        return "Unclassified role or active playstyle"
+    if row["tier"] not in {"IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD",
+                           "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"}:
+        return "Invalid ranked tier"
+    if row["snapshot_date"] > row["as_of_date"]:
+        return "Profile snapshot is later than the reference date"
+    for column in ("active_top1_share", "active_normalized_entropy", "alltime_top1_share", "ranked_mastery_share"):
+        if row[column] is not None and (not math.isfinite(row[column]) or not 0 <= row[column] <= 1):
+            return f"Invalid cohort fraction: {column}"
+    for column in ("active_primary_champion_key", "champions_with_mastery", "total_mastery_points"):
+        if row[column] <= 0:
+            return f"Invalid cohort mastery/champion value: {column}"
+    if row["games_per_day_recent"] is not None and (
+        not math.isfinite(row["games_per_day_recent"]) or row["games_per_day_recent"] < 0
+    ):
+        return "Invalid recent gameplay activity"
+    return None
+
+
+def player_controls(row: dict, tenure_days: int, customer: str, rng: random.Random) -> dict[str, float]:
+    groups = {
+        "tier": row["tier"], "main_role": row["main_role"],
+        "primary_champion": str(row["active_primary_champion_key"]),
+        "active_playstyle": row["active_playstyle"],
+        "account_age": "new" if tenure_days < 365 else "veteran" if tenure_days >= 3 * 365 else "established",
+        "mastery_sum": band(row["total_mastery_points"], 500_000, 2_000_000),
+        "ranked_share": band(row["ranked_mastery_share"], 0.35, 0.75),
+        "top1_champion_share": band(row["active_top1_share"], 0.3, 0.7),
+        "active_entropy": band(row["active_normalized_entropy"], 0.35, 0.75),
+        "customer_type": customer,
+    }
+    weights = BASE_WEIGHTS.copy()
+    for group, bucket in groups.items():
+        offsets = WEIGHT_OFFSETS[group].get(bucket, WEIGHT_OFFSETS[group]["default"])
+        for control, offset in offsets.items():
+            weights[control] += offset
+    for control, (lower, upper) in CONTROL_BOUNDS.items():
+        # Add residual variation after summing and clamping the configured offsets.
+        value = min(upper, max(lower, weights[control]))
+        noise = 3 if control == "owned_champions" else 0.22 if control == "payment_intensity" else 0.06
+        weights[control] = min(upper, max(lower, rng.gauss(value, noise)))
+    return weights
+
+
+def append_event(player_events: list, row: dict, controls: dict, rng: random.Random,
+                 scenario_id: str, product: dict, when: datetime) -> None:
+    discount = min(0.8, max(0.01, rng.gauss(controls["discount_mean"], 0.06))) \
+        if rng.random() < controls["discount_share"] else 0
+    factor = Decimal(str(1 - discount))
+    price = product["sample_original_price"]
+    amount = (price * factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    usd = product["sample_amount_usd"]
+    usd = (usd * factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if usd is not None else None
+    sequence = len(player_events)
+    player_events.append({
+        "transaction_id": fingerprint([scenario_id, row["player_id"], sequence])[:40],
+        "player_id": row["player_id"], "product_id": product["product_id"],
+        "region_at_purchase": row["region"], "currency_id": product["purchase_currency_id"],
+        "original_price": price, "amount_spent": amount, "amount_usd": usd,
+        "occurred_at": when.replace(microsecond=0), "scenario_id": scenario_id,
+    })
+
+
+def month_windows(start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+    windows = []
+    current = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    while current < end:
+        following = (current + timedelta(days=calendar.monthrange(current.year, current.month)[1]))
+        windows.append((max(start, current), min(end, following)))
+        current = following
+    return windows
+
+
+def band(value: float | None, low: float, high: float) -> str:
+    if value is None:
+        return "default"
+    return "low" if value < low else "high" if value >= high else "medium"
 
 
 if __name__ == "__main__":

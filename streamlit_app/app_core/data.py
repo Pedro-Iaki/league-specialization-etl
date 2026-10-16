@@ -17,39 +17,6 @@ class DashboardDataError(RuntimeError):
     """Raised when a dashboard dataset is unavailable or violates its contract."""
 
 
-def _validate_dataset(name: str, frame: pd.DataFrame) -> pd.DataFrame:
-    required = REQUIRED_COLUMNS[name]
-    missing = required.difference(frame.columns)
-    if missing:
-        missing_columns = ", ".join(sorted(missing))
-        raise DashboardDataError(f"Dataset '{name}' is missing: {missing_columns}")
-    if name == "business_players" and set(frame.columns) - set(BUSINESS_PUBLIC_COLUMNS):
-        raise DashboardDataError("Business dataset violates the anonymous column allowlist")
-    return frame
-
-
-def _read_snapshot(name: str) -> pd.DataFrame:
-    path = DATA_DIR / DATASET_FILES[name]
-    if not path.exists():
-        raise DashboardDataError(
-            f"Snapshot not found at {path}. Run scripts/export_data.py from the "
-            "streamlit_app directory."
-        )
-    frame = pd.read_parquet(path)
-    if name == "business_players":
-        metadata = load_manifest().get("datasets", {}).get(name, {}).get("scenario", {})
-        if metadata and set(frame["scenario_id"]) == {metadata.get("scenario_id")}:
-            frame.attrs["business_scenario"] = metadata
-    return frame
-
-
-@st.cache_data(show_spinner=False)
-def _load_dataset_cached(name: str, snapshot_version: int | None) -> pd.DataFrame:
-    """Cache a local dataset until a manual export changes its manifest version."""
-    frame = _read_snapshot(name)
-    return _validate_dataset(name, frame)
-
-
 def load_dataset(name: str, *, include_all_tiers: bool = False) -> pd.DataFrame:
     """Load and validate one local Parquet snapshot."""
     if name not in DATASET_FILES:
@@ -72,10 +39,47 @@ def load_optional_dataset(name: str) -> pd.DataFrame | None:
     return load_dataset(name)
 
 
+@st.cache_data(show_spinner=False)
+def _load_dataset_cached(name: str, snapshot_version: int | None) -> pd.DataFrame:
+    """Cache a local dataset until a manual export changes its manifest version."""
+    frame = _read_snapshot(name)
+    return _validate_dataset(name, frame)
+
+
+def _read_snapshot(name: str) -> pd.DataFrame:
+    path = DATA_DIR / DATASET_FILES[name]
+    if not path.exists():
+        raise DashboardDataError(
+            f"Snapshot not found at {path}. Run scripts/export_data.py from the "
+            "streamlit_app directory."
+        )
+    frame = pd.read_parquet(path)
+    if name == "business_players":
+        metadata = load_manifest().get("datasets", {}).get(name, {}).get("scenario", {})
+        if metadata and set(frame["scenario_id"]) == {metadata.get("scenario_id")}:
+            frame.attrs["business_scenario"] = metadata
+    return frame
+
+
+def _validate_dataset(name: str, frame: pd.DataFrame) -> pd.DataFrame:
+    required = REQUIRED_COLUMNS[name]
+    missing = required.difference(frame.columns)
+    if missing:
+        missing_columns = ", ".join(sorted(missing))
+        raise DashboardDataError(f"Dataset '{name}' is missing: {missing_columns}")
+    if name == "business_players" and set(frame.columns) - set(BUSINESS_PUBLIC_COLUMNS):
+        raise DashboardDataError("Business dataset violates the anonymous column allowlist")
+    return frame
+
+
 def load_manifest() -> dict[str, Any]:
     if not MANIFEST_PATH.exists():
         return {}
     return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+
+
+def snapshot_paths() -> dict[str, Path]:
+    return {name: DATA_DIR / filename for name, filename in DATASET_FILES.items()}
 
 
 def data_freshness(frames: list[pd.DataFrame]) -> str:
@@ -90,7 +94,3 @@ def data_freshness(frames: list[pd.DataFrame]) -> str:
         return t("Unknown")
     latest = max(dates)
     return t("_formats.long_date", p0=f"{latest.day:02d}", p1=t(latest.strftime("%B")), p2=latest.year)
-
-
-def snapshot_paths() -> dict[str, Path]:
-    return {name: DATA_DIR / filename for name, filename in DATASET_FILES.items()}

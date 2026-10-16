@@ -38,54 +38,15 @@ PARTITION_SCHEMA = pa.schema(
 PARTITIONING = ds.HivePartitioning(PARTITION_SCHEMA)
 
 
-def _read_partitioned_source(file_path: Path, base_dir: Path) -> pa.Table:
-    fragment_dataset = ds.dataset(
-        file_path,
-        format="parquet",
-        partitioning=PARTITIONING,
-        partition_base_dir=str(base_dir),
-    )
-    return fragment_dataset.to_table()
-
-
-def compact_files(compacted_path: Path, source_files: list[Path], dataset: str) -> dict | None:
-    existing_files = [f for f in source_files if f.exists()]
-    missing_files = [f for f in source_files if f not in existing_files]
-    for missing in missing_files:
-        logger.warning(f"Skipping compaction source, file not found on disk: {missing}")
-
-    if not existing_files:
-        return None
-
-    base_dir = RAW_DIR / dataset
-
-    tables = []
-    if compacted_path.exists():
-        tables.append(pq.read_table(compacted_path))
-    for file in existing_files:
-        tables.append(_read_partitioned_source(file, base_dir))
-
-    merged = pa.concat_tables(tables, promote_options="permissive")
-    os.makedirs(compacted_path.parent, exist_ok=True)
-    merged = _dedup_merged_table(merged, dataset)
-    temporary_path = compacted_path.with_suffix(".tmp")
+def run():
     try:
-        pq.write_table(merged, temporary_path, compression=COMPRESSION)
-        check_table = pq.read_table(temporary_path)
-        if check_table.num_rows != merged.num_rows:
-            raise RuntimeError(
-                f"Compacted file verification failed for {compacted_path} "
-                f"(expected {merged.num_rows} rows, got {check_table.num_rows})."
-            )
-        temporary_path.replace(compacted_path)
-    finally:
-        temporary_path.unlink(missing_ok=True)
-
-    return {
-        "output_path": compacted_path,
-        "compacted_files": existing_files,
-        "rows_written": merged.num_rows,
-    }
+        players_summary = compact_dataset("players")
+        masteries_summary = compact_dataset("masteries")
+    except Exception as e:
+        logger.exception(f"Compaction run failed: {e}")
+        raise RuntimeError(f"Compaction failed; retaining local files: {e}") from e
+    logger.debug(f"Players compaction summary: {players_summary}")
+    logger.debug(f"Masteries compaction summary: {masteries_summary}")
 
 
 def _is_transient_compaction_error(error: BaseException) -> bool:
@@ -166,6 +127,46 @@ def compact_dataset(dataset: str) -> dict:
     return summary
 
 
+def compact_files(compacted_path: Path, source_files: list[Path], dataset: str) -> dict | None:
+    existing_files = [f for f in source_files if f.exists()]
+    missing_files = [f for f in source_files if f not in existing_files]
+    for missing in missing_files:
+        logger.warning(f"Skipping compaction source, file not found on disk: {missing}")
+
+    if not existing_files:
+        return None
+
+    base_dir = RAW_DIR / dataset
+
+    tables = []
+    if compacted_path.exists():
+        tables.append(pq.read_table(compacted_path))
+    for file in existing_files:
+        tables.append(_read_partitioned_source(file, base_dir))
+
+    merged = pa.concat_tables(tables, promote_options="permissive")
+    os.makedirs(compacted_path.parent, exist_ok=True)
+    merged = _dedup_merged_table(merged, dataset)
+    temporary_path = compacted_path.with_suffix(".tmp")
+    try:
+        pq.write_table(merged, temporary_path, compression=COMPRESSION)
+        check_table = pq.read_table(temporary_path)
+        if check_table.num_rows != merged.num_rows:
+            raise RuntimeError(
+                f"Compacted file verification failed for {compacted_path} "
+                f"(expected {merged.num_rows} rows, got {check_table.num_rows})."
+            )
+        temporary_path.replace(compacted_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+    return {
+        "output_path": compacted_path,
+        "compacted_files": existing_files,
+        "rows_written": merged.num_rows,
+    }
+
+
 def _dedup_merged_table(merged: pa.Table, dataset: str) -> pa.Table:
     if merged.num_rows == 0:
         return merged
@@ -189,15 +190,14 @@ def _dedup_merged_table(merged: pa.Table, dataset: str) -> pa.Table:
     return pa.Table.from_pandas(df, preserve_index=False)
 
 
-def run():
-    try:
-        players_summary = compact_dataset("players")
-        masteries_summary = compact_dataset("masteries")
-    except Exception as e:
-        logger.exception(f"Compaction run failed: {e}")
-        raise RuntimeError(f"Compaction failed; retaining local files: {e}") from e
-    logger.debug(f"Players compaction summary: {players_summary}")
-    logger.debug(f"Masteries compaction summary: {masteries_summary}")
+def _read_partitioned_source(file_path: Path, base_dir: Path) -> pa.Table:
+    fragment_dataset = ds.dataset(
+        file_path,
+        format="parquet",
+        partitioning=PARTITIONING,
+        partition_base_dir=str(base_dir),
+    )
+    return fragment_dataset.to_table()
 
 
 if __name__ == "__main__":

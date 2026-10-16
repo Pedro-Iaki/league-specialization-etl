@@ -374,6 +374,28 @@ dbt build
 
 Use `dbt build --full-refresh` when changing the grain, unique key, or relevant schema of incremental history models. The [dbt README](league_pipeline/README.md) records the validated build context and details. To refresh the dashboard snapshot after a successful Gold build, follow the [export instructions](streamlit_app/README.md#refresh-the-snapshot).
 
+## Python code organization
+
+Keep the module docstring and imports first. Scripts centered on one execution
+flow then place constants/types, the entry function, the main workflow, stage
+functions and supporting utilities in that order, followed by the
+`if __name__ == "__main__":` block. An entry function that already contains the
+workflow does not need another wrapper.
+
+Helper modules group operations by purpose. Database helpers keep connection,
+run/task tracking, player/mastery records, compaction, loading and cleanup
+operations together as applicable. Dashboard helpers group related analytical,
+charting and presentation operations. Use contiguous functions without region
+markers; small modules that already form a coherent group need no rearrangement.
+
+Definition-time dependencies take precedence: decorator callbacks, default
+values, evaluated annotations and functions used by module-level initialization
+must be available before use. For example, compaction's retry predicate precedes
+the decorated stage, and the export-query renderer precedes the query dictionary
+that calls it. Keep Streamlit pages' executable rendering statements in order.
+Organizational changes move existing definitions without changing their bodies,
+signatures, decorators, imports or executable statements.
+
 ## Verification and limits
 
 Extraction tests cover configuration, file output, state operations, pagination, concurrency, and integrity behavior. dbt tests check source and model contracts plus reconciliation rules such as current-record selection, rank-period consistency, and mastery attribution. Dashboard tests cover metrics, snapshot contracts, and page rendering. Run local Python checks from the repository root with `python -m pytest src/extract/tests streamlit_app/tests`; warehouse validation requires its own configured dbt build.

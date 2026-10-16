@@ -17,9 +17,15 @@ Preserve the maintainer's existing design while making the smallest change that 
 - Keep changes cohesive and reviewable. During a feedback-led review, answer the comments and maintain this skill; do not turn a question about one pattern into an unsolicited project-wide rewrite. Approval of a commit-tagged checklist applies to those listed changes, not the entire original diff. Keep deferred items out of the replay and preserve their findings in ignored local notes.
 - Flag optional safeguards with marginal practical benefit and disproportionate complexity, readability cost or scope for the maintainer to decide before implementing them. Negligible collection-budget rounding differences do not justify Decimal or replacement precision machinery. This does not require another approval for already authorized necessary fixes.
 - Keep simple named functions when their names express a meaningful purpose and hide implementation details. Avoid redundant variables for the same quantity with only a type conversion, and extra wrappers without their own responsibility. Do not retain a standalone job-wrapper script solely for a hypothetical manual retry; require an established workflow to justify the extra entrypoint.
-- Keep TODOs, implementation plans and agent handoff notes local and ignored; never stage or commit them. Preserve local copies when removing tracking. Check replayed commits for these artifacts because .gitignore alone does not untrack indexed files. Broader config-comment, function-ordering, comment and documentation cleanup belongs in the local TODO_NEW.md; the project-wide ordering convention is still to be agreed.
+- Keep TODOs, implementation plans and agent handoff notes local and ignored; never stage or commit them. Preserve local copies when removing tracking. Check replayed commits for these artifacts because .gitignore alone does not untrack indexed files. Broader unrequested cleanup belongs in the local TODO_NEW.md.
 - Explain the reason for a departure from a local convention. Offer a small correction in the existing layer before adding abstractions, options or new state.
 - Update this skill as the maintainer adds feedback. Record the enduring decision and its reason; avoid accumulating a transcript or turning a local example into a universal prohibition.
+
+## Function organization
+
+- After the module docstring and imports, order workflow scripts as constants/types, entry function, main workflow, stage functions, supporting utilities, then the command-line entry block. An entry function can itself contain the workflow; do not add a wrapper just to fill a category.
+- Group helper operations by purpose, including database connections, run/task tracking, records, compaction, loading and cleanup as applicable. Keep related functions contiguous without region markers. Leave small, coherent modules alone.
+- Definition-time dependencies take precedence over visual order: keep decorator callbacks, defaults, evaluated annotations and functions called by module initialization available before use. Preserve Streamlit pages' executable rendering order. Organizational changes move existing definitions without altering bodies, signatures, decorators, imports or executable statements.
 
 ## Database ownership
 
