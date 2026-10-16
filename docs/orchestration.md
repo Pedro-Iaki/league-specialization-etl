@@ -19,7 +19,13 @@ include those details beside each value.
 | --- | --- |
 | `config/EXTRACTION_CONFIG.env` | Riot key, collection options, deployed ingestion/dbt job IDs and wait timeouts |
 | `config/DATABRICKS_CONFIG.env` | Existing Databricks credentials and SQL warehouse connection settings |
-| `.env.local` | `DATABASE_URL` for the Neon registry; `DATABASE_URL_UNPOOLED` for its one-time schema setup |
+| `.env.local` | Registry connection URL: prefer `DATABASE_URL`, fall back to `DATABASE_URL_UNPOOLED`; at least one is required |
+
+Before the first collection against a new registry database, execute the full
+[registry schema](../src/load/player_registry_schema.sql) in that database's
+Neon SQL editor, using the `public` schema. It creates both registry tables and
+their indexes. Existing registries with the current schema need no repeated
+setup, and normal collection does not run schema migrations.
 
 | Extraction setting | Meaning | Default |
 | --- | --- | --- |

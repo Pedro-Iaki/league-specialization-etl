@@ -1,9 +1,5 @@
 ﻿from __future__ import annotations
 
-from app_core.bootstrap import refresh_legacy_business_helpers
-
-refresh_legacy_business_helpers()
-
 from app_core.i18n import language_selector, st
 
 st.set_page_config(page_title="League Specialization · player profiles and business sample", page_icon="◈", layout="wide")

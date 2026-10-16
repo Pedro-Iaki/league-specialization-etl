@@ -112,7 +112,7 @@ Existing reports keep detailed diagnostics available:
 
 ## Complete source inventory
 
-Found **245 output sites**: 18 DEBUG, 52 ERROR, 5 ERROR + traceback, 40 INFO, 6 PROGRESS, 106 STDOUT, 16 WARNING, 2 WARNING (retry callback).
+Found **158 output sites**: 18 DEBUG, 52 ERROR, 5 ERROR + traceback, 40 INFO, 6 PROGRESS, 19 STDOUT, 16 WARNING, 2 WARNING (retry callback).
 
 ### Pipeline Python logs
 
@@ -245,7 +245,7 @@ Found **245 output sites**: 18 DEBUG, 52 ERROR, 5 ERROR + traceback, 40 INFO, 6 
 | [src/load/load_compacted_to_databricks.py:98](../src/load/load_compacted_to_databricks.py#L98) · `load_dataset` | DEBUG | `{dataset} upload status: {status}; local input: {compacted_path}.` |
 | [src/load/load_compacted_to_databricks.py:109](../src/load/load_compacted_to_databricks.py#L109) · `complete_loaded_rank_pages` | DEBUG | `Page claim for task {task['task_id']} expired or was already completed; keeping ingested data.` |
 | [src/load/load_compacted_to_databricks.py:116](../src/load/load_compacted_to_databricks.py#L116) · `_upload` | WARNING (retry callback) | `Retrying {function} in {seconds} seconds as it raised {exception_type}: {exception}.` |
-| [src/load/player_registry.py:240](../src/load/player_registry.py#L240) · `record_refresh_result` | WARNING | `Refresh claim no longer belongs to {claimed_by} for {region}/{queue}/{puuid}; result skipped.` |
+| [src/load/player_registry.py:234](../src/load/player_registry.py#L234) · `record_refresh_result` | WARNING | `Refresh claim no longer belongs to {claimed_by} for {region}/{queue}/{puuid}; result skipped.` |
 
 ### Databricks ingestion notebook
 
@@ -272,7 +272,6 @@ Found **245 output sites**: 18 DEBUG, 52 ERROR, 5 ERROR + traceback, 40 INFO, 6 
 | [src/extract/verify_integrity.py:127](../src/extract/verify_integrity.py#L127) · `verify_files_integrity` | PROGRESS | `Verifying player records (unit: record)` |
 | [src/extract/verify_integrity.py:222](../src/extract/verify_integrity.py#L222) · `verify_db_integrity` | PROGRESS | `Verifying database records (unit: record)` |
 | [src/extract/verify_integrity.py:349](../src/extract/verify_integrity.py#L349) · `verify_compaction_integrity` | PROGRESS | `Verifying compaction tasks (unit: task)` |
-| [src/load/migrate_player_registry.py:19](../src/load/migrate_player_registry.py#L19) · `main` | STDOUT | `Player registry schema is ready` |
 
 ### Synthetic sample commands
 
@@ -303,105 +302,13 @@ Found **245 output sites**: 18 DEBUG, 52 ERROR, 5 ERROR + traceback, 40 INFO, 6 
 | [src/extract/tests/conftest.py:91](../src/extract/tests/conftest.py#L91) · `mock_db` | INFO | `Creating test database at: {db_path}` |
 | [src/extract/tests/conftest.py:125](../src/extract/tests/conftest.py#L125) · `module` | INFO | `Seed: {SUITE_SEED}` |
 
-### Exploratory script output
-
-| Source and context | Level | Message template |
-| --- | --- | --- |
-| [sandbox/get_clean_data.py:62](../sandbox/get_clean_data.py#L62) · `module` | STDOUT | `Collected {len(all_players_list)} players` |
-| [sandbox/get_clean_data.py:93](../sandbox/get_clean_data.py#L93) · `module` | STDOUT | `Collected {len(all_masteries_list)} mastery entries` |
-| [sandbox/get_clean_data.py:162](../sandbox/get_clean_data.py#L162) · `module` | STDOUT | `Saved players_{timestamp}.parquet, masteries_{timestamp}.parquet, champions_{timestamp}.json` |
-| [sandbox/transform_and_plot.py:223](../sandbox/transform_and_plot.py#L223) · `module` | STDOUT | `\n=== PLAYER MASTERY POOL PROFILE ===` |
-| [sandbox/transform_and_plot.py:224](../sandbox/transform_and_plot.py#L224) · `module` | STDOUT | `<players_df[profile_cols].describe()>` |
-| [sandbox/transform_and_plot.py:226](../sandbox/transform_and_plot.py#L226) · `module` | STDOUT | `\nExample player mastery pool profiles:` |
-| [sandbox/transform_and_plot.py:227](../sandbox/transform_and_plot.py#L227) · `module` | STDOUT | `<players_df[profile_cols].head(10)>` |
-| [sandbox/transform_and_plot.py:232](../sandbox/transform_and_plot.py#L232) · `module` | STDOUT | `=== DATA DIAGNOSTICS ===` |
-| [sandbox/transform_and_plot.py:233](../sandbox/transform_and_plot.py#L233) · `module` | STDOUT | `Number of players: {len(players_df)}` |
-| [sandbox/transform_and_plot.py:234](../sandbox/transform_and_plot.py#L234) · `module` | STDOUT | `Number of mastery entries: {len(masteries_df)}` |
-| [sandbox/transform_and_plot.py:235](../sandbox/transform_and_plot.py#L235) · `module` | STDOUT | `\nPlayers DataFrame columns:` |
-| [sandbox/transform_and_plot.py:236](../sandbox/transform_and_plot.py#L236) · `module` | STDOUT | `<players_df.columns.tolist()>` |
-| [sandbox/transform_and_plot.py:237](../sandbox/transform_and_plot.py#L237) · `module` | STDOUT | `\nMasteries DataFrame columns:` |
-| [sandbox/transform_and_plot.py:238](../sandbox/transform_and_plot.py#L238) · `module` | STDOUT | `<masteries_df.columns.tolist()>` |
-| [sandbox/transform_and_plot.py:239](../sandbox/transform_and_plot.py#L239) · `module` | STDOUT | `\nFirst 5 rows of players_df:` |
-| [sandbox/transform_and_plot.py:240](../sandbox/transform_and_plot.py#L240) · `module` | STDOUT | `<players_df.head()>` |
-| [sandbox/transform_and_plot.py:241](../sandbox/transform_and_plot.py#L241) · `module` | STDOUT | `\nFirst 5 rows of masteries_df:` |
-| [sandbox/transform_and_plot.py:242](../sandbox/transform_and_plot.py#L242) · `module` | STDOUT | `<masteries_df.head()>` |
-| [sandbox/transform_and_plot.py:245](../sandbox/transform_and_plot.py#L245) · `module` | STDOUT | `\nUnique values in 'tier' column:` |
-| [sandbox/transform_and_plot.py:246](../sandbox/transform_and_plot.py#L246) · `module` | STDOUT | `<players_df['tier'].unique()>` |
-| [sandbox/transform_and_plot.py:247](../sandbox/transform_and_plot.py#L247) · `module` | STDOUT | `\nValue counts:` |
-| [sandbox/transform_and_plot.py:248](../sandbox/transform_and_plot.py#L248) · `module` | STDOUT | `<players_df['tier'].value_counts(dropna=False)>` |
-| [sandbox/transform_and_plot.py:255](../sandbox/transform_and_plot.py#L255) · `module` | STDOUT | `\nPlayers with mastery_sum:` |
-| [sandbox/transform_and_plot.py:256](../sandbox/transform_and_plot.py#L256) · `module` | STDOUT | `<players_df[['mastery_sum']].head()>` |
-| [sandbox/transform_and_plot.py:257](../sandbox/transform_and_plot.py#L257) · `module` | STDOUT | `\nMastery sum statistics:` |
-| [sandbox/transform_and_plot.py:258](../sandbox/transform_and_plot.py#L258) · `module` | STDOUT | `<players_df['mastery_sum'].describe()>` |
-| [sandbox/transform_and_plot.py:282](../sandbox/transform_and_plot.py#L282) · `module` | STDOUT | `\nTop {top_n} champions by total mastery points:` |
-| [sandbox/transform_and_plot.py:283](../sandbox/transform_and_plot.py#L283) · `module` | STDOUT | `<champion_totals>` |
-| [sandbox/transform_and_plot.py:326](../sandbox/transform_and_plot.py#L326) · `module` | STDOUT | `\nChampions of interest availability:` |
-| [sandbox/transform_and_plot.py:329](../sandbox/transform_and_plot.py#L329) · `module` | STDOUT | `  {id_to_name.get(champ, champ)}: {'✓ Found' if exists else '✗ Not found'}` |
-| [sandbox/transform_and_plot.py:335](../sandbox/transform_and_plot.py#L335) · `module` | STDOUT | `\nNumber of mastery entries for selected champions: {len(filtered_masteries)}` |
-| [sandbox/transform_and_plot.py:347](../sandbox/transform_and_plot.py#L347) · `module` | STDOUT | `Rows after dropping missing ranks: {len(merged_data_clean)}` |
-| [sandbox/transform_and_plot.py:355](../sandbox/transform_and_plot.py#L355) · `module` | STDOUT | `\nAverage mastery points by tier and champion:` |
-| [sandbox/transform_and_plot.py:356](../sandbox/transform_and_plot.py#L356) · `module` | STDOUT | `<avg_mastery_by_rank.rename(columns=id_to_name)>` |
-| [sandbox/transform_and_plot.py:391](../sandbox/transform_and_plot.py#L391) · `module` | STDOUT | `\nAverage mastery sum by tier:` |
-| [sandbox/transform_and_plot.py:392](../sandbox/transform_and_plot.py#L392) · `module` | STDOUT | `<avg_mastery_sum_by_rank>` |
-| [sandbox/transform_and_plot.py:427](../sandbox/transform_and_plot.py#L427) · `module` | STDOUT | `\nNormalized average mastery (percentage of overall average mastery sum):` |
-| [sandbox/transform_and_plot.py:428](../sandbox/transform_and_plot.py#L428) · `module` | STDOUT | `<normalized_mastery.rename(columns=id_to_name)>` |
-| [sandbox/transform_and_plot.py:453](../sandbox/transform_and_plot.py#L453) · `module` | STDOUT | `\n=== SUMMARY STATISTICS ===` |
-| [sandbox/transform_and_plot.py:454](../sandbox/transform_and_plot.py#L454) · `module` | STDOUT | `\nTop 10 players by total mastery:` |
-| [sandbox/transform_and_plot.py:456](../sandbox/transform_and_plot.py#L456) · `module` | STDOUT | `<top_players>` |
-| [sandbox/transform_and_plot.py:458](../sandbox/transform_and_plot.py#L458) · `module` | STDOUT | `\nMastery distribution by champion (top 10):` |
-| [sandbox/transform_and_plot.py:461](../sandbox/transform_and_plot.py#L461) · `module` | STDOUT | `<champion_stats>` |
-| [sandbox/transform_and_plot.py:463](../sandbox/transform_and_plot.py#L463) · `module` | STDOUT | `\nRank distribution:` |
-| [sandbox/transform_and_plot.py:465](../sandbox/transform_and_plot.py#L465) · `module` | STDOUT | `<tier_dist>` |
-| [sandbox/transform_and_plot.py:654](../sandbox/transform_and_plot.py#L654) · `module` | STDOUT | `<players_df['freshBlood'].value_counts(dropna=False)>` |
-| [sandbox/transform_and_plot.py:670](../sandbox/transform_and_plot.py#L670) · `module` | STDOUT | `\nSummary statistics by freshBlood status:` |
-| [sandbox/transform_and_plot.py:671](../sandbox/transform_and_plot.py#L671) · `module` | STDOUT | `<summary>` |
-| [sandbox/transform_and_plot.py:677](../sandbox/transform_and_plot.py#L677) · `module` | STDOUT | `\nMann-Whitney U test: U={u_stat:.1f}, p={p_val:.4g}` |
-| [sandbox/transform_and_plot.py:689](../sandbox/transform_and_plot.py#L689) · `module` | STDOUT | `Pearson correlation (total_games vs mastery_sum): {corr_pearson:.3f}` |
-| [sandbox/transform_and_plot.py:1067](../sandbox/transform_and_plot.py#L1067) · `module` | STDOUT | `Pool-only mastery entries: {len(masteries_pool_only)}` |
-| [sandbox/transform_and_plot.py:1088](../sandbox/transform_and_plot.py#L1088) · `module` | STDOUT | `\nRobust {CELL_AGG} pool-champion mastery per entry, by tier:` |
-| [sandbox/transform_and_plot.py:1089](../sandbox/transform_and_plot.py#L1089) · `module` | STDOUT | `<avg_champion_mastery_by_tier>` |
-| [sandbox/transform_and_plot.py:1199](../sandbox/transform_and_plot.py#L1199) · `module` | STDOUT | `\n{CELL_AGG.capitalize()} log2 fold-change by role and tier (0 = no change, +1 = doubled, -1 = halved):` |
-| [sandbox/transform_and_plot.py:1200](../sandbox/transform_and_plot.py#L1200) · `module` | STDOUT | `<pd.DataFrame(role_summary).reindex(index=rank_order)>` |
-| [sandbox/transform_and_plot.py:1271](../sandbox/transform_and_plot.py#L1271) · `module` | STDOUT | `Global specialist threshold: {global_threshold:.0f} mastery points` |
-| [sandbox/transform_and_plot.py:1378](../sandbox/transform_and_plot.py#L1378) · `module` | STDOUT | `Players used for clustering: {len(clustering_data)} (out of {len(players_df)})` |
-| [sandbox/transform_and_plot.py:1436](../sandbox/transform_and_plot.py#L1436) · `module` | STDOUT | `\nCluster centroids (original units):` |
-| [sandbox/transform_and_plot.py:1437](../sandbox/transform_and_plot.py#L1437) · `module` | STDOUT | `<cluster_centers_original>` |
-| [sandbox/transform_and_plot.py:1438](../sandbox/transform_and_plot.py#L1438) · `module` | STDOUT | `\nNumber of players per archetype:` |
-| [sandbox/transform_and_plot.py:1439](../sandbox/transform_and_plot.py#L1439) · `module` | STDOUT | `<cluster_counts>` |
-| [sandbox/transform_and_plot.py:1555](../sandbox/transform_and_plot.py#L1555) · `module` | STDOUT | `Plotting archetype proportions per tier for champion: {champ_name} (ID {champion_to_plot})` |
-| [sandbox/transform_and_plot.py:1566](../sandbox/transform_and_plot.py#L1566) · `module` | STDOUT | `Tiers retained (≥{MIN_PLAYERS} players): {list(valid_tiers)}` |
-| [sandbox/transform_and_plot.py:1734](../sandbox/transform_and_plot.py#L1734) · `module` | STDOUT | `Players used: <len(model_df)>` |
-| [sandbox/transform_and_plot.py:1735](../sandbox/transform_and_plot.py#L1735) · `module` | STDOUT | `Archetypes: <all_archetypes>` |
-| [sandbox/transform_and_plot.py:1736](../sandbox/transform_and_plot.py#L1736) · `module` | STDOUT | `Tiers: <all_tiers>` |
-| [sandbox/transform_and_plot.py:1896](../sandbox/transform_and_plot.py#L1896) · `archetype_effects_for_champion` | STDOUT | `Could not fit champion {champion_id}: {e}` |
-| [sandbox/transform_and_plot.py:2013](../sandbox/transform_and_plot.py#L2013) · `module` | STDOUT | `[{i:2d}/{len(top_champions)}] Champion {champ_id}` |
-| [sandbox/transform_and_plot.py:2040](../sandbox/transform_and_plot.py#L2040) · `module` | STDOUT | `<effects_df>` |
-| [sandbox/transform_and_plot.py:2059](../sandbox/transform_and_plot.py#L2059) · `module` | STDOUT | `<effects_df.round(2)>` |
-| [sandbox/transform_and_plot.py:2281](../sandbox/transform_and_plot.py#L2281) · `module` | STDOUT | `Players: {len(model_df):,}` |
-| [sandbox/transform_and_plot.py:2285](../sandbox/transform_and_plot.py#L2285) · `module` | STDOUT | `Champions: {player_pool_long['championId'].nunique():,}` |
-| [sandbox/transform_and_plot.py:2290](../sandbox/transform_and_plot.py#L2290) · `module` | STDOUT | `Archetypes: {all_archetypes}` |
-| [sandbox/transform_and_plot.py:2294](../sandbox/transform_and_plot.py#L2294) · `module` | STDOUT | `Tiers: {all_tiers}` |
-| [sandbox/transform_and_plot.py:2298](../sandbox/transform_and_plot.py#L2298) · `module` | STDOUT | `Reference archetype: {reference_archetype}` |
-| [sandbox/transform_and_plot.py:2500](../sandbox/transform_and_plot.py#L2500) · `fit_champion_model` | STDOUT | `Failed champion {champion_id}: {e}` |
-| [sandbox/transform_and_plot.py:2699](../sandbox/transform_and_plot.py#L2699) · `module` | STDOUT | `\nRunning weighted regression for {len(all_champions):,} champions...` |
-| [sandbox/transform_and_plot.py:2737](../sandbox/transform_and_plot.py#L2737) · `module` | STDOUT | `{i:,}/{len(all_champions):,}` |
-| [sandbox/transform_and_plot.py:2793](../sandbox/transform_and_plot.py#L2793) · `module` | STDOUT | `\nResults:` |
-| [sandbox/transform_and_plot.py:2797](../sandbox/transform_and_plot.py#L2797) · `module` | STDOUT | `<effects_df.head()>` |
-| [sandbox/transform_and_plot.py:2893](../sandbox/transform_and_plot.py#L2893) · `module` | STDOUT | `\nHeatmap:\n{heatmap_path}` |
-| [sandbox/transform_and_plot.py:3077](../sandbox/transform_and_plot.py#L3077) · `module` | STDOUT | `<'\n' + '=' * 70>` |
-| [sandbox/transform_and_plot.py:3081](../sandbox/transform_and_plot.py#L3081) · `module` | STDOUT | `INDIVIDUAL CHAMPION: {get_champion_name(champion_id)} ({champion_id})` |
-| [sandbox/transform_and_plot.py:3087](../sandbox/transform_and_plot.py#L3087) · `module` | STDOUT | `<'=' * 70>` |
-| [sandbox/transform_and_plot.py:3106](../sandbox/transform_and_plot.py#L3106) · `module` | STDOUT | `Champion {champion_id} does not meet MIN_PLAYERS={MIN_PLAYERS}` |
-| [sandbox/transform_and_plot.py:3140](../sandbox/transform_and_plot.py#L3140) · `module` | STDOUT | `<result_table.round(2)>` |
-
 ### Databricks build output
 
 `resources/build_dbt.job.yml` executes `dbt deps`, then `dbt build`. dbt emits its
 own dependency, model/test progress, elapsed-time, warning/error and completion
 output in the remote job logs. Python emits the job lifecycle messages listed
-above and records the result in `job_results.json`. The older paused
-`resources/ingest_clean_transform.job.yml` also declares dbt commands; their
-output likewise comes from dbt. No custom dbt/Jinja logging calls were found.
+above and records the result in `job_results.json`. No custom dbt/Jinja logging
+calls were found.
 
 ### Maintenance
 

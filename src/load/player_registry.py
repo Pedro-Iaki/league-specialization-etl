@@ -12,8 +12,6 @@ ENV_PATH = BASE_DIR / ".env.local"
 DEFAULT_FRESHNESS_MINUTES = 10080  # Seven days.
 CLAIM_TIMEOUT_MINUTES = 30
 
-_SCHEMA_PATH = Path(__file__).resolve().parent / "player_registry_schema.sql"
-
 
 def get_connection(direct: bool = False) -> psycopg.Connection:
     load_dotenv(ENV_PATH)
@@ -26,10 +24,6 @@ def get_connection(direct: bool = False) -> psycopg.Connection:
         required = "DATABASE_URL_UNPOOLED" if direct else "DATABASE_URL or DATABASE_URL_UNPOOLED"
         raise ValueError(f"Missing {required}, check .env.local")
     return psycopg.connect(database_url)
-
-
-def ensure_schema(conn: psycopg.Connection) -> None:
-    conn.execute(_SCHEMA_PATH.read_text())  # type: ignore
 
 
 def _normalize_row(row: tuple[Any, ...] | None) -> dict[str, Any] | None:

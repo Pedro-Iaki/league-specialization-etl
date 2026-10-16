@@ -115,7 +115,7 @@ SQLite holds job and file evidence, Neon holds durable collection coordination, 
 
 ## What the current data suggests
 
-The included export is early evidence, intended to exercise and explain the pipeline. Its [manifest](streamlit_app/data/manifest.json) records 37,172 current player-profile rows and 3,373 rank-growth rows, with profile data as of 2026-09-29. The current Master group contains 59 profiles. Collection happened in development bursts, and there is only a short span of completed historical periods.
+The included export is early evidence, intended to exercise and explain the pipeline. Its [manifest](streamlit_app/data/manifest.json) records 37,172 current player-profile rows and 1,066 player-growth summary rows, with profile data as of 2026-09-29. The current Master group contains 59 profiles. Collection happened in development bursts, and there is only a short span of completed historical periods.
 
 In this sample, specialization is also common in lower tiers, so it does not increase steadily with rank. The Master group's **recent** playstyle mix looks markedly different from Iron through Diamond, while its lifetime mix is closer to the rest of the sample. The sampled Master players were first collected in Diamond and later climbed, which makes that recent-pool contrast interesting but also makes this a selected group of climbers. The original question remains open: current growth comparisons do **not** show a clear general specialization advantage or establish a champion-specific climbing strategy. There are only 59 current Master profiles, few completed historical periods, and potential activity from other game modes. More regular snapshots are needed before treating these patterns as stable.
 
@@ -171,7 +171,7 @@ A recording and public app link are planned.
 
 ## Work on the pipeline
 
-The full collection and warehouse path needs a Riot API key, a Databricks workspace and SQL warehouse, and Postgres connection URLs for the player registry. Set `DATABASE_URL_UNPOOLED` for the one-time schema setup; routine registry queries use `DATABASE_URL` when available. The code reads local configuration from `config/EXTRACTION_CONFIG.env`, `config/DATABRICKS_CONFIG.env`, and `.env.local`; the first two have [extraction](config/EXTRACTION_CONFIG.env.example) and [Databricks](config/DATABRICKS_CONFIG.env.example) examples. Keep credentials out of Git.
+The full collection and warehouse path needs a Riot API key, a Databricks workspace and SQL warehouse, and a Postgres connection URL for the player registry. Routine registry queries prefer `DATABASE_URL` and fall back to `DATABASE_URL_UNPOOLED`. The code reads local configuration from `config/EXTRACTION_CONFIG.env`, `config/DATABRICKS_CONFIG.env`, and `.env.local`; the first two have [extraction](config/EXTRACTION_CONFIG.env.example) and [Databricks](config/DATABRICKS_CONFIG.env.example) examples. Keep credentials out of Git.
 
 Every setting in the examples is commented with its purpose, units or format,
 default or requirement, bounds, and workflow effect. Omitted optional keys use
@@ -204,16 +204,25 @@ All settings in this table belong in `config/EXTRACTION_CONFIG.env`:
 with no defaults. All three are required for SQL; uploads and job calls use
 `HOST` and `TOKEN`. Select the workspace/warehouse containing the project's data
 and jobs, with a token permitted to access them. `.env.local` holds Postgres URL
-strings: `DATABASE_URL_UNPOOLED` is required for schema setup; normal registry
-operations prefer `DATABASE_URL` and fall back to the unpooled URL. Neither has
-a default. Use connection strings for the intended registry with credentials and
-the provider's connection parameters.
+strings: normal registry operations prefer `DATABASE_URL` and fall back to
+`DATABASE_URL_UNPOOLED`. At least one is required; neither has a default. Use
+connection strings for the intended registry with credentials and the provider's
+connection parameters.
 
-Install the pipeline and development dependencies with `python -m pip install -r requirements.txt`. This file lists direct dependencies for extraction, loading, shared data analysis, dbt, tests, and linting; pip resolves their transitive dependencies. Install `streamlit_app/requirements.txt` as well to run the dashboard and its tests. The exploratory `sandbox/transform_and_plot.py` script additionally uses Matplotlib, Seaborn, SciPy, scikit-learn, Statsmodels, and Plotly. After preparing the dependencies and configuration, apply the idempotent registry schema for a new Neon database or an existing database that has not received this migration. A database already migrated does not need this step on every run. Then run the extractor with `src` on the Python path:
+Install the pipeline and development dependencies with `python -m pip install -r requirements.txt`. This file lists direct dependencies for extraction, loading, shared data analysis, dbt, tests, and linting; pip resolves their transitive dependencies. Install `streamlit_app/requirements.txt` as well to run the dashboard and its tests.
+
+For a new player registry, open the Neon SQL editor for the database named in
+your connection URL and execute the full
+[registry schema](src/load/player_registry_schema.sql) in the `public` schema.
+This creates `player_state_registry`, `rank_page_progress` and their indexes.
+The SQL is idempotent and also includes the earlier refresh-tracking column
+additions for an older registry. An existing registry with the current schema
+needs no setup on each run; the extractor does not apply schema changes.
+
+Then run the extractor with `src` on the Python path:
 
 ```powershell
 $env:PYTHONPATH = "src"
-python -m load.migrate_player_registry
 python -m extract.run_pipeline
 ```
 
@@ -315,8 +324,8 @@ and mark the affected loads `load_failed`; the existing runner then stops.
 
 To activate this change:
 
-1. Pause the old **Ingest_Clean_Transform** file-arrival trigger in Databricks.
-   Its repository definition now defaults to paused.
+1. If an earlier deployment has a file-arrival trigger, pause it in Databricks.
+   Python now starts ingestion explicitly, so the old trigger must stay disabled.
 2. Make the reviewed code available to Databricks and deploy the
    [ingestion-only job](resources/ingest_players.job.yml) and
    [dbt build job](resources/build_dbt.job.yml). Neither has an automatic trigger.
