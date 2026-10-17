@@ -52,23 +52,26 @@ def test_localization_preserves_data_and_numeric_chart_values():
     assert "Jogadores" in chart.data[0].hovertemplate
 
 
-@pytest.mark.parametrize("page", ["app.py", "overview.py", "pages/1_Overall_Analysis.py",
+@pytest.mark.parametrize("page", ["app.py", "business.py", "overview.py", "pages/1_Overall_Analysis.py",
                                    "pages/2_Champion_Explorer.py", "pages/3_Notable_Champions.py",
                                    "pages/4_Population_Estimates.py"])
 def test_all_pages_render_in_portuguese(page):
-    app = AppTest.from_file(str(APP_ROOT / page), default_timeout=60)
+    app = AppTest.from_file(str(APP_ROOT / ("app.py" if page == "business.py" else page)), default_timeout=60)
     app.session_state[LANGUAGE_KEY] = "PT"
     app.run()
+    if page == "business.py":
+        app.switch_page(page).run()
     assert not app.exception
     assert any("Fonte de dados" in caption.value for caption in app.sidebar.caption)
     assert any("Jogadores" in chart.proto.spec or "jogador" in chart.proto.spec for chart in app.get("plotly_chart"))
-    if page == "app.py":
+    if page == "business.py":
         assert len(app.get("plotly_chart")) == 4
         assert any("padrões de gastos são sintéticos" in caption.value for caption in app.caption)
 
 
 def test_language_toggle_keeps_canonical_selections_and_survives_navigation():
     app = AppTest.from_file(str(APP_ROOT / "app.py"), default_timeout=60).run()
+    app.switch_page("business.py").run()
     next(widget for widget in app.selectbox if widget.key == "business_tier").set_value("GOLD").run()
     next(widget for widget in app.selectbox if widget.label == "Group audiences by").set_value("Playstyle").run()
     next(widget for widget in app.segmented_control if widget.key == "_dashboard_language_choice").set_value("PT").run()
