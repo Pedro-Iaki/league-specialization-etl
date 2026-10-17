@@ -239,6 +239,12 @@ python -m extract.run_pipeline
 
 That command runs the Python orchestrator: collection, stale-player refresh, periodic compaction, upload, confirmed raw ingestion, and dbt build. It is an environment-dependent data collection run, not a small demo command. Integrity, upload, ingestion, registry-update, or dbt failures retain local files and stop the runner. The repository contains the [ingestion notebook](src/load/ingest_players.ipynb), [ingestion-only job](resources/ingest_players.job.yml), and [dbt build job](resources/build_dbt.job.yml).
 
+Before collection, startup moves raw Parquet files absent from all local ledger
+references into `data/quarantine/<UTC timestamp>/`, preserving their dataset and
+partition paths. This isolates leftovers from a replaced ledger without deleting
+them or bypassing checks on tracked work. A reconciliation failure stops startup;
+pending loads still follow the normal cadence. See [state and failure behavior](docs/orchestration.md#state-and-failure-behavior).
+
 Before upload, Python checks compaction even when `FULL_VERIFICATION=false`.
 `is_compaction_ready` checks database/raw-file integrity before compaction;
 `is_load_ready` always requires the compacted-output report before upload.

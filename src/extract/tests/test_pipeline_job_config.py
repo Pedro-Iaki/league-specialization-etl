@@ -55,6 +55,7 @@ def test_pipeline_reads_selected_configuration_once_and_passes_both_job_settings
 
     monkeypatch.setattr(config_helper, "dotenv_values", read_once)
     monkeypatch.setattr(pipeline.init_db, "db_exists", lambda: True)
+    monkeypatch.setattr(pipeline.init_db, "reconcile_raw_files", lambda: 0)
     monkeypatch.setattr(pipeline.db, "is_active", lambda: True)
     monkeypatch.setattr(pipeline.client, "RiotAPIClient", lambda **kwargs: object())
     monkeypatch.setattr(pipeline, "BASE_DIR", tmp_path)

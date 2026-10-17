@@ -4,14 +4,19 @@ import os
 import shutil
 import sqlite3
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 from loguru import logger
+
+import extract.extraction_db_helper as db
 
 DB_PATH = "data/database/extraction.db"
 SCHEMA_PATH = "src/extract/extraction_schemas.sql"
 PLAYERS_DIR = "data/raw/players"
 MASTERIES_DIR = "data/raw/masteries"
 COMPACTED_DIR = "data/compacted"
+QUARANTINE_DIR = "data/quarantine"
 
 
 def get_connection(db_path=DB_PATH):
@@ -42,6 +47,30 @@ def initialize_database():
     finally:
         conn.close()
     logger.info("Local extraction database initialized.")
+
+
+def reconcile_raw_files() -> int:
+    """Quarantine unreferenced Parquet files before collection, preserving their layout."""
+    referenced_paths = {Path(path).resolve() for path in db.get_raw_paths_for_reconciliation()}
+    quarantine_path = Path(QUARANTINE_DIR).resolve() / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    moved = 0
+    for directory in (PLAYERS_DIR, MASTERIES_DIR):
+        raw_root = Path(directory).resolve()
+        for raw_file in raw_root.rglob("*.parquet"):
+            resolved_path = raw_file.resolve()
+            if resolved_path in referenced_paths:
+                continue
+            resolved_path.relative_to(raw_root)
+            destination = (quarantine_path / raw_root.name / raw_file.relative_to(raw_root)).resolve()
+            destination.relative_to(quarantine_path)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            raw_file.rename(destination)
+            moved += 1
+    if moved:
+        logger.warning(f"Quarantined {moved} untracked raw Parquet files under {quarantine_path}.")
+    else:
+        logger.info("Raw-file reconciliation completed: no untracked Parquet files.")
+    return moved
 
 
 def reset_database():

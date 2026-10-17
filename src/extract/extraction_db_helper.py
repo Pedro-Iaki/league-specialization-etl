@@ -880,6 +880,29 @@ def count_incomplete_loads(conn: sqlite3.Connection | None = None) -> int:
             conn.close()
 
 
+def get_raw_paths_for_reconciliation(conn: sqlite3.Connection | None = None) -> set[str]:
+    """Read all raw-file references, refusing reconciliation while a run is active."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        if conn.execute("SELECT 1 FROM runs WHERE status = 'running' LIMIT 1").fetchone():
+            raise RuntimeError("Cannot reconcile raw files while a local collection run is running.")
+        rows = conn.execute(
+            """
+            SELECT file_path AS path FROM player_tasks
+            UNION SELECT file_path FROM mastery_tasks
+            UNION SELECT history.value FROM players_recorded, json_each(players_recorded.paths) AS history
+            UNION SELECT mastery_path FROM players_recorded
+            UNION SELECT history.value FROM compaction_tasks, json_each(compaction_tasks.paths_compressed) AS history
+            """
+        ).fetchall()
+        return {row["path"] for row in rows if row["path"]}
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def cleanup_stale_runs(conn: sqlite3.Connection | None = None):
     """Fail runs silent for over an hour and clean their unfinished work.
 

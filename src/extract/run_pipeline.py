@@ -4,6 +4,7 @@ SQLite records collection tasks and file/load status throughout the pipeline.
 """
 
 import json
+import sqlite3
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -65,6 +66,12 @@ def run_pipeline(config_path: Path = CONFIG_PATH) -> bool:
         logger.error(
             "Cannot connect to database. Ensure init_db has been run and the database is accessible in the correct folder."
         )
+        return False
+
+    try:
+        init_db.reconcile_raw_files()
+    except (OSError, sqlite3.Error, RuntimeError, ValueError) as error:
+        logger.error(f"Startup raw-file reconciliation failed; collection was not started: {error}")
         return False
 
     api_client = client.RiotAPIClient(api_key=validated_manifest["api_key"])

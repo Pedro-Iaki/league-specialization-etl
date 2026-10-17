@@ -74,6 +74,16 @@ python -m extract.run_pipeline
   Ordinary startup creates missing storage without resetting existing work.
   New runs have an initial heartbeat; stale cleanup also handles older null
   heartbeats. Explicit development reset remains a separate destructive action.
+- Before collection, startup compares raw Parquet paths with all SQLite task,
+  player-record and compaction-source references. Unreferenced files move to
+  `data/quarantine/<UTC timestamp>/players/` or `masteries/`, retaining their
+  partition layout. No age cutoff or Parquet parsing is needed; corrupt orphan
+  files can be moved too. Quarantined files are retained outside normal cleanup.
+  Referenced files stay in place, including failed-task inputs; existing integrity
+  checks still handle missing or corrupt referenced data. Startup stops if the
+  ledger cannot be read, a move fails, or a local run is still marked running.
+  Run startup without another local collector starting against the same folders;
+  this check is not a filesystem lock. Pending loads keep their configured cadence.
 - Neon `player_state_registry` and `rank_page_progress` coordinate freshness,
   inactivity, refresh claims and discovery cursors.
 - Databricks `league_pipeline.raw` receives files; one dbt build produces the
