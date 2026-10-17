@@ -36,7 +36,8 @@ setup, and normal collection does not run schema migrations.
 | `TIERS` | Discovery tiers | Diamond through Iron |
 | `DIVISIONS` | Discovery divisions | I, II, III, IV |
 | `FRESHNESS_THRESHOLD_MINUTES` | Age at which a player becomes stale | 10080 (one week) |
-| `MAX_REFRESH_SCALE` | Maximum refreshes per observed snapshot player; reaching it skips both snapshot fetchers | 4 |
+| `MAX_REFRESH_SCALE` | Maximum refreshes per observed snapshot player; reaching it skips both snapshot fetchers by default | 4 |
+| `PAUSE_DISCOVERY_AT_REFRESH_CAP` | Pause discovery and missing-mastery fetching at the cap; false keeps discovery enabled without changing stale-player eligibility | true |
 | `RUNS_PER_LOAD` | Collection rounds between loads; leftovers also load | 10 |
 | `FULL_VERIFICATION` | Also scan raw files before compaction; compacted checks always run | false |
 | `INGEST_JOB_ID`, `DBT_JOB_ID` | Positive numeric IDs of the deployed jobs | Required; replace example zeros |
@@ -54,7 +55,9 @@ transient compaction retries are capped at three attempts. Adaptive scheduling
 uses the observed snapshot size and `MAX_REFRESH_SCALE`, with the runner's
 205-player fallback only for skipped/empty snapshots. `STALENESS_INTENSITY=3`
 controls the weighting described in the root README. There is no separate discovery
-cutoff or fixed player-count cap. The existing Riot client controls rate limits.
+cutoff or fixed player-count cap. `PAUSE_DISCOVERY_AT_REFRESH_CAP=false` keeps
+discovery enabled when refresh allocation is capped; it does not permit refreshing
+fresh players. The existing Riot client controls rate limits.
 There is no `VERSION`, fixed refresh-limit setting, or claim-timeout setting.
 The former `FULL_VERIFICATION_POST` setting is now `FULL_VERIFICATION`.
 

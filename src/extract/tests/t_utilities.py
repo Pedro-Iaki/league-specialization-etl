@@ -74,6 +74,7 @@ def _clear_pipeline_env(monkeypatch: pytest.MonkeyPatch):
         "REGION",
         "QUEUE",
         "MAX_REFRESH_SCALE",
+        "PAUSE_DISCOVERY_AT_REFRESH_CAP",
         "INGEST_JOB_ID",
         "INGESTION_TIMEOUT_SECONDS",
         "DBT_JOB_ID",

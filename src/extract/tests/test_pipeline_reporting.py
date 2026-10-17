@@ -32,6 +32,7 @@ def runner(tmp_path, monkeypatch):
         "queue": "solo",
         "freshness_threshold_minutes": 10080,
         "max_refresh_scale": 4,
+        "pause_discovery_at_refresh_cap": True,
     }
 
 

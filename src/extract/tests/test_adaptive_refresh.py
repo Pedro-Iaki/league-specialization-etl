@@ -18,20 +18,26 @@ def test_refresh_scale_increases_and_caps_before_singular_math(staleness, scale)
 
 
 @pytest.mark.parametrize(
-    "staleness,snapshot_size,cap,expected_limit,skipped",
+    "staleness,snapshot_size,cap,pause_discovery,expected_limit,skipped",
     [
-        (0, 100, 4, 0, False),
-        (0.1, 100, 4, 43, False),
-        (0.2, 100, 4, 151, False),
-        (0.2, 200, 4, 301, False),
-        (0.2, 0, 4, 308, False),
-        (0.8 / 3, 100, 4, 820, True),
-        (1, 100, 4, 820, True),
-        (0.25, 100, 2, 410, True),
+        (0, 100, 4, True, 0, False),
+        (0.1, 100, 4, True, 43, False),
+        (0.2, 100, 4, True, 151, False),
+        (0.2, 200, 4, True, 301, False),
+        (0.2, 0, 4, True, 308, False),
+        (0.8 / 3, 100, 4, True, 820, True),
+        (1, 100, 4, True, 820, True),
+        (0.25, 100, 2, True, 410, True),
+        (0, 100, 4, False, 0, False),
+        (0.2, 100, 4, False, 151, False),
+        (0.8 / 3, 100, 4, False, 400, False),
+        (1, 100, 4, False, 400, False),
+        (1, 0, 4, False, 820, False),
+        (0.25, 100, 2, False, 200, False),
     ],
 )
 def test_round_uses_observed_size_or_logged_fallback_and_skips_entire_snapshot(
-    tmp_path, monkeypatch, staleness, snapshot_size, cap, expected_limit, skipped,
+    tmp_path, monkeypatch, staleness, snapshot_size, cap, pause_discovery, expected_limit, skipped,
 ):
     calls = []
     monkeypatch.setattr(pipeline, "BASE_DIR", tmp_path)
@@ -60,6 +66,7 @@ def test_round_uses_observed_size_or_logged_fallback_and_skips_entire_snapshot(
         "players_fetch_depth": 1, "tiers": ["GOLD"], "divisions": ["I"], "runs_per_load": 10, "full_check": False,
         "region": "na1", "queue": "solo", "freshness_threshold_minutes": 10080,
         "max_refresh_scale": cap,
+        "pause_discovery_at_refresh_cap": pause_discovery,
     }
 
     assert pipeline.extraction_loop(config, api_client=object())
@@ -146,6 +153,29 @@ def test_refresh_scale_configuration_has_default_and_accepts_decimal(tmp_path, m
     config_path = util.EnvFactory.create(tmp_path, "refresh", overrides=overrides)
     config = pipeline.get_configs(config_path)
     assert ExtractionConfigManifest.model_validate(config).max_refresh_scale == expected
+
+
+@pytest.mark.parametrize(
+    "configured,process_override,expected",
+    [
+        (None, None, True),
+        ("true", None, True),
+        ("false", None, False),
+        ("true", "false", False),
+        ("false", "true", True),
+    ],
+)
+def test_discovery_pause_setting_reaches_runner(
+    tmp_path, monkeypatch, pipeline_stub, configured, process_override, expected,
+):
+    util._clear_pipeline_env(monkeypatch)
+    overrides = {"PAUSE_DISCOVERY_AT_REFRESH_CAP": configured} if configured is not None else None
+    config_path = util.EnvFactory.create(tmp_path, "discovery_pause", overrides=overrides)
+    if process_override is not None:
+        monkeypatch.setenv("PAUSE_DISCOVERY_AT_REFRESH_CAP", process_override)
+
+    assert pipeline.run_pipeline(config_path)
+    assert pipeline_stub["config_manifest"]["pause_discovery_at_refresh_cap"] is expected
 
 
 @pytest.mark.parametrize("value", [0, -1, float("nan"), float("inf")])

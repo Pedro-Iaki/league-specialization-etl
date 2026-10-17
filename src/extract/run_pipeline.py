@@ -91,17 +91,20 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
         logger.info(f"Starting round {run_n + 1}/{runs_remaining}.")
         try:
             staleness = player_registry.get_staleness_fraction(
-                config_manifest["region"], config_manifest["queue"],
+                config_manifest["region"],
+                config_manifest["queue"],
                 int(config_manifest["freshness_threshold_minutes"]),
             )
             refresh_scale = get_refresh_scale(staleness, max_refresh_scale)
             result.refresh_result.update({"staleness_fraction": staleness, "refresh_scale": refresh_scale})
-            should_fetch_snapshot = refresh_scale < max_refresh_scale
+            skip_snapshot = (
+                refresh_scale >= max_refresh_scale and config_manifest["pause_discovery_at_refresh_cap"]
+            )
             snapshot_size = FALLBACK_SNAPSHOT_SIZE
 
             result.stage = "snapshot"
             stage_result = result.snapshot_result
-            if should_fetch_snapshot:
+            if not skip_snapshot:
                 result.snapshot_result.update(run_snapshot_fetchers(config_manifest, run_n, run_date, api_client))
                 if result.snapshot_result["status"] == "failed":
                     result.error = "Player or mastery collection failed; local files retained."
@@ -112,10 +115,13 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
                 else:
                     logger.debug(f"Using fallback snapshot size {snapshot_size} for refresh allocation.")
             else:
-                result.snapshot_result.update({
-                    "status": "skipped", "snapshot_size": None,
-                    "reason": "Refresh scale reached MAX_REFRESH_SCALE; both snapshot fetchers skipped.",
-                })
+                result.snapshot_result.update(
+                    {
+                        "status": "skipped",
+                        "snapshot_size": None,
+                        "reason": "Refresh scale reached MAX_REFRESH_SCALE; both snapshot fetchers skipped.",
+                    }
+                )
                 logger.info("Skipping new-player collection to refresh previously collected players.")
 
             result.stage = "refresh"
@@ -148,7 +154,9 @@ def extraction_loop(config_manifest: dict, api_client) -> bool:
                 stage_result = result.load_result
                 result.load_result.update(run_load(config_manifest))
                 if not result.load_result["status"] or db.count_incomplete_loads():
-                    if result.load_result.get("compacted_load_result") and not result.load_result.get("dbt_build_result"):
+                    if result.load_result.get("compacted_load_result") and not result.load_result.get(
+                        "dbt_build_result"
+                    ):
                         result.stage = "dbt_build"
                         result.error = "The warehouse build did not complete; local files retained."
                     else:
@@ -271,7 +279,9 @@ def run_load(config_manifest: dict) -> dict:
         if result["compacted_load_result"]:
             logger.info("Building analytical tables...")
             result["dbt_build_result"] = run_job(
-                config_manifest["dbt_job_id"], config_manifest["dbt_timeout_seconds"], "dbt",
+                config_manifest["dbt_job_id"],
+                config_manifest["dbt_timeout_seconds"],
+                "dbt",
             )
             result["status"] = result["dbt_build_result"]
             if result["status"]:

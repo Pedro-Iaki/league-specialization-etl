@@ -62,7 +62,7 @@ def test_legacy_runner_retains_files_when_load_is_incomplete(tmp_path, monkeypat
     result = pipeline.extraction_loop(
         {"players_fetch_depth": 1, "tiers": ["GOLD"], "divisions": ["I"], "runs_per_load": 1, "full_check": False,
          "region": "na1", "queue": "solo", "freshness_threshold_minutes": 10080,
-         "max_refresh_scale": 4},
+         "max_refresh_scale": 4, "pause_discovery_at_refresh_cap": True},
         api_client=object(),
     )
 

@@ -202,7 +202,8 @@ All settings in this table belong in `config/EXTRACTION_CONFIG.env`:
 | `TIERS` | Non-empty comma-separated list; default DIAMOND, EMERALD, PLATINUM, GOLD, SILVER, BRONZE, IRON; only these values accepted | Limits discovery and changes total rounds. Tier order breaks page-depth ties within a division. Refresh can revisit other known tiers. |
 | `DIVISIONS` | Non-empty comma-separated list; default I, II, III, IV; only these values accepted | Limits discovery and changes total rounds. Division order breaks page-depth ties before tier order; refresh is not division-filtered. |
 | `FRESHNESS_THRESHOLD_MINUTES` | Integer minutes, default 10080 (7 days), minimum 1; no upper bound | Larger values reduce repeat collection. Inactivity penalties can defer registry refresh further. Also used by local awaiting-load exclusions. |
-| `MAX_REFRESH_SCALE` | Finite unitless multiplier, default 4, greater than 0; no upper bound | Caps refreshes relative to snapshot size, rounded up. At the cap both snapshot fetchers are skipped. Empty/skipped snapshots use 205 players, allowing 820 refreshes at the default. |
+| `MAX_REFRESH_SCALE` | Finite unitless multiplier, default 4, greater than 0; no upper bound | Caps refreshes relative to snapshot size, rounded up. At the cap both snapshot fetchers are skipped by default. Empty/skipped snapshots use 205 players, allowing 820 refreshes at the default. |
+| `PAUSE_DISCOVERY_AT_REFRESH_CAP` | Boolean, default true | Pauses discovery and missing-mastery fetching at the refresh cap. False keeps discovery enabled; refresh eligibility still requires stale players. |
 | `RUNS_PER_LOAD` | Integer rounds, default 10, minimum 1; no upper bound | Controls verification, compaction, ingestion and build cadence. Final leftovers always load; lower values deliver sooner with more job overhead. |
 | `INGEST_JOB_ID` | Required positive integer ID; no default or upper bound | Selects the deployed ingestion-only job. Example 0 must be replaced; registry/load updates wait for success. |
 | `INGESTION_TIMEOUT_SECONDS` | Integer seconds per attempt, default 900, minimum 1; no upper bound | Limits the local ingestion wait; timeout retains files and does not cancel the remote job. |
@@ -286,9 +287,11 @@ Set `MAX_REFRESH_SCALE` in `config/EXTRACTION_CONFIG.env` (positive finite decim
 default **4**). This is a multiplier, not a fixed player count. It replaces both
 `STALE_REFRESH_LIMIT` and the separate discovery cutoff. Below the cap, both
 snapshot fetchers run; at or above it, both discovery and missing-mastery fetching
-are skipped for that round. Stale-player refresh still fetches its players' masteries.
-Lower caps pause discovery sooner and allow fewer refreshes; higher caps permit
-larger refresh rounds. Keep the existing freshness threshold to determine when a
+are skipped for that round by default. Set `PAUSE_DISCOVERY_AT_REFRESH_CAP=false`
+to keep discovery enabled at the cap; refreshes still require stale players and
+their allocation remains capped. Stale-player refresh still fetches its players' masteries.
+With pausing enabled, lower caps pause discovery sooner and allow fewer refreshes;
+higher caps permit larger refresh rounds. Keep the existing freshness threshold to determine when a
 registry observation becomes stale.
 
 The snapshot size is the total count in the latest validated discovery page,
@@ -297,7 +300,7 @@ the number of newly saved players. For a skipped or empty snapshot, the runner u
 its documented `FALLBACK_SNAPSHOT_SIZE = 205`, an estimated full page. No additional
 checkpoint or persistent snapshot-size state is created.
 
-| Weighted staleness | Refresh scale with cap 4 | Snapshot behavior | Refresh allocation |
+| Weighted staleness | Refresh scale with cap 4 | Snapshot behavior (pause enabled) | Refresh allocation |
 | --- | --- | --- | --- |
 | 0% | 0x | Fetch | 0 |
 | 10% | About 0.429x | Fetch | 43 for an observed 100-player page |

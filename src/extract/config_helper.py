@@ -21,6 +21,7 @@ def get_configs(config_path: Path = CONFIG_PATH) -> dict:
         "FRESHNESS_THRESHOLD_MINUTES": "freshness_threshold_minutes",
         "RUNS_PER_LOAD": "runs_per_load",
         "MAX_REFRESH_SCALE": "max_refresh_scale",
+        "PAUSE_DISCOVERY_AT_REFRESH_CAP": "pause_discovery_at_refresh_cap",
         "INGEST_JOB_ID": "ingest_job_id",
         "INGESTION_TIMEOUT_SECONDS": "ingestion_timeout_seconds",
         "DBT_JOB_ID": "dbt_job_id",

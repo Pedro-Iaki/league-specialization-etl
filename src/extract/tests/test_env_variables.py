@@ -24,6 +24,7 @@ import extract.run_pipeline as pl
         ("blank_api_key", {"RIOT_API_KEY": ""}, set(), None, False),
         ("blank_region", {"REGION": " "}, set(), None, False),
         ("invalid_verification_flag", {"FULL_VERIFICATION": "perhaps"}, set(), None, False),
+        ("invalid_discovery_pause_flag", {"PAUSE_DISCOVERY_AT_REFRESH_CAP": "perhaps"}, set(), None, False),
         ("missing_fetch_depth", {}, {"PLAYERS_FETCH_DEPTH"}, None, False),
         ("missing_region", {}, {"REGION"}, None, False),
         ("missing_queue", {}, {"QUEUE"}, None, False),
