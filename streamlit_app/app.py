@@ -1,18 +1,25 @@
 ﻿from __future__ import annotations
 
-from app_core.i18n import language_selector, st
+from app_core.i18n import language_selector, st, t
+from app_core.story import STORY_PAGES
 
-st.set_page_config(page_title="League Specialization · player profiles and business sample", page_icon="◈", layout="wide")
+st.set_page_config(page_title="League Specialization · the story behind the data", page_icon="◈", layout="wide")
 st.session_state["_dashboard_app_shell"] = True
 language_selector()
 
-pages = [
-    st.Page("business.py", title="Business Sample", default=True),
-    st.Page("overview.py", title="Overview"),
-    st.Page("pages/1_Overall_Analysis.py", title="Population Analysis"),
-    st.Page("pages/4_Population_Estimates.py", title="Population Estimates"),
-    st.Page("pages/3_Notable_Champions.py", title="Cross Champion View"),
-    st.Page("pages/2_Champion_Explorer.py", title="Champion Explorer"),
-]
+pages = {
+    t("The story"): [
+        st.Page(path, title=f"{index} · {t(title)}", default=index == 1)
+        for index, (path, title) in enumerate(STORY_PAGES, 1)
+    ],
+    t("Explore the data"): [
+        st.Page("pages/1_Overall_Analysis.py", title="Population"),
+        st.Page("overview.py", title="Specialization and rank"),
+        st.Page("pages/3_Notable_Champions.py", title="Cross-champion"),
+        st.Page("pages/2_Champion_Explorer.py", title="Champion Explorer"),
+        st.Page("pages/4_Population_Estimates.py", title="Population Estimates"),
+        st.Page("business.py", title="Business sample"),
+    ],
+}
 
-st.navigation(pages).run()
+st.navigation(pages, expanded=True).run()

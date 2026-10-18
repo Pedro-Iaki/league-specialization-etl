@@ -1,8 +1,8 @@
 # League Specialization Dashboard
 
-A Streamlit dashboard built on the `league_pipeline.gold` dbt marts. It explores the association between champion-pool specialization and LP/game above a starting-tier baseline.
+A Streamlit portfolio built on the `league_pipeline.gold` dbt marts. The default experience is a six-chapter story for readers who want to understand the project before using analytical controls. It introduces the engineering, the synthetic business extension, and what the gameplay evidence can support.
 
-The default **Business Sample** opening page adds a small purchase reporting example. Purchases, spending patterns, ownership and customer types are synthetic; player traits come from a frozen real Riot API cohort. A prominent link leads into the real gameplay pages. No scenario relationship is presented as a real customer finding.
+The sidebar separates **The story** from **Explore the data**. Each story chapter links to the next, and analytical chapters link to the relevant explorer. The original interactive pages remain available, including the **Business sample** purchase reporting example. Purchases, spending patterns, ownership and customer types are synthetic; player traits come from a frozen real Riot API cohort. No scenario relationship is presented as a real customer finding.
 
 The app reads identifier-free local Parquet snapshots; a public deployment is planned. Player identifiers and rank-interval identifiers are excluded from every exported dataset. Updates are prepared manually with the snapshot exporter; the running app needs no warehouse credentials or connection.
 
@@ -55,7 +55,7 @@ Build the retained dbt models before refreshing the export. Champion growth and 
 
 ## Language selection and translation catalogs
 
-The **EN / PT** selector sits at the top of the dashboard. English is the default; PT uses Brazilian Portuguese. The choice persists across page navigation for the current session. All six pages use the shared catalogs for navigation, copy, controls, chart labels and table headings; strings not yet cataloged fall back to English. The switch preserves canonical filter values and numerical data; amounts remain USD.
+The **EN / PT** selector sits at the top of the dashboard. English is the default; PT uses Brazilian Portuguese. The choice persists across page navigation for the current session. Story chapters and explorers use the shared catalogs for navigation, copy, controls, chart labels and table headings; strings not yet cataloged fall back to English. The switch preserves canonical filter values and numerical data; amounts remain USD.
 
 Translations are centralized in [locales/en.json](locales/en.json) and [locales/pt.json](locales/pt.json). English source messages are stable keys; edit their values to change displayed copy without changing the internal choices used by filters. Add the same key to both catalogs. For dynamic sentences, keep the `{p0}`, `{p1}` placeholders intact; Plotly tokens such as `%{y:.1%}` must also remain unchanged. `_formats.long_date` controls the profile freshness date. Missing translations fall back to the English catalog, and catalog edits are reloaded on the next app rerun.
 
@@ -69,10 +69,23 @@ python -m pytest streamlit_app/tests/test_i18n.py
 
 ## Pages
 
-- **Business Sample** — default opening: audience monetization, experience/tenure, cosmetic preference and fiat discount use. Shared audience filters, outcome/group selectors and support counts guide the four comparisons. USD comes from fiat events only. Every plot labels the synthetic patterns and real traits. First simulated purchase supplies the tenure proxy; it is not real account age. The project/author introduction and architecture explain the separate synthetic branch.
+The story follows six chapters:
 
-- **Overview** — the player-level specialization and growth relationship, plus the champion landscape. The historical charts use completed rank periods; current-pool previews are labeled separately.
-- **Population Analysis** — playstyle composition, role skew, and ranked-mastery share by current inferred role, recent starting tier, or favoured champion. The denominator selector switches between the frozen tier estimate and equal player weights. Ranked-activity cells average one median per player within the selected observed window, using starting-tier weights in estimate mode.
+1. **Pipeline and data** (default) — architecture, actual coverage counts, current-profile observation dates, design decisions, and dated build evidence linked to the repository documentation. The date chart counts latest profile observations, not historical collection throughput.
+2. **What transactions would add** — business questions and the implemented synthetic reporting contract, with the distinction from real customer evidence kept explicit.
+3. **Specialization across tiers** — lifetime and recent mastery-adjusted ratios, selection-specific baseline definitions, and the existing pooled equal-count experience-band comparison with Wilson intervals.
+4. **Specialization and growth** — all four observed-period playstyles, actual counts and measured standard deviations, 95% percentile bootstrap intervals (2,000 resamples, seed 42), and an approximate detectable-gap curve using pooled within-style variance, independent equal-size groups, alpha .05 and 80% power. The observation grain is player–tier–playstyle; anonymous extracts cannot support player-clustered intervals, and uncertainty in the estimated tier baseline is not included. Older snapshots without this extract show an availability notice.
+5. **Champion case studies** — the draft's selected champion groups, counted from the snapshots, against pooled champion-holder and all-champion one-trick baselines. One-tricks use the explorer defaults: >=300K lifetime mastery and recent main share >=80% OR HHI >=.65. Holder records can repeat across champions. Diamond and Master are pooled; no external difficulty classification or easy/hard effect is asserted.
+6. **Findings and limits** — evidence, trust limits, engineering capabilities, next steps, repository/model/journey links and the author's GitHub profile.
+
+The story uses equal observation weights to describe the collected sample. Tier sampling is roughly balanced, so pooled proportions are not real-ladder population estimates. Story plots calculate from the existing anonymous Parquet snapshots; the mockup's approximate values and illustrative shapes are not serving data. Build metrics are explicitly the documented 2026-09-30 validation, rather than a new warehouse run. Interactive explorers retain their existing denominator controls.
+
+The exploration section contains:
+
+- **Business sample** — audience monetization, experience/tenure, cosmetic preference and fiat discount use. Shared audience filters, outcome/group selectors and support counts guide the four comparisons. USD comes from fiat events only. Every plot labels the synthetic patterns and real traits. First simulated purchase supplies the tenure proxy; it is not real account age.
+
+- **Specialization and rank** (`overview.py`) — the player-level specialization and growth relationship, plus the champion landscape. The historical charts use completed rank periods; current-pool previews are labeled separately.
+- **Population** — playstyle composition, role skew, and ranked-mastery share by current inferred role, recent starting tier, or favoured champion. The denominator selector switches between the frozen tier estimate and equal player weights. Ranked-activity cells average one median per player within the selected observed window, using starting-tier weights in estimate mode.
 - **Population Estimates** — analyst workspace comparing sample/weighted shares, means and medians. It retains every available profile tier, reports reference coverage/effective sample size, preserves weights through filters, and downloads diagnostics, reference, tables and anonymous weighted profiles.
 - **Champion Explorer** — champion mastery share versus rank growth, a cycling correlation/slope/R² summary, signed differences for player mix, role, tier/playstyle outcomes, and ranked-mastery share, plus mastery depth and recent-pool overlap.
 - **Cross Champion View** — cross-champion rankings for outcomes, expert share, recent-pool membership rate, mastery depth above 15K points, rank score, ranked share, and conditional recent-pool overlap. A full-width champion outcome comparison sits above tier box plots of player-level champion mastery share when the optional extract is available. Its tier curves compare each champion's distribution of total mastery points across tiers with the sample's distribution, so a champion's overall mastery level does not shift its whole line upward.

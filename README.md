@@ -28,7 +28,7 @@ The repository contains an end-to-end **extract, load, transform, and serve** pa
 | Collection | Riot API player and mastery extraction, local state and integrity checks, stale-player refresh | [Extraction code](src/extract/) |
 | Loading | Parquet compaction, Databricks landing-volume uploads, champion metadata load, and a Databricks ingestion notebook | [Loading code](src/load/) |
 | Transformation | dbt Bronze, Silver, and Gold models, schema tests, and business-rule tests | [dbt project README](league_pipeline/README.md) |
-| Presentation | Business Sample opening page, plus Overview, Population Analysis, Population Estimates, Cross Champion View, and Champion Explorer; anonymous Parquet exports and analyst bundles | [Dashboard README](streamlit_app/README.md) |
+| Presentation | Six guided story chapters, followed by separate interactive explorers for population, specialization/rank, champions, population estimates and the synthetic business sample; anonymous Parquet exports and analyst bundles | [Dashboard README](streamlit_app/README.md) |
 | Orchestration | Python confirms ingestion, then runs a separate dbt build job | [Ingestion job](resources/ingest_players.job.yml), [dbt job](resources/build_dbt.job.yml) |
 
 The included dashboard files are a **snapshot**, not a live feed. Their export timestamp and coverage are recorded in the [snapshot manifest](streamlit_app/data/manifest.json). The dbt README records the most recent documented full and incremental build; those results describe that validation run, not every future run. A public dashboard deployment is still planned.
