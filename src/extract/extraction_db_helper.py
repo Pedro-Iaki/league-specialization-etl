@@ -339,13 +339,43 @@ def get_mastery_id_from_list(task_ids: list[int], puuid: str, conn: sqlite3.Conn
     return int_id
 
 
+def claim_mastery_tasks(
+    run_id: int,
+    include_stale_success: bool = False,
+    limit: int | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> dict[str, int]:
+    """Claim players, create their tasks and link the records in one transaction."""
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        players = claim_players_missing_masteries(include_stale_success, limit, conn=conn)
+        tasks = {}
+        for player_id in players:
+            task_id = add_mastery_task(run_id, player_id, conn=conn)
+            conn.execute(
+                "UPDATE players_recorded SET mastery_task_id = ? WHERE player_id = ?",
+                (task_id, player_id),
+            )
+            tasks[player_id] = task_id
+        if own_conn:
+            conn.commit()
+        return tasks
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def claim_players_missing_masteries(
     include_stale_success: bool = False,
     limit: int | None = None,
     conn: sqlite3.Connection | None = None,
     claim: bool = True,
 ) -> list[str]:
-    """Select pending/failed mastery work, marking it in progress when claim=True.
+    """Select pending/failed mastery work; collectors use claim_mastery_tasks.
+
+    This lower-level operation marks players in progress when claim=True.
 
     Optional successful work fills the remaining limit only when its mastery is
     over seven days old and its latest rank snapshot is less than 24 hours old.

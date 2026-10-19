@@ -18,24 +18,18 @@ OptStr = str | None
 def run(run_id: int, api_client: APIClient, limit: int, run_n: int | None = None) -> None:
     started_at = monotonic()
     patch = str(api_client.get_patch())
-    players = db.claim_players_missing_masteries(include_stale_success=True, limit=limit)
-    if players is None or len(players) == 0:
+    tasks = db.claim_mastery_tasks(run_id, include_stale_success=True, limit=limit)
+    if not tasks:
         logger.info("No player masteries to fetch.")
         return
-    goal = len(players)
+    goal = len(tasks)
     logger.info(
         f"Fetching masteries for up to {goal} players... Rough ETA: {get_eta_minutes(goal):.1f} min "
         f"(development-key estimate)."
     )
 
-    # Record tasks before requests so interrupted work remains visible.
-    task_ids = []
-    for puuid in players:
-        if puuid:
-            task_ids.append(db.add_mastery_task(run_id, puuid))
-
     processed = 0
-    for player_number, puuid in enumerate(players, start=1):
+    for player_number, (puuid, task_id) in enumerate(tasks.items(), start=1):
         remaining = goal - player_number + 1
         if player_number == 1 or player_number % PROGRESS_INTERVAL == 0:
             logger.info(
@@ -43,11 +37,6 @@ def run(run_id: int, api_client: APIClient, limit: int, run_n: int | None = None
                 f"Elapsed: {(monotonic() - started_at) / 60:.1f} min."
             )
         player_info = get_player_info(puuid)
-        task_id = db.get_mastery_id_from_list(task_ids, puuid)
-        if not task_id:
-            logger.error(f"No task ID found for player {puuid}. Skipping.")
-            continue
-        task_id = int(task_id)
         mastery_payload = fetch_player_masteries(
             puuid=puuid,
             patch=patch,
