@@ -5,10 +5,17 @@ import requests
 from loguru import logger
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
+
+
+def _is_retryable_error(error: BaseException) -> bool:
+    if isinstance(error, requests.exceptions.HTTPError):
+        response = error.response
+        return response is not None and (response.status_code == 429 or 500 <= response.status_code < 600)
+    return isinstance(error, (requests.exceptions.ConnectionError, requests.exceptions.Timeout, ConnectionError))
 
 
 def _log_retry(retry_state) -> None:
@@ -30,8 +37,9 @@ class RiotAPIClient:
     @retry(
         wait=wait_exponential(multiplier=6, min=1, max=90),
         stop=stop_after_attempt(6),
-        retry=retry_if_exception_type((requests.exceptions.RequestException, ConnectionError)),
+        retry=retry_if_exception(_is_retryable_error),
         before_sleep=_log_retry,
+        reraise=True,
     )
     def get_patch(self) -> str:
         latest_patch = "https://ddragon.leagueoflegends.com/api/versions.json"
@@ -49,15 +57,24 @@ class RiotAPIClient:
     @retry(
         wait=wait_exponential(multiplier=6, min=1, max=90),
         stop=stop_after_attempt(6),
-        retry=retry_if_exception_type((requests.exceptions.RequestException, ConnectionError)),
+        retry=retry_if_exception(_is_retryable_error),
         before_sleep=_log_retry,
+        reraise=True,
     )
     def get(self, url: str, **kwargs) -> requests.Response:
+        if not self.buckets:
+            with self._setup_lock:
+                if not self.buckets:
+                    return self._request(url, **kwargs)
         self._acquire()
+        return self._request(url, **kwargs)
 
+    def _request(self, url: str, **kwargs) -> requests.Response:
+        """Make one request, initialize pacing and preserve HTTP failures for retry selection."""
         response = self.session.get(url, timeout=30, **kwargs)
 
-        if not self.buckets:
+        # Error responses may omit headers; preserve their HTTP error in that case.
+        if not self.buckets and (response.ok or response.headers.get("X-App-Rate-Limit")):
             self._initialize_buckets_from_response(response)
 
         if response.status_code == 429:
@@ -78,29 +95,21 @@ class RiotAPIClient:
         rate_limit_header = response.headers.get("X-App-Rate-Limit")
 
         if not rate_limit_header:
-            logger.warning("API response did not contain X-App-Rate-Limit. ")
-            return
+            raise RuntimeError("Cannot initialize Riot rate limiter: missing X-App-Rate-Limit header.")
 
-        with self._setup_lock:
-            if self.buckets:  # Another thread may have initialized them while this one waited.
-                return
+        buckets = self.setup_buckets(rate_limit_header)
+        with self._rate_limit_lock:
+            for bucket in buckets:
+                bucket.consume()  # Account for the first request before publishing the buckets.
+            self.buckets = buckets
 
-            self.buckets = self.setup_buckets(rate_limit_header)
-
-            with self._rate_limit_lock:  # Consume a token for the first request
-                for bucket in self.buckets:
-                    consumed = bucket.consume()
-
-                    if not consumed:
-                        logger.warning(f"Couldn't consume initial token in rate-limit bucket: {bucket}")
-
-            logger.debug(f"Initialized Riot rate limits: {rate_limit_header}")
+        logger.debug(f"Initialized Riot rate limits: {rate_limit_header}")
 
     def _acquire(self) -> None:
         while True:
             with self._rate_limit_lock:
                 if not self.buckets:
-                    return
+                    raise RuntimeError("Riot rate limiter is not initialized.")
 
                 available = all(bucket.peek() for bucket in self.buckets)
 

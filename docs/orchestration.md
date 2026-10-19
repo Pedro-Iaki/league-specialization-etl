@@ -117,15 +117,21 @@ python -m extract.run_pipeline
 - Request progress logs include rough ETAs and elapsed time, assuming 50 requests
   per minute at 95% efficiency. A rank/mastery refresh uses about two requests per
   player; these estimates do not measure throughput or change rate limiting.
-- Each API rate-limit bucket holds at most one token, so pauses do not bank
-  credit for later bursts. Refill retains `round(limit * 0.99) / period`; a
-  `100:120` allowance therefore spaces requests at approximately 1.212 seconds.
-  The 95% efficiency factor affects ETA estimates only.
   Progress appears on the first attempt and every 25 players, plus final saved
   counts. See the [complete log inventory](log_inventory.md) for every message,
   severity, source location, notebook output and progress label. Set the process
   environment variable `LOGURU_LEVEL=INFO` before Python starts for concise output;
   `DEBUG` includes diagnostic paths, IDs and compaction summaries.
+- Each API rate-limit bucket holds at most one token, so pauses do not bank
+  credit for later bursts. Refill retains `round(limit * 0.99) / period`; a
+  `100:120` allowance therefore spaces requests at approximately 1.212 seconds.
+  The 95% efficiency factor affects ETA estimates only.
+  Initial callers wait for the first response to establish pacing. A successful
+  initial response without `X-App-Rate-Limit` stops collection. Timeouts,
+  connection failures, HTTP 429 and HTTP 5xx retry up to six attempts with
+  exponential backoff; other HTTP errors fail immediately. Exhaustion propagates
+  the original error. Retry timing intentionally uses backoff rather than
+  `Retry-After`; only application allowances are tracked for this project.
 - Pending and stale mastery work share the configured task limit. Patch lookup
   happens before claiming, so a lookup failure leaves that work available.
 - A dbt failure preserves confirmed ingestion status and local files.

@@ -112,19 +112,17 @@ Existing reports keep detailed diagnostics available:
 
 ## Complete source inventory
 
-Found **158 output sites**: 18 DEBUG, 52 ERROR, 5 ERROR + traceback, 40 INFO, 6 PROGRESS, 19 STDOUT, 16 WARNING, 2 WARNING (retry callback).
+Found **155 output sites**: 18 DEBUG, 52 ERROR, 5 ERROR + traceback, 39 INFO, 6 PROGRESS, 19 STDOUT, 14 WARNING, 2 WARNING (retry callback).
 
 ### Pipeline Python logs
 
 | Source and context | Level | Message template |
 | --- | --- | --- |
-| [src/extract/api_client.py:16](../src/extract/api_client.py#L16) · `_log_retry` | WARNING | `Retrying request after attempt {retry_state.attempt_number}: {exception}` |
-| [src/extract/api_client.py:45](../src/extract/api_client.py#L45) · `get_patch` | ERROR | `Failed to fetch the latest patch version.` |
-| [src/extract/api_client.py:64](../src/extract/api_client.py#L64) · `get` | WARNING | `429 Too Many Requests received, rate limited` |
-| [src/extract/api_client.py:67](../src/extract/api_client.py#L67) · `get` | ERROR | `401 Unauthorized received, invalid API key. Please check your RIOT_API_KEY environment variable.` |
-| [src/extract/api_client.py:81](../src/extract/api_client.py#L81) · `_initialize_buckets_from_response` | WARNING | `API response did not contain X-App-Rate-Limit. ` |
-| [src/extract/api_client.py:95](../src/extract/api_client.py#L95) · `_initialize_buckets_from_response` | WARNING | `Couldn't consume initial token in rate-limit bucket: {bucket}` |
-| [src/extract/api_client.py:97](../src/extract/api_client.py#L97) · `_initialize_buckets_from_response` | DEBUG | `Initialized Riot rate limits: {rate_limit_header}` |
+| [src/extract/api_client.py:23](../src/extract/api_client.py#L23) · `_log_retry` | WARNING | `Retrying request after attempt {retry_state.attempt_number}: {exception}` |
+| [src/extract/api_client.py:53](../src/extract/api_client.py#L53) · `get_patch` | ERROR | `Failed to fetch the latest patch version.` |
+| [src/extract/api_client.py:81](../src/extract/api_client.py#L81) · `_request` | WARNING | `429 Too Many Requests received, rate limited` |
+| [src/extract/api_client.py:84](../src/extract/api_client.py#L84) · `_request` | ERROR | `401 Unauthorized received, invalid API key. Please check your RIOT_API_KEY environment variable.` |
+| [src/extract/api_client.py:106](../src/extract/api_client.py#L106) · `_initialize_buckets_from_response` | DEBUG | `Initialized Riot rate limits: {rate_limit_header}` |
 | [src/extract/compact_parquets.py:46](../src/extract/compact_parquets.py#L46) · `run` | ERROR + traceback | `Compaction run failed: {e}` |
 | [src/extract/compact_parquets.py:48](../src/extract/compact_parquets.py#L48) · `run` | DEBUG | `Players compaction summary: {players_summary}` |
 | [src/extract/compact_parquets.py:49](../src/extract/compact_parquets.py#L49) · `run` | DEBUG | `Masteries compaction summary: {masteries_summary}` |
