@@ -150,7 +150,7 @@ class TokenBucket:
         # Apply a safety margin to the rate limit to avoid hitting the exact limit
         self.rate_limit = round(rate_limit * 0.99)
         self.period = period
-        self.capacity = float(rate_limit)
+        self.capacity = 1.0  # Pace requests without banking idle time for later bursts.
 
         self.tokens = 1.0
         self.last_checked = time.monotonic()

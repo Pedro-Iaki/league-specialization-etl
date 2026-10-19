@@ -117,6 +117,10 @@ python -m extract.run_pipeline
 - Request progress logs include rough ETAs and elapsed time, assuming 50 requests
   per minute at 95% efficiency. A rank/mastery refresh uses about two requests per
   player; these estimates do not measure throughput or change rate limiting.
+- Each API rate-limit bucket holds at most one token, so pauses do not bank
+  credit for later bursts. Refill retains `round(limit * 0.99) / period`; a
+  `100:120` allowance therefore spaces requests at approximately 1.212 seconds.
+  The 95% efficiency factor affects ETA estimates only.
   Progress appears on the first attempt and every 25 players, plus final saved
   counts. See the [complete log inventory](log_inventory.md) for every message,
   severity, source location, notebook output and progress label. Set the process
