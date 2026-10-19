@@ -74,6 +74,9 @@ python -m extract.run_pipeline
   Ordinary startup creates missing storage without resetting existing work.
   New runs have an initial heartbeat; stale cleanup also handles older null
   heartbeats. Explicit development reset remains a separate destructive action.
+  Batch mastery claims set player status, create tasks and link their IDs in one
+  SQLite transaction, before any mastery request. Existing failed-run cleanup can
+  therefore release every claim, including tasks whose requests never started.
 - Before collection, startup compares raw Parquet paths with all SQLite task,
   player-record and compaction-source references. Unreferenced files move to
   `data/quarantine/<UTC timestamp>/players/` or `masteries/`, retaining their
@@ -98,6 +101,12 @@ python -m extract.run_pipeline
   Only fresh local collections awaiting rank ingestion, without a current failure,
   are excluded from refresh claims. Stale or failed work passes this local filter;
   the registry's normal freshness and claim rules still apply.
+- Snapshots exclude fresh Neon players and fresh local observations awaiting
+  ingestion individually. Stale or failed local work remains eligible. Logs
+  distinguish observed players, each exclusion and saved rank observations;
+  refresh allocation still uses the unfiltered page size. A page filtered entirely
+  by pending local work is released without advancement; it can complete on a
+  later visit once those players are fresh in Neon.
 - Snapshot outcomes always have a result object. Refresh scheduling details stay
   inside `refresh_result`; top-level status/stage/error summarize the round for
   the operator. Detailed errors stay with their stage results.

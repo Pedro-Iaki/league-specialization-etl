@@ -85,28 +85,22 @@ def run(
             puuids=list(snapshot_player_ids),
         )
         fresh_player_ids = {player["puuid"] for player in fresh_players if player.get("puuid")}
-        snapshot_viable_players = [p for p in players if p.get("puuid") not in fresh_player_ids]
+        pending_player_ids = (snapshot_player_ids - fresh_player_ids) & set(
+            db.get_pending_player_ids(region, queue, freshness_minutes=freshness_minutes)
+        )
+        excluded_player_ids = fresh_player_ids | pending_player_ids
+        snapshot_viable_players = [p for p in players if p.get("puuid") not in excluded_player_ids]
         if not snapshot_viable_players:
-            # Empty pages reset in fetch_players; already-ingested players need no new load.
-            if players:
+            # Pending local data must load before this page can advance on a later visit.
+            if players and not pending_player_ids:
                 player_registry.complete_rank_page(str(page_claim["claim_token"]), len(players))
                 claim_pending = False
             db.update_player_task(task_id, "success", file_path=None)
             logger.info(
-                f"Snapshot contains {snapshot_size} players; no new files needed. "
+                f"Snapshot skipped: {snapshot_size} observed; {len(fresh_player_ids)} fresh in Neon, "
+                f"{len(pending_player_ids)} fresh locally awaiting ingestion. "
                 f"Elapsed: {monotonic() - started_at:.1f}s."
             )
-            return snapshot_size
-
-        recorded_players_ids = set(
-            db.get_players_recorded(patch=patch, region=region, queue=queue, tier=tier, division=division)
-        )
-        if {p["puuid"] for p in snapshot_viable_players}.issubset(recorded_players_ids):
-            logger.info(
-                f"Snapshot contains {snapshot_size} players already awaiting load. "
-                f"Elapsed: {monotonic() - started_at:.1f}s."
-            )
-            db.update_player_task(task_id, "success", file_path=None)
             return snapshot_size
 
         output_path = save_players(
@@ -138,8 +132,9 @@ def run(
         db.update_player_task(task_id, "success", file_path=str(output_path))
         saved = True
         logger.info(
-            f"Player snapshot saved: {len(snapshot_viable_players)} new or stale players "
-            f"out of {snapshot_size} observed. Elapsed: {monotonic() - started_at:.1f}s."
+            f"Snapshot saved: {len(snapshot_viable_players)} rank observations out of {snapshot_size} observed; "
+            f"{len(fresh_player_ids)} fresh in Neon, {len(pending_player_ids)} fresh locally awaiting ingestion. "
+            f"Elapsed: {monotonic() - started_at:.1f}s."
         )
         return snapshot_size
     finally:

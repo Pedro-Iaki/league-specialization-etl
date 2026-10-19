@@ -44,7 +44,7 @@ appear at `RUNS_PER_LOAD` intervals and for final leftovers.
 ```text
 Starting round 1/1.
 Fetching player snapshot... Rough ETA: under 1 minute.
-Player snapshot saved: 50 new or stale players out of 205 observed. Elapsed: 0.8s.
+Snapshot saved: 50 rank observations out of 205 observed; 100 fresh in Neon, 55 fresh locally awaiting ingestion. Elapsed: 0.8s.
 Fetching masteries for up to 50 players... Rough ETA: 1.1 min (development-key estimate).
 Fetching mastery 1/50. Rough ETA: 1.1 min. Elapsed: 0.0 min.
 Fetching mastery 25/50. Rough ETA: 0.5 min. Elapsed: 0.5 min.
@@ -165,9 +165,8 @@ Found **158 output sites**: 18 DEBUG, 52 ERROR, 5 ERROR + traceback, 40 INFO, 6 
 | [src/extract/get_players.py:39](../src/extract/get_players.py#L39) · `run` | ERROR | `Invalid run id supplied to player extractor, cancelling operation.` |
 | [src/extract/get_players.py:43](../src/extract/get_players.py#L43) · `run` | INFO | `Fetching player snapshot... Rough ETA: under 1 minute.` |
 | [src/extract/get_players.py:53](../src/extract/get_players.py#L53) · `run` | INFO | `No player snapshot available for {region} {queue}.` |
-| [src/extract/get_players.py:95](../src/extract/get_players.py#L95) · `run` | INFO | `Snapshot contains {snapshot_size} players; no new files needed. Elapsed: {monotonic() - started_at:.1f}s.` |
-| [src/extract/get_players.py:105](../src/extract/get_players.py#L105) · `run` | INFO | `Snapshot contains {snapshot_size} players already awaiting load. Elapsed: {monotonic() - started_at:.1f}s.` |
-| [src/extract/get_players.py:140](../src/extract/get_players.py#L140) · `run` | INFO | `Player snapshot saved: {len(snapshot_viable_players)} new or stale players out of {snapshot_size} observed. Elapsed: {monotonic() - started_at:.1f}s.` |
+| [src/extract/get_players.py:99](../src/extract/get_players.py#L99) · `run` | INFO | `Snapshot skipped: {snapshot_size} observed; {len(fresh_player_ids)} fresh in Neon, {len(pending_player_ids)} fresh locally awaiting ingestion. Elapsed: {monotonic() - started_at:.1f}s.` |
+| [src/extract/get_players.py:134](../src/extract/get_players.py#L134) · `run` | INFO | `Snapshot saved: {len(snapshot_viable_players)} rank observations out of {snapshot_size} observed; {len(fresh_player_ids)} fresh in Neon, {len(pending_player_ids)} fresh locally awaiting ingestion. Elapsed: {monotonic() - started_at:.1f}s.` |
 | [src/extract/get_players.py:161](../src/extract/get_players.py#L161) · `fetch_players` | ERROR | `No API client provided. Please set the RIOT_API_KEY environment variable and provide a valid API client.` |
 | [src/extract/get_players.py:173](../src/extract/get_players.py#L173) · `fetch_players` | ERROR | `Error fetching players for {region} {queue} {tier} {division}: {e}` |
 | [src/extract/get_players.py:178](../src/extract/get_players.py#L178) · `fetch_players` | ERROR | `Error fetching players for {region} {queue} {tier} {division}: {response.status_code} - {response.text}` |

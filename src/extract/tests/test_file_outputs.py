@@ -42,23 +42,19 @@ def test_get_players_run_writes_file_and_records_players(tmp_path, mock_db, monk
     assert recorded == {"p1", "p2"}
 
 
-def test_get_players_run_skips_writing_file_when_no_new_players(tmp_path, mock_db, db_factory, monkeypatch):
+def test_get_players_run_skips_local_pending_players_until_ingestion(tmp_path, mock_db, monkeypatch):
     monkeypatch.setattr(get_players, "OUTPUT_PATH", tmp_path)
-    conn = mock_db.get_connection()
-    factory = db_factory(conn)
-    run_id = factory.create_individual_run()
-    factory.create_individual_players_recorded(
-        {
-            "player_id": "p1",
-            "region": "na1",
-            "queue": "RANKED_SOLO_5x5",
-            "tier": "GOLD",
-            "division": "I",
-            "mastery_patch": "15.1",
-            "mastery_status": "success",
-        }
+    previous_run = mock_db.start_run("already collected")
+    previous_task = mock_db.add_player_task(previous_run)
+    mock_db.update_player_task(previous_task, "success", file_path="existing.parquet")
+    mock_db.add_player_records(
+        "p1", "existing.parquet", previous_task, "na1", "RANKED_SOLO_5x5", "GOLD", "I", "15.1",
     )
-    conn.close()
+    completed = []
+    released = []
+    monkeypatch.setattr(get_players.player_registry, "complete_rank_page", lambda *args: completed.append(args))
+    monkeypatch.setattr(get_players.player_registry, "release_rank_page", lambda token: released.append(token))
+    run_id = mock_db.start_run("repeat snapshot")
 
     client = util.FakeAPIClient(players_payload=[util.create_player_payload("p1")], patch="15.1")
     get_players.run(
@@ -77,6 +73,52 @@ def test_get_players_run_skips_writing_file_when_no_new_players(tmp_path, mock_d
     assert task["status"] == "success"
     assert task["file_path"] is None
     assert list(tmp_path.rglob("*.parquet")) == []
+    assert completed == []
+    assert released == ["test-claim"]
+
+    mock_db.update_load_status("players", [{"puuid": "p1", "region": "na1", "queueType": "RANKED_SOLO_5x5"}], "load_success")
+    monkeypatch.setattr(get_players, "get_fresh_players", lambda *args, **kwargs: [{"puuid": "p1"}])
+    get_players.run(mock_db.start_run("after ingestion"), client, "na1", "RANKED_SOLO_5x5", tier="GOLD", division="I")
+    assert completed == [("test-claim", 1)]
+    assert list(tmp_path.rglob("*.parquet")) == []
+
+
+def test_snapshot_filters_individual_local_players_but_keeps_stale_and_failed_work(tmp_path, mock_db, monkeypatch):
+    monkeypatch.setattr(get_players, "OUTPUT_PATH", tmp_path)
+    previous_run = mock_db.start_run("previous snapshot")
+    previous_task = mock_db.add_player_task(previous_run)
+    mock_db.update_player_task(previous_task, "success", file_path="existing.parquet")
+    for player in ("local", "stale", "failed", "other_queue"):
+        mock_db.add_player_records(
+            player, "existing.parquet", previous_task, "na1",
+            "RANKED_FLEX_SR" if player == "other_queue" else "RANKED_SOLO_5x5", "GOLD", "I", "15.1",
+        )
+    conn = mock_db.get_connection()
+    try:
+        conn.execute("UPDATE players_recorded SET paths_logged_at = json_array(datetime('now', '-61 minutes')) WHERE player_id = 'stale'")
+        conn.execute("UPDATE players_recorded SET mastery_status = 'failed' WHERE player_id = 'failed'")
+        conn.commit()
+    finally:
+        conn.close()
+    monkeypatch.setattr(get_players, "get_fresh_players", lambda *args, **kwargs: [{"puuid": "remote"}])
+    client = util.FakeAPIClient(
+        players_payload=[util.create_player_payload(p) for p in ("remote", "local", "stale", "failed", "other_queue", "new")],
+        patch="15.1",
+    )
+    run_id = mock_db.start_run("mixed snapshot")
+
+    observed = get_players.run(run_id, client, "na1", "RANKED_SOLO_5x5", tier="GOLD", division="I", freshness_minutes=60)
+
+    assert observed == 6
+    conn = mock_db.get_connection()
+    try:
+        task = conn.execute("SELECT file_path, rank_page_claim FROM player_tasks WHERE run_id = ?", (run_id,)).fetchone()
+        assert json.loads(conn.execute("SELECT paths FROM players_recorded WHERE player_id = 'local'").fetchone()[0]) == ["existing.parquet"]
+        assert conn.execute("SELECT 1 FROM players_recorded WHERE player_id = 'remote'").fetchone() is None
+    finally:
+        conn.close()
+    util.assert_valid_player_file(Path(task["file_path"]), expected_puuids=["stale", "failed", "other_queue", "new"])
+    assert json.loads(task["rank_page_claim"])["player_count"] == 6
 
 
 def test_get_masteries_run_writes_file_and_updates_status(tmp_path, mock_db, db_factory, monkeypatch):
