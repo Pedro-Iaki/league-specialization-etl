@@ -323,8 +323,8 @@ def story_card(kicker: str, title: str, body: str, *, hypothesis: bool = False) 
 def resource_links(*, contact: bool = False) -> None:
     links = [
         ("Repository", REPOSITORY),
-        ("Model reference", f"{REPOSITORY}/blob/main/league_pipeline/docs/model_reference.md"),
-        ("Engineering journey", f"{REPOSITORY}/blob/main/docs/engineering_journey.md"),
+        ("Model reference", f"{REPOSITORY}/blob/main/docs/reference/data-models.md"),
+        ("Engineering journey", f"{REPOSITORY}/blob/main/docs/wiki/engineering-decisions.md"),
     ]
     if contact:
         links.append(("Pedro on GitHub", "https://github.com/Pedro-Iaki"))
