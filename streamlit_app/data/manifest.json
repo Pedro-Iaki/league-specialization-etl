@@ -1,75 +1,19 @@
 {
-  "exported_at_utc": "2026-10-10T23:37:07.016606+00:00",
+  "exported_at_utc": "2026-10-20T03:17:24.953894+00:00",
   "source": "league_pipeline.gold",
   "privacy": "Player and interval identifiers excluded from public extracts.",
   "datasets": {
-    "champion_player_mastery_share": {
-      "file": "champion_player_mastery_share.parquet",
-      "rows": 1139520,
-      "columns": 7,
-      "size_bytes": 14507649
+    "champion_population_pairs": {
+      "file": "champion_population_pairs.parquet",
+      "rows": 133902,
+      "columns": 11,
+      "size_bytes": 907109
     },
-    "champion_tier_mastery": {
-      "file": "champion_tier_mastery.parquet",
-      "rows": 22350,
+    "champion_population_activity": {
+      "file": "champion_population_activity.parquet",
+      "rows": 1557,
       "columns": 13,
-      "size_bytes": 989638
-    },
-    "players": {
-      "file": "player_profiles.parquet",
-      "rows": 37172,
-      "columns": 53,
-      "size_bytes": 4042999,
-      "min_as_of_date": "2026-09-29T00:00:00",
-      "max_as_of_date": "2026-09-29T00:00:00",
-      "min_snapshot_date": "2026-09-16T00:00:00",
-      "max_snapshot_date": "2026-09-29T00:00:00"
-    },
-    "champions": {
-      "file": "champion_profiles.parquet",
-      "rows": 173,
-      "columns": 38,
-      "size_bytes": 64098,
-      "min_as_of_date": "2026-09-29T00:00:00",
-      "max_as_of_date": "2026-09-29T00:00:00"
-    },
-    "cooccurrence": {
-      "file": "champion_cooccurrence.parquet",
-      "rows": 14878,
-      "columns": 14,
-      "size_bytes": 780044,
-      "min_as_of_date": "2026-09-29T00:00:00",
-      "max_as_of_date": "2026-09-29T00:00:00"
-    },
-    "growth_players": {
-      "file": "growth_players.parquet",
-      "rows": 1066,
-      "columns": 12,
-      "size_bytes": 52904
-    },
-    "champion_growth_players": {
-      "file": "champion_growth_players.parquet",
-      "rows": 4089,
-      "columns": 13,
-      "size_bytes": 138593
-    },
-    "growth_player_styles": {
-      "file": "growth_player_styles.parquet",
-      "rows": 1066,
-      "columns": 9,
-      "size_bytes": 16578
-    },
-    "champion_tier_growth": {
-      "file": "champion_tier_growth.parquet",
-      "rows": 2842,
-      "columns": 14,
-      "size_bytes": 140481
-    },
-    "ranked_mastery_cohorts": {
-      "file": "ranked_mastery_cohorts.parquet",
-      "rows": 4296,
-      "columns": 10,
-      "size_bytes": 41013
+      "size_bytes": 88847
     },
     "business_players": {
       "file": "business_players.parquet",
@@ -130,17 +74,73 @@
         "transaction_count": 3900172
       }
     },
-    "champion_population_activity": {
-      "file": "champion_population_activity.parquet",
-      "rows": 1384,
-      "columns": 13,
-      "size_bytes": 87727
+    "champion_player_mastery_share": {
+      "file": "champion_player_mastery_share.parquet",
+      "rows": 1168633,
+      "columns": 7,
+      "size_bytes": 15119576
     },
-    "champion_population_pairs": {
-      "file": "champion_population_pairs.parquet",
-      "rows": 119024,
-      "columns": 11,
-      "size_bytes": 565290
+    "champion_tier_mastery": {
+      "file": "champion_tier_mastery.parquet",
+      "rows": 22567,
+      "columns": 13,
+      "size_bytes": 1013749
+    },
+    "players": {
+      "file": "player_profiles.parquet",
+      "rows": 37803,
+      "columns": 60,
+      "size_bytes": 4583353,
+      "min_as_of_date": "2026-10-19T00:00:00",
+      "max_as_of_date": "2026-10-19T00:00:00",
+      "min_snapshot_date": "2026-09-17T00:00:00",
+      "max_snapshot_date": "2026-10-19T00:00:00"
+    },
+    "champions": {
+      "file": "champion_profiles.parquet",
+      "rows": 173,
+      "columns": 38,
+      "size_bytes": 62583,
+      "min_as_of_date": "2026-10-19T00:00:00",
+      "max_as_of_date": "2026-10-19T00:00:00"
+    },
+    "cooccurrence": {
+      "file": "champion_cooccurrence.parquet",
+      "rows": 14878,
+      "columns": 14,
+      "size_bytes": 744795,
+      "min_as_of_date": "2026-10-19T00:00:00",
+      "max_as_of_date": "2026-10-19T00:00:00"
+    },
+    "growth_players": {
+      "file": "growth_players.parquet",
+      "rows": 1255,
+      "columns": 12,
+      "size_bytes": 61195
+    },
+    "champion_growth_players": {
+      "file": "champion_growth_players.parquet",
+      "rows": 4818,
+      "columns": 13,
+      "size_bytes": 163307
+    },
+    "growth_player_styles": {
+      "file": "growth_player_styles.parquet",
+      "rows": 1255,
+      "columns": 9,
+      "size_bytes": 18314
+    },
+    "champion_tier_growth": {
+      "file": "champion_tier_growth.parquet",
+      "rows": 3110,
+      "columns": 16,
+      "size_bytes": 159814
+    },
+    "ranked_mastery_cohorts": {
+      "file": "ranked_mastery_cohorts.parquet",
+      "rows": 3982,
+      "columns": 10,
+      "size_bytes": 40812
     }
   }
 }

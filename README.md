@@ -19,7 +19,7 @@ python -m streamlit run streamlit_app/app.py
 
 Start with **The story** for the case study, then use **Explore the data** to compare recent preferences with accumulated history, inspect shared character audiences or examine the simulated business scenario. English and Brazilian Portuguese are supported. The [dashboard guide](docs/guides/run-the-dashboard.md) covers environment setup, navigation and troubleshooting.
 
-The bundled snapshot contains **37,172 profiles**, as of **September 29, 2026**, exported **October 10, 2026**. The [manifest](streamlit_app/data/manifest.json) records dataset dates and scenario provenance. These files stay frozen until a new manual export.
+The bundled snapshot contains **37,803 profiles**, as of **October 19, 2026**, exported **October 20, 2026**. The [manifest](streamlit_app/data/manifest.json) records dataset dates and scenario provenance. These files stay frozen until a new manual export. The simulated transaction scenario remains frozen at September 29, 2026.
 
 ## How data reaches the dashboard
 

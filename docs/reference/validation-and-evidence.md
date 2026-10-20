@@ -2,7 +2,7 @@
 
 [Project README](../../README.md) · [Documentation index](../README.md) · [Orchestration](orchestration.md) · [Data models](data-models.md)
 
-This reference separates implemented checks, inspectable frozen artifacts, reviewed historical run records and behavior that has not been demonstrated live. Counts below describe a dated snapshot. They do not imply a fresh collection, warehouse build or export during the documentation rewrite.
+This reference separates implemented checks, inspectable frozen artifacts, reviewed historical run records and behavior that has not been demonstrated live. Counts below describe dated snapshots. The October 20 refresh inspected existing successful warehouse jobs and exported their outputs; it did not start a new collection, warehouse build or transaction generation.
 
 Use [orchestration](orchestration.md) for execution-state semantics, [data models](data-models.md) for grains, [metrics and methods](metrics-and-methods.md) for calculations, and [population adjustment](population-adjustment.md) for coverage and weight diagnostics.
 
@@ -22,7 +22,33 @@ Inspect [configuration validation](../../src/pydantic_models.py), [dbt schema te
 
 ## Inspectable serving snapshot
 
-The current [manifest](../../streamlit_app/data/manifest.json) records export time **October 10, 2026, 23:37:07 UTC**. Player profiles are as of **September 29, 2026**, with underlying player snapshots dated September 16–29. These are different dates with different meanings.
+The current [manifest](../../streamlit_app/data/manifest.json) records export time **October 20, 2026, 03:17:24 UTC**. Gameplay profiles are as of **October 19, 2026**, with latest-known player observations spanning September 17–October 19. The validated transaction scenario remains frozen at **September 29, 2026**; its provenance and generated events were preserved.
+
+| Dataset | Rows | Counting unit |
+|---|---:|---|
+| `players` | 37,803 | Current player profiles, including the new active-pool Lifetime preference fields. |
+| `champions` | 173 | Character summaries. |
+| `cooccurrence` | 14,878 | Supported unordered character pairs. |
+| `champion_player_mastery_share` | 1,168,633 | Player/character memberships. |
+| `champion_tier_mastery` | 22,567 | Character/rank/threshold summaries. |
+| `growth_players` | 1,255 | Eligible player/starting-rank summaries. |
+| `growth_player_styles` | 1,255 | Eligible player/starting-rank/period-classification summaries. |
+| `champion_growth_players` | 4,818 | Attributed player/character/starting-rank summaries. |
+| `champion_tier_growth` | 3,110 | Character/starting-rank/scope summaries. |
+| `ranked_mastery_cohorts` | 3,982 | Player/window summaries. |
+| `business_players` | 24,990 | Preserved frozen scenario/player summaries. |
+| `champion_population_activity` | 1,557 | Character/current-rank/scope summaries. |
+| `champion_population_pairs` | 133,902 | Character-pair/current-rank/scope summaries. |
+
+The full player extract contains **19,723 paired Recent/Lifetime classifications** and **18,080 profiles without a Recent classification**. Tracking spans 0–33 days; **3,602 profiles have at least 30 tracked days**, so the mature membership rule now applies to part of the sample. Active-pool Lifetime preferences have positive mastery support for **19,722 profiles**; one additional classified pool has zero Lifetime mastery and retains null preference fields. There are **18,629 profiles** whose leading active character has at least 15,000 Lifetime points. These counts cover the full extract: the default story/explorer rank scope excludes its one Grandmaster profile. September cohort counts and descriptive findings below must not be carried forward without recalculation.
+
+Read-only job checks before and after export found successful ingestion run `1011929478031051` and dbt run `85473963130053`, with no active runs or changes to their identities, profile count/dates or scenario metadata during export. The configured build scope was `dbt deps` and `dbt build`. Those run responses did not expose a resolved Git commit; the local exporter revision was `e72cd63`.
+
+All 13 candidate datasets passed public contracts, privacy checks and manifest row/column/size checks. Additional checks covered active-pool membership counts, share denominators, HHI and scenario consistency. All six story pages plus specialization/rank, character, population-estimate and business explorer pages rendered against the candidate. Six snapshot/preference tests passed against the installed files. The previous serving package was backed up, and replacement files were verified by hash before the local preview restarted. A new analyst bundle records the refreshed snapshot and the unchanged rank reference; its generic reference-scope metadata remains an interpretation limit.
+
+## Historical serving snapshot: September 29, 2026
+
+The previous manifest recorded export time **October 10, 2026, 23:37:07 UTC**. Player profiles were as of **September 29, 2026**, with underlying player snapshots dated September 16–29. These are different dates with different meanings.
 
 Parquet metadata was checked locally against all 13 manifest entries on October 19, 2026: row counts and column counts matched. The [data-model reference](data-models.md#serving-datasets) supplies the complete grain definitions.
 
@@ -46,7 +72,7 @@ The manifest is an inventory, not a claim that all files were refreshed atomical
 
 ## Cohort counts branch by question
 
-The reviewed analysis of this frozen export distinguishes the following cohorts. These counts are historical analytical findings, separate from the directly inspectable Parquet row inventory above; reproduce the corresponding filters before using them for a new release.
+The reviewed analysis of the September 29 export distinguishes the following cohorts. These counts are historical analytical findings; reproduce the corresponding filters against the current snapshot before using them for a new release.
 
 | Cohort | People | Interpretation |
 |---|---:|---|
@@ -59,7 +85,7 @@ The reviewed analysis of this frozen export distinguishes the following cohorts.
 
 These are branches, not successive stages of one conversion funnel. The historical complete period on September 27 contained 3,373 players before outcome filtering, including 2,291 with zero games. The estimated ranked-mastery-share cohort also contained 1,074 people but differed from the latest LP-eligible cohort by eight people in each direction. Counts alone are insufficient evidence of shared membership, particularly after public identifiers are removed.
 
-All frozen profiles had fewer than 30 tracked days, with maximum 13. Recent pools were gain-weighted for 3,374 players, equal-membership-weighted for 21,616, and absent for 12,182. This helps explain the current recent-activity measures; it does not describe the future behavior of the mature 30-day rule.
+All September 29 profiles had fewer than 30 tracked days, with maximum 13. Recent pools were gain-weighted for 3,374 players, equal-membership-weighted for 21,616, and absent for 12,182. This explains that historical snapshot's recent-activity measures, rather than the refreshed cohort's mixture of short-history and mature membership rules.
 
 ## Frozen transaction scenario
 
