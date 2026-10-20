@@ -3,7 +3,7 @@
 from app_core.i18n import language_selector, st, t
 from app_core.story import STORY_PAGES
 
-st.set_page_config(page_title="League Specialization · the story behind the data", page_icon="◈", layout="wide")
+st.set_page_config(page_title="players-as-customers-pipeline", page_icon="◈", layout="wide")
 st.session_state["_dashboard_app_shell"] = True
 language_selector()
 

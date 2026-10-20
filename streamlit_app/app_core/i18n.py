@@ -20,6 +20,7 @@ from streamlit.delta_generator import DeltaGenerator
 
 LOCALE_DIR = Path(__file__).resolve().parents[1] / "locales"
 LANGUAGE_KEY = "dashboard_language"
+TERMINOLOGY_KEY = "story_terminology"
 _SLOT = re.compile(r"\{p\d+\}")
 
 
@@ -101,6 +102,41 @@ def language_selector() -> None:
             t("Language"), ["EN", "PT"],
             key="_dashboard_language_choice", on_change=select,
         )
+
+
+def story_text(plain: str, league: str | None = None, **parameters: Any) -> str:
+    """Choose an explicit story message before translation; analytical values stay canonical."""
+    message = league if league and _st.session_state.get(TERMINOLOGY_KEY) == "League" else plain
+    return t(message, **parameters)
+
+
+def focus_label(playstyle: str) -> str:
+    """Describe the existing classifications; terminology never changes membership."""
+    labels = {
+        "specialist": ("Focus on one character", "Specialist"),
+        "multispecialist": ("Focus on a few characters", "Multi-specialist"),
+        "versatile": ("Broader character mix", "Versatile"),
+        "generalist": ("Wide character variety", "Generalist"),
+    }
+    return story_text(*labels[playstyle])
+
+
+def terminology_selector() -> None:
+    """Keep the presentation preference when its widget is absent on another page."""
+    def select() -> None:
+        _st.session_state[TERMINOLOGY_KEY] = _st.session_state.get("_story_terminology_choice") or "Plain"
+        _st.session_state["_story_terminology_choice"] = _st.session_state[TERMINOLOGY_KEY]
+
+    _st.session_state.setdefault(TERMINOLOGY_KEY, "Plain")
+    if "_story_terminology_choice" not in _st.session_state:
+        _st.session_state["_story_terminology_choice"] = _st.session_state[TERMINOLOGY_KEY]
+    labels = {"Plain": t("Plain language"), "League": t("League terms")}
+    _st.segmented_control(
+        t("Terminology"), ["Plain", "League"], key="_story_terminology_choice",
+        format_func=labels.__getitem__,
+        on_change=select,
+        help=t("Familiar with League of Legends? Change the wording without changing the data."),
+    )
 
 
 def localize_frame(frame: pd.DataFrame) -> pd.DataFrame:

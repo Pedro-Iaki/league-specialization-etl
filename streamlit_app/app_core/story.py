@@ -7,23 +7,28 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-from app_core.analysis import climber_playstyle_composition, mastery_normalized_composition
 from app_core.charts import style_figure
-from app_core.config import BLUE, GOLD, MIN_SUPPORT_PLAYERS, TIER_ORDER
+from app_core.config import BLUE, GOLD, MIN_SUPPORT_PLAYERS, PLAYSTYLE_COLORS, PLAYSTYLE_ORDER
 from app_core.data import DashboardDataError, data_freshness, load_dataset, load_manifest, load_optional_dataset
-from app_core.experience import experience_bands, experience_cells, experience_chart, experience_display
-from app_core.i18n import st, t
+from app_core.experience import (
+    ASSUMED_MATCH_MINUTES, ASSUMED_POINTS_PER_MATCH, TIER_GROUP_MAP, experience_bands,
+    experience_display, experience_focus_cells, experience_overall, experience_ranges, role_focus_cells,
+)
+from app_core.i18n import focus_label, st, story_text, t, terminology_selector
 from app_core.story_analysis import (
     CASE_GROUPS, coverage_counts, champion_case_comparison, detectable_gap, growth_uncertainty,
 )
-from app_core.story_charts import case_chart, coverage_chart, growth_interval_chart, story_lines
+from app_core.story_charts import (
+    BAND_COLORS, audience_band_chart, audience_composition_chart, audience_role_chart,
+    case_chart, coverage_chart, growth_interval_chart,
+)
 from app_core.ui import data_source_caption, render_load_error, setup_page
 
 REPOSITORY = "https://github.com/Pedro-Iaki/league-specialization-etl"
 STORY_PAGES = [
     ("story/01_pipeline.py", "Pipeline and data"),
     ("story/02_transactions.py", "What transactions would add"),
-    ("story/03_tiers.py", "Specialization across tiers"),
+    ("story/03_tiers.py", "Comparing audiences"),
     ("story/04_growth.py", "Specialization and growth"),
     ("story/05_champions.py", "Champion case studies"),
     ("story/06_findings.py", "Findings and limits"),
@@ -33,20 +38,40 @@ STORY_CSS = """
 <style>
 .stApp { background: #080f19; }
 h1, h2, h3, .story-heading { font-family: "Segoe UI", system-ui, sans-serif; }
-.block-container { max-width: 1280px; padding-top: 4rem; }
+.block-container { max-width: 1200px; padding-top: 3.5rem; padding-bottom: 3rem; }
 [data-testid="stSidebar"] { background: #0b1725; }
 [data-testid="stSidebarNav"] { max-height: none; }
 [data-testid="stSidebarNav"] ul { padding-top: 1rem; }
 [data-testid="stNavSectionHeader"] p { color: #e2b344; font-size: .72rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
-.story-progress { color: #e2b344; font-size: .75rem; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; margin: .4rem 0 1.2rem; }
-.story-heading { font-size: clamp(2rem, 3.5vw, 3.3rem); font-weight: 750; line-height: 1.16; max-width: 1040px; margin: 0 0 1rem; color: #f5f7fb; }
-.story-deck { color: #b7c4d4; font-size: 1.05rem; line-height: 1.8; max-width: 1000px; margin-bottom: 1.5rem; }
+.story-progress { color: #e2b344; font-size: .75rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; margin: .5rem 0 1rem; }
+[data-testid="stMarkdownContainer"] .story-heading { font-size: clamp(1.85rem, 3.3vw, 2.75rem); font-weight: 700; line-height: 1.16; max-width: 28ch; padding: 0; margin: 0 0 1rem; color: #f5f7fb; letter-spacing: -.025em; }
+[data-testid="stMarkdownContainer"] .story-deck { color: #c2cedc; font-size: 1.1rem; line-height: 1.75; max-width: 72ch; margin-bottom: 1rem; }
+[data-testid="stMarkdownContainer"] .story-prose { color: #c2cedc; font-size: 1.05rem; line-height: 1.75; max-width: 75ch; margin: .25rem 0 1rem; }
+[data-testid="stMarkdownContainer"] .story-meta { color: #a8b9cc; font-size: .85rem; line-height: 1.65; margin: .25rem 0 1rem; }
+.story-note { border-left: 3px solid #4ea5d9; padding: .1rem 0 .1rem 1rem; margin: .75rem 0 1.25rem; }
+.story-note p { margin: .3rem 0; }
+.story-brand { font-size: .8rem; color: #a8b9cc; letter-spacing: .03em; margin-bottom: .4rem; }
+[data-testid="stMarkdownContainer"] .story-band-title { color: #e8eef6; font-size: 1rem; font-weight: 650; margin: .5rem 0 0; }
+[data-testid="stMarkdownContainer"] .story-band-range { color: #a8b9cc; font-size: .8rem; line-height: 1.5; margin: .15rem 0 .25rem; }
+.st-key-story-focus [data-testid="stHorizontalBlock"] { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 1rem; }
+.st-key-story-focus [data-testid="stColumn"] { width: 100% !important; min-width: 0 !important; }
+.st-key-story-focus [data-testid="stPlotlyChart"] { border: 0; padding: 0; background: transparent; }
+.st-key-story-focus [data-testid="stColumn"] > div { border-top: 1px solid #30435a; }
+.story-band-swatch { display: inline-block; width: 1.4rem; height: .5rem; margin-right: .35rem; vertical-align: middle; }
+.story-focus-legend { display: flex; flex-wrap: wrap; gap: .65rem 1.2rem; margin: .5rem 0; font-size: .85rem; color: #c2cedc; }
+.story-focus-swatch { display: inline-block; width: .7rem; height: .7rem; margin-right: .4rem; border-radius: 2px; }
+.st-key-story-band-key [data-testid="stHorizontalBlock"] { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: .75rem; }
+.st-key-story-band-key [data-testid="stColumn"] { width: 100% !important; min-width: 0 !important; }
+.st-key-story-methods [data-testid="stMarkdownContainer"] p { max-width: 75ch; line-height: 1.7; }
+.st-key-story-footer { margin-top: 1.5rem; }
+.st-key-story-footer button { min-height: 3rem; }
+.block-container a:focus-visible, .block-container button:focus-visible { outline: 3px solid #e2b344; outline-offset: 3px; }
 .story-card { background: #0e1b2b; border: 1px solid #253951; border-radius: 12px; padding: 1.25rem; margin: .3rem 0 1rem; }
 .story-card h2 { color: #e8eef6; font-size: 1.3rem; line-height: 1.4; margin: .65rem 0; padding: 0; }
 .story-card p { color: #b7c4d4; line-height: 1.7; margin: .45rem 0 0; }
 .story-kicker { color: #e2b344; text-transform: uppercase; font-size: .72rem; font-weight: 750; letter-spacing: .12em; }
 .story-hypothesis { border-color: #7b6228; }
-.story-section { margin: 1.5rem 0 .2rem; }
+.story-section { margin: 2rem 0 .3rem; }
 .story-status { display: inline-block; color: #b7c4d4; border: 1px solid #385477; border-radius: 20px; padding: .2rem .6rem; margin: 0 0 .5rem .5rem; font-size: .68rem; letter-spacing: .07em; }
 .story-flow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1.2rem; padding: 0; list-style: none; margin: 1rem 0; }
 .story-flow li { position: relative; padding: 1rem .8rem; border: 1px solid #253951; border-radius: 10px; background: #0b1725; }
@@ -57,7 +82,7 @@ h1, h2, h3, .story-heading { font-family: "Segoe UI", system-ui, sans-serif; }
 [data-testid="stPlotlyChart"] { background: #0e1b2b; border: 1px solid #253951; border-radius: 12px; padding: .35rem; }
 [data-testid="stBaseButton-primary"] { color: #0b1725; background: #e2b344; border-color: #e2b344; font-weight: 700; }
 @media (max-width: 900px) { .story-flow { grid-template-columns: repeat(3, 1fr); } .story-flow li:nth-child(3)::after { content: none; } }
-@media (max-width: 540px) { .story-flow { grid-template-columns: repeat(2, 1fr); } .story-flow li:nth-child(3)::after { content: "→"; } .story-flow li:nth-child(2n)::after { content: none; } .story-heading { font-size: 2rem; } }
+@media (max-width: 540px) { .story-flow { grid-template-columns: repeat(2, 1fr); } .story-flow li:nth-child(3)::after { content: "→"; } .story-flow li:nth-child(2n)::after { content: none; } .block-container { padding-left: 1rem; padding-right: 1rem; } [data-testid="stMarkdownContainer"] .story-deck, [data-testid="stMarkdownContainer"] .story-prose { font-size: 1rem; } }
 </style>
 """
 
@@ -135,47 +160,137 @@ def transactions_page() -> None:
 
 
 def tiers_page() -> None:
-    players = story_start(3, "Lifetime play bends across the ladder. Recent play depends on the definition.",
-                          "A specialist concentrates mastery on a narrow champion pool. Multi-specialists, versatile players and generalists spread it progressively wider. These are modeled playstyles, not skill scores.")
-    st.caption("All story charts describe the collected sample, without population weights. Tiers were sampled roughly evenly; this is not the composition of the real ranked ladder.")
-    story_section("Lifetime play", "Specialists are more represented at both ends", "Calculated from snapshot")
-    lifetime = mastery_normalized_composition(players, "Lifetime")
-    left, right = st.columns([1.2, 1], gap="medium")
-    with left:
-        selected = lifetime.loc[lifetime["playstyle"].isin(["specialist", "multispecialist"])]
-        st.plotly_chart(story_lines(selected, "tier", "relative_share", "playstyle", TIER_ORDER, ratio=True), width="stretch")
-    with right:
-        story_card("How to read it", "1× means the expected share", "The baseline interpolates the pooled playstyle share across eight lifetime-mastery bands at each tier's median mastery. It adjusts for median experience, not the full experience distribution. Points with fewer than three players of that style are omitted.")
-        specialists = lifetime.loc[lifetime["playstyle"].eq("specialist")].set_index("tier")
-        if {"IRON", "DIAMOND"}.issubset(specialists.index):
-            st.markdown(t("Iron specialists are {p0}× the mastery-expected share; Diamond specialists are {p1}×.",
-                          p0=f"{specialists.loc['IRON', 'relative_share']:.1f}",
-                          p1=f"{specialists.loc['DIAMOND', 'relative_share']:.1f}"))
-        st.markdown("This is a cross-sectional pattern: it shows who sits where, not who moves up. The experience comparison below checks the pattern within common mastery bands.")
-    story_section("Recent play", "Three selections answer different questions", "Calculated from snapshot")
-    views = []
-    for basis in ["Recent activity", "Recent activity with rank follow-up"]:
-        frame = mastery_normalized_composition(players, basis)
-        frame = frame.loc[frame["playstyle"].eq("specialist")].assign(view=basis)
-        views.append(frame)
-    climbers = climber_playstyle_composition(players, "Recent activity", normalized=True)
-    views.append(climbers.loc[climbers["playstyle"].eq("specialist")].assign(view="Positive-LP subset"))
-    left, right = st.columns([1.2, 1], gap="medium")
-    with left:
-        st.plotly_chart(story_lines(pd.concat(views), "tier", "relative_share", "view", TIER_ORDER, ratio=True), width="stretch")
-    with right:
-        story_card("Different denominators", "Follow-up is not a new pool measurement", "Recent activity is an inferred pool with thresholds and a short-history fallback, not a literal 60-day activity census. Rank follow-up selects available latest-period LP deltas of any sign and keeps the same recent pool. Positive-LP selects net climbers.")
-        st.caption("Recent and follow-up views each use their own pooled mastery baseline. The positive-LP view uses all recent-activity profiles as its reference. These selections cannot be read as interchangeable estimates of a specialization effect.")
-    story_section("Experience check", "Does the shape survive within mastery bands?", "Calculated from snapshot")
-    experience = experience_display(experience_cells(experience_bands(players)), MIN_SUPPORT_PLAYERS)
-    left, right = st.columns([1.2, 1], gap="medium")
-    with left:
-        st.plotly_chart(experience_chart(experience, lines=True), width="stretch")
-    with right:
-        story_card("A stronger descriptive check", "Compare similar accumulated mastery", "Five equal-count bands are assigned across the pooled sample, with stable source order breaking mastery ties. Lines show specialist share and 95% Wilson intervals within each tier group, with at least three profiles per cell. This remains descriptive.")
-    story_card("Business read · hypothesis to test", "Different players may need different practice tools", "Onboarding for players with narrow early pools and deep single-champion practice for experienced specialists are hypotheses to test, not product recommendations established by this snapshot.", hypothesis=True)
-    story_card("Caveat", "A profile is not a trajectory", "Mastery is a proxy for accumulated experience. Master has very few profiles. Cross-sectional differences cannot show that a playstyle causes climbing.")
+    terminology_selector()
+    players = story_start(3, story_text("Character focus separates audiences.", "Playstyles separate audiences."),
+        story_text(
+            "How do audiences differ in the breadth of their character interests, across competitive rank and accumulated activity? Compare the complete focus mix, then see how its rank profile changes across activity bands.",
+            "How does playstyle composition differ across tiers and lifetime mastery? Compare all four playstyles, then see how their tier profiles change across mastery bands.",
+        ))
+    banded = experience_bands(players)
+    eligible = banded.loc[banded["tier"].isin(TIER_GROUP_MAP)]
+    cells = experience_focus_cells(banded)
+    overall = experience_overall(cells)
+    supported = experience_display(cells, MIN_SUPPORT_PLAYERS)
+    ranges = experience_ranges(banded)
+    story_prose(t("Collected sample · {p0} classified profiles · Lifetime context · Equal weight per profile",
+                  p0=f"{len(eligible):,}"), css="story-meta")
+    story_prose(story_text(
+        "Character focus describes how activity is concentrated among preferred characters. The four profiles range from focus on one character, through a few characters and a broader mix, to wide variety. They are modeled patterns, not fixed character-count cutoffs or measures of loyalty over time.",
+        "Specialists, multi-specialists, versatile players and generalists describe progressively broader mastery distributions. These are modeled playstyles, not fixed champion-count cutoffs or measures of loyalty over time.",
+    ))
+
+    story_section("01 · Overall sample", "Start with the complete audience mix")
+    story_prose(story_text(
+        "Each bar shows all four focus groups within a rank group. Its segments sum to 100%; the count beside it is the full denominator. These shares describe the collected sample.",
+        "Each bar shows all four playstyles within a tier group. Its segments sum to 100%; the count beside it is the full denominator. These shares describe the collected sample.",
+    ))
+    if overall["n"].ge(MIN_SUPPORT_PLAYERS).any():
+        legend = "".join(f'<span><span class="story-focus-swatch" style="background:{PLAYSTYLE_COLORS[style]}"></span>{escape(focus_label(style))}</span>' for style in PLAYSTYLE_ORDER)
+        st.markdown(f'<div class="story-focus-legend">{legend}</div>', unsafe_allow_html=True)
+        st.plotly_chart(audience_composition_chart(overall), key="story-audience-overall", width="stretch",
+                       config={"displayModeBar": False})
+    else:
+        st.info("This snapshot has too few classified profiles for the overall comparison. Counts remain available below.")
+
+    story_section(story_text("02 · Within activity bands", "02 · Within mastery bands"),
+                  story_text("Compare how each focus group changes across ranks", "Compare each playstyle across tiers"))
+    story_prose(story_text(
+        "Five approximately equal-sized activity-score bands run from lowest to highest accumulated activity. Each panel follows one focus group across ranks; its five lines compare the bands. Vertical scales differ between panels so the smaller groups remain readable.",
+        "Five approximately equal-sized mastery bands run from lowest to highest lifetime mastery. Each panel follows one playstyle across tiers; its five lines compare the bands. Vertical scales differ between panels so the smaller groups remain readable.",
+    ))
+    with st.container(key="story-band-key"):
+        for band, column in enumerate(st.columns(5, gap="small"), 1):
+            with column:
+                label = story_text("Activity band {p0}", "Mastery band {p0}", p0=band)
+                color = BAND_COLORS[band - 1]
+                dash = ["none", "7 4", "2 4", "7 4 2 4", "12 4"][band - 1]
+                st.markdown(f'<div class="story-band-title"><svg class="story-band-swatch" viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" stroke="{color}" stroke-width="3" stroke-dasharray="{dash}"/></svg>{escape(label)}</div>', unsafe_allow_html=True)
+                row = ranges.loc[band]
+                if pd.notna(row["low"]):
+                    story_prose(t("≈ {p0}–{p1} hour-equivalents", p0=f"{row.hours_low:,.0f}", p1=f"{row.hours_high:,.0f}"), css="story-band-range")
+                    story_prose(story_text("{p0}–{p1} activity score", "{p0}–{p1} mastery points",
+                                          p0=f"{row.low:,.0f}", p1=f"{row.high:,.0f}"), css="story-band-range")
+                else:
+                    story_prose("No profiles", css="story-band-range")
+    story_prose(t("Hour-equivalents assume {p0} points per match and {p1} minutes per match: score / 1,200. They provide a rough sense of scale; actual hours, account age and time to reach a rank are unobserved.",
+                  p0=ASSUMED_POINTS_PER_MATCH, p1=ASSUMED_MATCH_MINUTES), css="story-meta")
+    if supported["share"].notna().any():
+        intervals = st.toggle("Show 95% uncertainty intervals", key="story_focus_intervals")
+        with st.container(key="story-focus"):
+            for style, column in zip(PLAYSTYLE_ORDER, st.columns(4, gap="medium"), strict=True):
+                with column:
+                    story_prose(focus_label(style), css="story-band-title")
+                    st.plotly_chart(audience_band_chart(supported.loc[supported["playstyle"].eq(style)], intervals=intervals),
+                                    key=f"story-audience-{style}", width="stretch", config={"displayModeBar": False})
+        story_prose("Hover for group counts, denominators and 95% Wilson intervals. Connected ranks help compare shapes; they do not track people moving between ranks. Missing estimates break the lines.", css="story-meta")
+    else:
+        st.info("This snapshot has too few classified profiles for the banded comparison. Counts remain available below.")
+
+    story_section("03 · Audience implications", "Read the whole composition")
+    last = supported.loc[supported["mastery_band"].eq(5)].set_index(["tier_group", "playstyle"])
+    ends = [last.loc[(rank, style), "share"] for style in ["specialist", "generalist"] for rank in ["Iron-Silver", "Diamond+"]]
+    if all(pd.notna(value) for value in ends):
+        story_prose(story_text(
+            "In the highest activity band, focus on one character represents {p0} in Iron–Silver and {p1} in Diamond+. Wide character variety represents {p2} and {p3}, respectively. A single focus group would hide that second comparison.",
+            "In the highest mastery band, specialists represent {p0} in Iron–Silver and {p1} in Diamond+. Generalists represent {p2} and {p3}, respectively. A single playstyle would hide that second comparison.",
+            **{f"p{i}": f"{value:.1%}" for i, value in enumerate(ends)},
+        ))
+    story_prose("These audience descriptions can guide questions about character-specific content, broader discovery and different onboarding needs. Engagement or purchase outcomes would be needed to establish whether those distinctions are useful to the business.")
+    story_prose(story_text(
+        "The charts describe focus composition within rank groups. They do not estimate the chance of reaching a rank, or show that focusing on fewer characters makes people climb faster. Different game modes and growing interests are possible explanations to investigate; mode histories are not measured here.",
+        "The charts describe playstyle composition within tiers. They do not estimate the chance of reaching a tier, or show that specialization makes players climb faster. Different game modes and growing interests are possible explanations to investigate; mode histories are not measured here.",
+    ), css="story-prose story-note")
+
+    with st.expander("Does inferred role add context?"):
+        roles = role_focus_cells(banded)
+        unknown = int(roles.loc[roles["main_role"].eq("Unknown role"), "members"].sum())
+        st.markdown(story_text(
+            "Role is inferred from recently played characters, rather than directly observed lane usage. This is recent context alongside Lifetime focus; it is not another Lifetime measurement. Each row shows the focus mix within that role, without holding rank or activity constant.",
+            "Role is inferred from recently played champions, rather than directly observed lane usage. This is recent context alongside Lifetime playstyle; it is not another Lifetime measurement. Each row shows the playstyle mix within that role, without holding tier or mastery constant.",
+        ))
+        st.caption(t("Unknown role: {p0} profiles. They remain a separate row instead of disappearing from the audience.", p0=f"{unknown:,}"))
+        if roles["n"].ge(MIN_SUPPORT_PLAYERS).any():
+            st.plotly_chart(audience_role_chart(roles), key="story-audience-roles", width="stretch", config={"displayModeBar": False})
+            st.caption("Percentages are within each role; colors use the same 0–100% scale.")
+        st.dataframe(focus_table(roles), hide_index=True, width="stretch")
+
+    with st.container(key="story-methods"):
+        with st.expander("How this comparison is calculated"):
+            st.markdown(story_text(
+                "Bands are formed across classified Lifetime profiles with a finite, nonnegative activity score, before splitting by rank. Stable source order breaks ties, so equal scores can cross a band boundary. The overall chart pools those same band counts.",
+                "Bands are formed across classified Lifetime profiles with finite, nonnegative mastery, before splitting by tier. Stable source order breaks ties, so equal mastery scores can cross a band boundary. The overall chart pools those same band counts.",
+            ))
+            st.markdown(t("Shares use all classified profiles in each cell as the denominator. Cells with fewer than {p0} profiles keep their counts but do not show an estimate. A supported zero share remains zero. The four focus counts sum to the denominator, which repeats on their four table rows.", p0=MIN_SUPPORT_PLAYERS))
+            st.markdown("The banded charts use 95% Wilson intervals for unweighted proportions. These are individual intervals, not simultaneous tests of every difference. No population weights or median-based normalization are applied.")
+            st.markdown(story_text(
+                "Diamond+ combines Diamond and Master. This comparison contains {p0} Master profiles; it makes no separate Master claim. The collected rank mix is not representative of the ranked population.",
+                "Diamond+ combines Diamond and Master. This comparison contains {p0} Master profiles; it makes no separate Master claim. The collected tier mix is not representative of the ranked population.",
+                p0=f"{int(eligible['tier'].eq('MASTER').sum()):,}",
+            ))
+            st.markdown("The hour conversion is an illustrative assumption, not a calibrated playtime model. Points earned per match and match duration can vary between people and game modes. Rescaling the score changes neither the bands nor the evidence about rank progression.")
+            st.link_button("Metrics and methods", f"{REPOSITORY}/blob/main/docs/reference/metrics-and-methods.md")
+            st.link_button("Understanding the analysis", f"{REPOSITORY}/blob/main/docs/wiki/understanding-the-analysis.md")
+        with st.expander("Inspect the counts and intervals"):
+            st.dataframe(focus_table(cells), hide_index=True, width="stretch")
+    story_prose(story_text(
+        "Audience profiles suggest questions to investigate. Measuring improvement requires observations over time.",
+        "Playstyle profiles suggest questions to investigate. Measuring climbing requires observations over time.",
+    ))
     story_footer(3, "pages/1_Overall_Analysis.py", "Population explorer")
+
+
+def focus_table(cells: pd.DataFrame) -> pd.DataFrame:
+    """Present counts and intervals without changing canonical classifications or support."""
+    display = experience_display(cells, MIN_SUPPORT_PLAYERS)
+    display["playstyle"] = display["playstyle"].map(focus_label)
+    for field in ["share", "lower", "upper"]:
+        display[field] = display[field].map(lambda value: f"{value:.2%}" if pd.notna(value) else "Not shown")
+    return display.drop(columns=["omitted", "count_label"]).rename(columns={
+        "mastery_band": story_text("Activity band", "Mastery band"), "tier_group": story_text("Rank group", "Tier group"),
+        "playstyle": story_text("Character focus", "Playstyle"), "main_role": "Inferred role",
+        "n": "Profiles in group", "members": "Profiles in focus group", "share": "Share of profiles",
+        "lower": "95% lower", "upper": "95% upper",
+    })
 
 
 def growth_page() -> None:
@@ -297,16 +412,27 @@ def findings_page() -> None:
 
 
 def story_start(number: int, title: str, deck: str) -> pd.DataFrame:
-    setup_page(STORY_PAGES[number - 1][1])
+    setup_page(STORY_PAGES[number - 1][1], project_name="players-as-customers-pipeline")
     st.markdown(STORY_CSS, unsafe_allow_html=True)
-    progress = t("The story · {p0} of 6", p0=number)
+    st.markdown('<div class="story-brand">players-as-customers-pipeline</div>', unsafe_allow_html=True)
+    progress = t("The story · {p0} of 6", p0=number) + " · " + t(STORY_PAGES[number - 1][1])
     st.markdown(f'<div class="story-progress">{escape(progress)}</div><h1 class="story-heading">{escape(t(title))}</h1><p class="story-deck">{escape(t(deck))}</p>', unsafe_allow_html=True)
     try:
         players = load_dataset("players").drop(columns="population_weight", errors="ignore")
     except DashboardDataError as error:
         render_load_error(error)
     data_source_caption(data_freshness([players]))
+    if number == 3:
+        manifest = load_manifest()
+        exported = manifest.get("exported_at_utc")
+        exported = pd.Timestamp(exported).strftime("%Y-%m-%d") if exported else t("Not recorded")
+        story_prose(t("Profiles as of {p0} · Exported {p1} · Frozen snapshot",
+                      p0=data_freshness([players]), p1=exported), css="story-meta")
     return players
+
+
+def story_prose(message: str, *, css: str = "story-prose") -> None:
+    st.markdown(f'<p class="{css}">{escape(t(message))}</p>', unsafe_allow_html=True)
 
 
 def story_section(kicker: str, title: str, status: str | None = None) -> None:
@@ -333,13 +459,18 @@ def resource_links(*, contact: bool = False) -> None:
 
 
 def story_footer(number: int, explorer: str | None = None, explorer_label: str = "") -> None:
-    st.divider()
-    left, right = st.columns([1, 1], gap="medium")
-    if explorer:
-        left.page_link(explorer, label=t("Explore this yourself → {p0}", p0=t(explorer_label)))
-    else:
-        left.link_button("View the repository", REPOSITORY)
-    destination, label = STORY_PAGES[number % len(STORY_PAGES)]
-    if right.button("Back to the start" if number == 6 else t("Next → {p0}", p0=t(label)),
-                    key=f"story_next_{number}", type="primary", width="stretch"):
-        st.switch_page(destination)
+    with st.container(key="story-footer"):
+        st.divider()
+        left, right = st.columns([1, 1], gap="medium")
+        if number > 1:
+            previous, previous_label = STORY_PAGES[number - 2]
+            if left.button(t("← Previous · {p0}", p0=t(previous_label)), key=f"story_previous_{number}", width="stretch"):
+                st.switch_page(previous)
+        else:
+            left.link_button("View the repository", REPOSITORY)
+        destination, label = STORY_PAGES[number % len(STORY_PAGES)]
+        if right.button("Back to the start" if number == 6 else t("Next → {p0}", p0=t(label)),
+                        key=f"story_next_{number}", type="primary", width="stretch"):
+            st.switch_page(destination)
+        if explorer:
+            st.page_link(explorer, label=t("Explore this yourself → {p0}", p0=t(explorer_label)))

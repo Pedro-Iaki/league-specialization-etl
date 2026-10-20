@@ -52,7 +52,7 @@ Start with **The story**. Its current sequence is:
 
 1. **Pipeline and data** — source, pipeline and evidence context.
 2. **What transactions would add** — the missing real purchase-data opportunity and the generated-source contract.
-3. **Specialization across tiers** — character focus across rank groups.
+3. **Comparing audiences** — all four character-focus groups, with overall stacked bars, rank profiles across activity bands, counts, optional uncertainty intervals and expandable inferred-role context.
 4. **Specialization and growth** — observed competitive outcomes and their limits.
 5. **Champion case studies** — character-audience comparisons.
 6. **Findings and limits** — interpretation and boundaries.
@@ -70,7 +70,9 @@ Use **Explore the data** for a more detailed question:
 | Population Estimates | Sample/adjusted comparisons, support diagnostics, standardization and downloads. |
 | Business sample | Generated spending, simulated tenure, cosmetic acquisition and discounts. |
 
-The **EN / PT** language control supports English and Brazilian Portuguese. Some interface labels retain League terminology: champion means character, tier means rank, and mastery is a cumulative activity score. That score is neither hours nor an exact match count. A separate plain-language/League terminology switch is planned, rather than an existing control.
+The **EN / PT** language control supports English and Brazilian Portuguese. **Comparing audiences** also has an independent **Plain language / League terms** control. Both preferences survive story navigation; changing terminology changes wording, not the data. Other pages retain their current terminology while the story revamp continues: champion means character, tier means rank, and mastery is a cumulative activity score. That score is neither hours nor an exact match count.
+
+Page 3 adds approximate hour-equivalents alongside activity scores: 600 points per match and 30 minutes per match imply `score / 1,200`. This is an illustrative conversion, not measured playtime or time to reach a rank. Its four line panels use different vertical scales, disclosed above the charts; the five activity bands retain consistent colors and line patterns. **Show 95% uncertainty intervals** changes the presentation without changing the cohort or estimates. The expandable role comparison includes unknown roles and uses recent inferred role alongside Lifetime focus.
 
 ## 4. Read dates and support alongside results
 
