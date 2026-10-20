@@ -11,7 +11,7 @@ from streamlit.testing.v1 import AppTest
 
 from app_core.config import PLAYSTYLE_ORDER
 from app_core.data import DashboardDataError, load_dataset
-from app_core.experience import experience_bands, experience_focus_cells, experience_overall
+from app_core.experience import TIER_GROUPS, experience_bands, experience_focus_cells, experience_overall
 from app_core.i18n import LANGUAGE_KEY, TERMINOLOGY_KEY
 from app_core.story import STORY_PAGES
 from app_core.story_analysis import (
@@ -106,7 +106,31 @@ def test_audience_presentation_preserves_counts_intervals_and_preferences():
             assert trace["y"] == original["y"]
             assert trace["error_y"]["visible"] is True
 
+    app.toggle(key="story_focus_bands_on_x").set_value(True).run()
+    assert not app.exception
+    inverted = [json.loads(item.proto.spec) for item in app.get("plotly_chart")]
+    assert inverted[0]["data"] == charts[0]["data"]
+    assert inverted[-1]["data"] == charts[-1]["data"]
+    for style, before, panel in zip(PLAYSTYLE_ORDER, with_intervals, inverted[1:5], strict=True):
+        assert panel["layout"]["xaxis"]["tickvals"] == [1, 2, 3, 4, 5]
+        assert panel["layout"]["xaxis"]["title"]["text"].startswith("Faixa de atividade")
+        assert panel["layout"]["yaxis"]["range"] == before["layout"]["yaxis"]["range"]
+        for rank, trace in zip(TIER_GROUPS, panel["data"], strict=True):
+            expected = cells.loc[cells["playstyle"].eq(style) & cells["tier_group"].eq(rank)]
+            assert trace["y"] == pytest.approx(expected["share"].tolist())
+            assert [row[:4] for row in trace["customdata"]] == expected[["members", "n", "lower", "upper"]].to_numpy().tolist()
+            assert trace["error_y"]["visible"] is True
+            assert trace["error_y"]["array"] == pytest.approx((expected["upper"] - expected["share"]).tolist())
+
     app.segmented_control(key="_story_terminology_choice").set_value("League").run()
+    assert app.toggle(key="story_focus_bands_on_x").value is True
+    assert "maestria" in json.loads(app.get("plotly_chart")[1].proto.spec)["layout"]["xaxis"]["title"]["text"]
+    app.segmented_control(key="_dashboard_language_choice").set_value("EN").run()
+    assert app.toggle(key="story_focus_bands_on_x").value is True
+    app.toggle(key="story_focus_bands_on_x").set_value(False).run()
+    assert not app.exception
+    assert len(json.loads(app.get("plotly_chart")[1].proto.spec)["data"]) == 5
+    app.segmented_control(key="_dashboard_language_choice").set_value("PT").run()
     app.button(key="story_previous_3").click().run()
     assert not app.exception
     assert any(button.key == "story_next_2" for button in app.button)

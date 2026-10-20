@@ -110,6 +110,8 @@ The [experience view](../../streamlit_app/app_core/experience.py) uses classifie
 
 Story page 3 uses one line panel per focus group, each with five activity-band lines across ordered rank groups. Vertical scales differ between panels; they remain shared across bands within each panel. Intervals are available in hover details, a display toggle and a count/interval table. The four category counts sum to each cell's denominator, which is repeated on their four table rows.
 
+The axis toggle transposes these same cells into four rank-group lines across the five activity bands. It does not regroup profiles or recalculate denominators. Panel scales and Wilson endpoints are preserved. Band positions are ordinal groups, not equally spaced amounts of playtime or a trajectory of the same people.
+
 For interpretive context, the story also displays `activity score / 1,200` as approximate hour-equivalents, assuming 600 points per match and 30 minutes per match. These assumptions are illustrative, not calibrated estimates of actual match duration or point accrual. Rescaling does not change band membership, measure account age or establish time to reach a rank. Differences between game modes or players can affect both assumptions.
 
 The optional role summary uses the same eligible Lifetime cohort, including an unknown-role row. Role is inferred from recent character history, rather than observed lane usage or a Lifetime role measurement. Its percentages are within each inferred role and are not standardized for rank or activity. Both variables draw on character history, so their relationship should not be described as independent validation of the classification.

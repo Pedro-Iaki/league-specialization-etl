@@ -11,7 +11,7 @@ from app_core.charts import style_figure
 from app_core.config import BLUE, GOLD, MIN_SUPPORT_PLAYERS, PLAYSTYLE_COLORS, PLAYSTYLE_ORDER
 from app_core.data import DashboardDataError, data_freshness, load_dataset, load_manifest, load_optional_dataset
 from app_core.experience import (
-    ASSUMED_MATCH_MINUTES, ASSUMED_POINTS_PER_MATCH, TIER_GROUP_MAP, experience_bands,
+    ASSUMED_MATCH_MINUTES, ASSUMED_POINTS_PER_MATCH, TIER_GROUP_MAP, TIER_GROUPS, experience_bands,
     experience_display, experience_focus_cells, experience_overall, experience_ranges, role_focus_cells,
 )
 from app_core.i18n import focus_label, st, story_text, t, terminology_selector
@@ -19,7 +19,7 @@ from app_core.story_analysis import (
     CASE_GROUPS, coverage_counts, champion_case_comparison, detectable_gap, growth_uncertainty,
 )
 from app_core.story_charts import (
-    BAND_COLORS, audience_band_chart, audience_composition_chart, audience_role_chart,
+    BAND_COLORS, RANK_COLORS, audience_band_chart, audience_composition_chart, audience_role_chart,
     case_chart, coverage_chart, growth_interval_chart,
 )
 from app_core.ui import data_source_caption, render_load_error, setup_page
@@ -193,18 +193,25 @@ def tiers_page() -> None:
         st.info("This snapshot has too few classified profiles for the overall comparison. Counts remain available below.")
 
     story_section(story_text("02 · Within activity bands", "02 · Within mastery bands"),
-                  story_text("Compare how each focus group changes across ranks", "Compare each playstyle across tiers"))
-    story_prose(story_text(
-        "Five approximately equal-sized activity-score bands run from lowest to highest accumulated activity. Each panel follows one focus group across ranks; its five lines compare the bands. Vertical scales differ between panels so the smaller groups remain readable.",
-        "Five approximately equal-sized mastery bands run from lowest to highest lifetime mastery. Each panel follows one playstyle across tiers; its five lines compare the bands. Vertical scales differ between panels so the smaller groups remain readable.",
-    ))
+                  story_text("Compare rank and activity together", "Compare tier and mastery together"))
+    bands_on_x = st.toggle(story_text("Activity bands on the horizontal axis", "Mastery bands on the horizontal axis"),
+                           key="story_focus_bands_on_x")
+    if bands_on_x:
+        story_prose(story_text(
+            "Each panel follows one focus group across five activity bands, from lowest to highest accumulated activity. Its four lines compare rank groups. This is the same comparison with the axis and lines exchanged; vertical scales differ between panels.",
+            "Each panel follows one playstyle across five mastery bands, from lowest to highest lifetime mastery. Its four lines compare tier groups. This is the same comparison with the axis and lines exchanged; vertical scales differ between panels.",
+        ))
+    else:
+        story_prose(story_text(
+            "Five approximately equal-sized activity-score bands run from lowest to highest accumulated activity. Each panel follows one focus group across ranks; its five lines compare the bands. Vertical scales differ between panels so the smaller groups remain readable.",
+            "Five approximately equal-sized mastery bands run from lowest to highest lifetime mastery. Each panel follows one playstyle across tiers; its five lines compare the bands. Vertical scales differ between panels so the smaller groups remain readable.",
+        ))
     with st.container(key="story-band-key"):
         for band, column in enumerate(st.columns(5, gap="small"), 1):
             with column:
                 label = story_text("Activity band {p0}", "Mastery band {p0}", p0=band)
-                color = BAND_COLORS[band - 1]
-                dash = ["none", "7 4", "2 4", "7 4 2 4", "12 4"][band - 1]
-                st.markdown(f'<div class="story-band-title"><svg class="story-band-swatch" viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" stroke="{color}" stroke-width="3" stroke-dasharray="{dash}"/></svg>{escape(label)}</div>', unsafe_allow_html=True)
+                swatch = "" if bands_on_x else story_line_swatch(BAND_COLORS[band - 1], band - 1)
+                st.markdown(f'<div class="story-band-title">{swatch}{escape(label)}</div>', unsafe_allow_html=True)
                 row = ranges.loc[band]
                 if pd.notna(row["low"]):
                     story_prose(t("≈ {p0}–{p1} hour-equivalents", p0=f"{row.hours_low:,.0f}", p1=f"{row.hours_high:,.0f}"), css="story-band-range")
@@ -215,14 +222,21 @@ def tiers_page() -> None:
     story_prose(t("Hour-equivalents assume {p0} points per match and {p1} minutes per match: score / 1,200. They provide a rough sense of scale; actual hours, account age and time to reach a rank are unobserved.",
                   p0=ASSUMED_POINTS_PER_MATCH, p1=ASSUMED_MATCH_MINUTES), css="story-meta")
     if supported["share"].notna().any():
+        if bands_on_x:
+            legend = "".join(f'<span>{story_line_swatch(color, index)}{escape(t(rank))}</span>'
+                             for index, (rank, color) in enumerate(zip(TIER_GROUPS, RANK_COLORS, strict=True)))
+            st.markdown(f'<div class="story-focus-legend">{legend}</div>', unsafe_allow_html=True)
         intervals = st.toggle("Show 95% uncertainty intervals", key="story_focus_intervals")
         with st.container(key="story-focus"):
             for style, column in zip(PLAYSTYLE_ORDER, st.columns(4, gap="medium"), strict=True):
                 with column:
                     story_prose(focus_label(style), css="story-band-title")
-                    st.plotly_chart(audience_band_chart(supported.loc[supported["playstyle"].eq(style)], intervals=intervals),
+                    st.plotly_chart(audience_band_chart(supported.loc[supported["playstyle"].eq(style)], intervals=intervals, bands_on_x=bands_on_x),
                                     key=f"story-audience-{style}", width="stretch", config={"displayModeBar": False})
-        story_prose("Hover for group counts, denominators and 95% Wilson intervals. Connected ranks help compare shapes; they do not track people moving between ranks. Missing estimates break the lines.", css="story-meta")
+        if bands_on_x:
+            story_prose("Hover for group counts, denominators and 95% Wilson intervals. Bands are ordered sample groups, not equally spaced hours or repeated observations of the same people. Missing estimates break the lines.", css="story-meta")
+        else:
+            story_prose("Hover for group counts, denominators and 95% Wilson intervals. Connected ranks help compare shapes; they do not track people moving between ranks. Missing estimates break the lines.", css="story-meta")
     else:
         st.info("This snapshot has too few classified profiles for the banded comparison. Counts remain available below.")
 
@@ -277,6 +291,11 @@ def tiers_page() -> None:
         "Playstyle profiles suggest questions to investigate. Measuring climbing requires observations over time.",
     ))
     story_footer(3, "pages/1_Overall_Analysis.py", "Population explorer")
+
+
+def story_line_swatch(color: str, index: int) -> str:
+    dash = ["none", "7 4", "2 4", "7 4 2 4", "12 4"][index]
+    return f'<svg class="story-band-swatch" viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" stroke="{color}" stroke-width="3" stroke-dasharray="{dash}"/></svg>'
 
 
 def focus_table(cells: pd.DataFrame) -> pd.DataFrame:

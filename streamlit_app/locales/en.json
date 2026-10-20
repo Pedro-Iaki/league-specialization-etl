@@ -1093,5 +1093,13 @@
   "%{y}<br>%{fullData.name}: %{x:.1%}<br>Profiles: %{customdata[0]:,} / %{customdata[1]:,}<extra></extra>": "%{y}<br>%{fullData.name}: %{x:.1%}<br>Profiles: %{customdata[0]:,} / %{customdata[1]:,}<extra></extra>",
   "%{fullData.name}<br>%{customdata[4]}: %{y:.1%}<br>Profiles: %{customdata[0]:,} / %{customdata[1]:,}<br>95% Wilson: %{customdata[2]:.1%}–%{customdata[3]:.1%}<extra></extra>": "%{fullData.name}<br>%{customdata[4]}: %{y:.1%}<br>Profiles: %{customdata[0]:,} / %{customdata[1]:,}<br>95% Wilson: %{customdata[2]:.1%}–%{customdata[3]:.1%}<extra></extra>",
   "%{y}<br>%{customdata[2]}: %{z:.1%}<br>Profiles: %{customdata[0]:,} / %{customdata[1]:,}<extra></extra>": "%{y}<br>%{customdata[2]}: %{z:.1%}<br>Profiles: %{customdata[0]:,} / %{customdata[1]:,}<extra></extra>",
-  "Percentages are within each role; colors use the same 0–100% scale.": "Percentages are within each role; colors use the same 0–100% scale."
+  "Percentages are within each role; colors use the same 0–100% scale.": "Percentages are within each role; colors use the same 0–100% scale.",
+  "Compare rank and activity together": "Compare rank and activity together",
+  "Compare tier and mastery together": "Compare tier and mastery together",
+  "Activity bands on the horizontal axis": "Activity bands on the horizontal axis",
+  "Mastery bands on the horizontal axis": "Mastery bands on the horizontal axis",
+  "Each panel follows one focus group across five activity bands, from lowest to highest accumulated activity. Its four lines compare rank groups. This is the same comparison with the axis and lines exchanged; vertical scales differ between panels.": "Each panel follows one focus group across five activity bands, from lowest to highest accumulated activity. Its four lines compare rank groups. This is the same comparison with the axis and lines exchanged; vertical scales differ between panels.",
+  "Each panel follows one playstyle across five mastery bands, from lowest to highest lifetime mastery. Its four lines compare tier groups. This is the same comparison with the axis and lines exchanged; vertical scales differ between panels.": "Each panel follows one playstyle across five mastery bands, from lowest to highest lifetime mastery. Its four lines compare tier groups. This is the same comparison with the axis and lines exchanged; vertical scales differ between panels.",
+  "Activity band (low to high)": "Activity band (low to high)",
+  "Hover for group counts, denominators and 95% Wilson intervals. Bands are ordered sample groups, not equally spaced hours or repeated observations of the same people. Missing estimates break the lines.": "Hover for group counts, denominators and 95% Wilson intervals. Bands are ordered sample groups, not equally spaced hours or repeated observations of the same people. Missing estimates break the lines."
 }

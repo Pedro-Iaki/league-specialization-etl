@@ -14,7 +14,8 @@ from app_core.i18n import focus_label, story_text, t
 from app_core.story_analysis import CASE_TIER_ORDER
 
 BAND_COLORS = ["#56B4E9", "#2EC4B6", "#E6B84B", "#D98A56", "#CC79A7"]
-BAND_DASHES = ["solid", "dash", "dot", "dashdot", "longdash"]
+RANK_COLORS = ["#8498AF", "#E6B84B", "#2EC4B6", "#56B4E9"]
+PROFILE_DASHES = ["solid", "dash", "dot", "dashdot", "longdash"]
 
 
 def audience_composition_chart(frame: pd.DataFrame) -> go.Figure:
@@ -45,27 +46,34 @@ def audience_composition_chart(frame: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def audience_band_chart(frame: pd.DataFrame, *, intervals: bool = False) -> go.Figure:
-    """One focus group: five band profiles on an ordered rank axis."""
+def audience_band_chart(frame: pd.DataFrame, *, intervals: bool = False, bands_on_x: bool = False) -> go.Figure:
+    """Reorient the same band/rank cells without changing shares, support or intervals."""
+    series = TIER_GROUPS if bands_on_x else range(1, 6)
+    positions = range(1, 6) if bands_on_x else TIER_GROUPS
+    series_field, axis_field = ("tier_group", "mastery_band") if bands_on_x else ("mastery_band", "tier_group")
+    colors = RANK_COLORS if bands_on_x else BAND_COLORS
+    position_labels = [story_text("Activity band {p0}", "Mastery band {p0}", p0=band) for band in positions] if bands_on_x else list(positions)
     fig = go.Figure()
-    for band, (color, dash) in enumerate(zip(BAND_COLORS, BAND_DASHES, strict=True), 1):
-        rows = frame.loc[frame["mastery_band"].eq(band)].set_index("tier_group").reindex(TIER_GROUPS)
+    for index, group in enumerate(series):
+        rows = frame.loc[frame[series_field].eq(group)].set_index(axis_field).reindex(positions)
         share = rows["share"].where(rows["n"].ge(MIN_SUPPORT_PLAYERS))
         fig.add_trace(go.Scatter(
-            x=list(range(4)), y=share.tolist(), mode="lines+markers", connectgaps=False,
-            name=story_text("Activity band {p0}", "Mastery band {p0}", p0=band),
-            line={"color": color, "dash": dash, "width": 2.5}, marker={"size": 7}, showlegend=False,
+            x=list(range(1, 6)) if bands_on_x else list(range(4)), y=share.tolist(), mode="lines+markers", connectgaps=False,
+            name=t(group) if bands_on_x else story_text("Activity band {p0}", "Mastery band {p0}", p0=group),
+            line={"color": colors[index], "dash": PROFILE_DASHES[index], "width": 2.5}, marker={"size": 7}, showlegend=False,
             error_y={"type": "data", "symmetric": False, "array": (rows["upper"] - share).tolist(),
                      "arrayminus": (share - rows["lower"]).tolist(), "visible": intervals, "thickness": 1, "width": 3},
-            customdata=rows[["members", "n", "lower", "upper"]].assign(rank=TIER_GROUPS).to_numpy().tolist(),
+            customdata=rows[["members", "n", "lower", "upper"]].assign(position=position_labels).to_numpy().tolist(),
             hovertemplate="%{fullData.name}<br>%{customdata[4]}: %{y:.1%}<br>Profiles: %{customdata[0]:,} / %{customdata[1]:,}<br>95% Wilson: %{customdata[2]:.1%}–%{customdata[3]:.1%}<extra></extra>",
         ))
     upper = frame.loc[frame["n"].ge(MIN_SUPPORT_PLAYERS), "upper"].max()
     maximum = min(1, max(.1, np.ceil(upper * 10) / 10)) if pd.notna(upper) else .1
     style_figure(fig, height=310)
     fig.update_layout(margin={"l": 48, "r": 12, "t": 16, "b": 75}, hovermode="closest")
-    fig.update_xaxes(tickmode="array", tickvals=list(range(4)), ticktext=[t(group) for group in TIER_GROUPS],
-                     tickangle=-15, tickfont={"size": 10}, title=story_text("Rank", "Tier"), fixedrange=True)
+    fig.update_xaxes(tickmode="array", tickvals=list(range(1, 6)) if bands_on_x else list(range(4)),
+                     ticktext=[str(band) for band in positions] if bands_on_x else [t(group) for group in positions],
+                     tickangle=0 if bands_on_x else -15, tickfont={"size": 10},
+                     title=story_text("Activity band (low to high)", "Mastery band (low to high)") if bands_on_x else story_text("Rank", "Tier"), fixedrange=True)
     fig.update_yaxes(range=[0, maximum], title="Share of profiles", tickformat=".0%", nticks=5, fixedrange=True)
     return fig
 

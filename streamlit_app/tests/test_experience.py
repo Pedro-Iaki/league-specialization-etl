@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from app_core.experience import (
-    experience_bands, experience_cells, experience_chart, experience_display, experience_focus_cells,
+    TIER_GROUPS, experience_bands, experience_cells, experience_chart, experience_display, experience_focus_cells,
     experience_overall, experience_ranges, role_focus_cells,
 )
 from app_core.i18n import LANGUAGE_KEY, localize_figure, t
@@ -127,11 +127,38 @@ def test_focus_charts_keep_supported_zero_and_break_at_sparse_cells():
     assert chart.data[0].connectgaps is False
     assert chart.data[0].error_y.array[0] == pytest.approx(specialist.iloc[0]["upper"])
     assert chart.data[0].customdata[1][:2] == [2, 2]
+    inverted = audience_band_chart(specialist, intervals=True, bands_on_x=True)
+    assert inverted.data[0].y[0] == 0
+    assert pd.isna(inverted.data[0].y[1])
+    assert inverted.data[0].connectgaps is False
+    assert pd.isna(inverted.data[1].y[0])
+    assert inverted.data[1].customdata[0][:2] == [2, 2]
     overall = audience_composition_chart(experience_overall(cells))
     assert overall.data[0].x[0] == 0
     assert pd.isna(overall.data[0].x[1])
     assert any("n = 2" in label for label in overall.layout.yaxis.ticktext)
     assert "Low support" in [annotation.text for annotation in overall.layout.annotations]
+
+
+def test_axis_switch_transposes_the_same_counts_shares_and_intervals():
+    banded = pd.DataFrame([
+        {"tier": tier, "mastery_band": band, "lifetime_playstyle": "specialist" if index < band else "generalist"}
+        for band in range(1, 6) for tier in ["IRON", "GOLD", "EMERALD", "DIAMOND"] for index in range(10)
+    ])
+    cells = experience_focus_cells(banded)
+    frame = cells.loc[cells["playstyle"].eq("specialist")]
+    original = audience_band_chart(frame, intervals=True)
+    inverted = audience_band_chart(frame, intervals=True, bands_on_x=True)
+    assert original.layout.yaxis.range == inverted.layout.yaxis.range
+    assert list(inverted.layout.xaxis.tickvals) == [1, 2, 3, 4, 5]
+    for band_index, band_trace in enumerate(original.data):
+        for rank_index, rank in enumerate(TIER_GROUPS):
+            trace = inverted.data[rank_index]
+            assert trace.name == rank
+            assert trace.y[band_index] == band_trace.y[rank_index]
+            assert trace.customdata[band_index][:4] == band_trace.customdata[rank_index][:4]
+            assert trace.error_y.array[band_index] == band_trace.error_y.array[rank_index]
+            assert trace.error_y.arrayminus[band_index] == band_trace.error_y.arrayminus[rank_index]
 
 
 def test_all_focus_counts_reconcile_and_roles_retain_unknown_profiles():

@@ -74,6 +74,8 @@ The **EN / PT** language control supports English and Brazilian Portuguese. **Co
 
 Page 3 adds approximate hour-equivalents alongside activity scores: 600 points per match and 30 minutes per match imply `score / 1,200`. This is an illustrative conversion, not measured playtime or time to reach a rank. Its four line panels use different vertical scales, disclosed above the charts; the five activity bands retain consistent colors and line patterns. **Show 95% uncertainty intervals** changes the presentation without changing the cohort or estimates. The expandable role comparison includes unknown roles and uses recent inferred role alongside Lifetime focus.
 
+**Activity bands on the horizontal axis** swaps the line-chart orientation: when enabled, four rank-group lines run across the five bands. When disabled, five activity-band lines run across rank groups. The legend and explanations follow the selected view; counts, shares, support and intervals stay the same.
+
 ## 4. Read dates and support alongside results
 
 The app reads files under [streamlit_app/data](../../streamlit_app/data). The [manifest](../../streamlit_app/data/manifest.json) records `exported_at_utc`, dataset counts and available analytical dates, plus generated-scenario metadata. An export date and a profile's analytical date have different meanings, and profiles can use older latest-known observations.
