@@ -60,6 +60,15 @@ Without `--dataset`, all configured queries are attempted. An absent optional bu
 
 Each Parquet replacement uses a temporary file, but the whole export is not atomic. If a later dataset fails, earlier output files can already have changed while the manifest remains unwritten or old. Inspect that candidate; use a new directory for a clean retry.
 
+Freeze the audience reference for that complete candidate before replacing serving files:
+
+```powershell
+.\.venv\Scripts\python.exe streamlit_app/scripts/export_audience_reference.py --snapshot (Join-Path $refreshDir "player_profiles.parquet") --output (Join-Path $refreshDir "audience_reference.json")
+if ($LASTEXITCODE -ne 0) { throw "Audience reference failed; do not replace the serving snapshot." }
+```
+
+This local step creates value-based score cuts once for the paired cohort and records the player-file hash. It neither queries the warehouse nor changes the models. The reference is an additional serving artifact, not a fourteenth warehouse dataset. Page 3 rejects an absent or mismatched reference instead of silently rebucketing a newer snapshot.
+
 ## 4. Check the candidate locally
 
 For a complete replacement of the bundled package, this PowerShell command reads local files, reuses the exporter's public-contract validator and checks the configured dataset set against the manifest:
@@ -67,11 +76,13 @@ For a complete replacement of the bundled package, this PowerShell command reads
 ```powershell
 @'
 import json
+import hashlib
 import sys
 from pathlib import Path
 import pandas as pd
 from streamlit_app.scripts.export_data import validate_public_frame
 from app_core.config import DATASET_FILES
+from app_core.audience import prepare_audience
 
 candidate = Path(sys.argv[1])
 manifest = json.loads((candidate / "manifest.json").read_text(encoding="utf-8"))
@@ -87,7 +98,11 @@ for name, filename in DATASET_FILES.items():
         scenario = item["scenario"]
         assert len(frame) == scenario["player_count"], "Business player count mismatch"
         assert set(frame["scenario_id"]) == {scenario["scenario_id"]}, "Business scenario mismatch"
-print(f"Validated {len(DATASET_FILES)} local datasets")
+reference = json.loads((candidate / "audience_reference.json").read_text(encoding="utf-8"))
+profile_path = candidate / DATASET_FILES["players"]
+assert reference["source_profile_sha256"] == hashlib.sha256(profile_path.read_bytes()).hexdigest()
+prepare_audience(pd.read_parquet(profile_path), reference)
+print(f"Validated {len(DATASET_FILES)} local datasets and their audience reference")
 '@ | .\.venv\Scripts\python.exe -B - $refreshDir
 if ($LASTEXITCODE -ne 0) { throw "Candidate validation failed; keep the current serving snapshot." }
 ```
@@ -128,6 +143,7 @@ $candidateManifest = Get-Content -LiteralPath (Join-Path $refreshDir "manifest.j
 foreach ($entry in $candidateManifest.datasets.PSObject.Properties.Value) {
     Copy-Item -LiteralPath (Join-Path $refreshDir $entry.file) -Destination streamlit_app/data -ErrorAction Stop
 }
+Copy-Item -LiteralPath (Join-Path $refreshDir "audience_reference.json") -Destination streamlit_app/data/audience_reference.json -ErrorAction Stop
 Copy-Item -LiteralPath (Join-Path $refreshDir "manifest.json") -Destination streamlit_app/data/manifest.json -ErrorAction Stop
 ```
 

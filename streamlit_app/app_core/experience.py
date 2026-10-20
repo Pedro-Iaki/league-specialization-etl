@@ -11,8 +11,8 @@ from app_core.config import PLAYSTYLE_COLORS, PLAYSTYLE_ORDER, ROLE_ORDER
 
 TIER_GROUPS = ["Iron-Silver", "Gold-Platinum", "Emerald", "Diamond+"]
 TIER_GROUP_MAP = dict(zip(
-    ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER"],
-    [TIER_GROUPS[0]] * 3 + [TIER_GROUPS[1]] * 2 + [TIER_GROUPS[2]] + [TIER_GROUPS[3]] * 2,
+    ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"],
+    [TIER_GROUPS[0]] * 3 + [TIER_GROUPS[1]] * 2 + [TIER_GROUPS[2]] + [TIER_GROUPS[3]] * 4,
     strict=True,
 ))
 ASSUMED_POINTS_PER_MATCH = 600

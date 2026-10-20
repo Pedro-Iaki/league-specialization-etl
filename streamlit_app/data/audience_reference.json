@@ -1,0 +1,30 @@
+{
+  "definition_version": "active-pool-lifetime-v1",
+  "cohort_id": "audience-paired-20261019-v1",
+  "band_version": "paired-quintiles-20261019-v1",
+  "source_profile_sha256": "048a324d124feb80a106532b6eaccb7158f1a4cc324e0658f9880f1cef94e6e1",
+  "source_profile_count": 37803,
+  "cohort_n": 19722,
+  "as_of_date": "2026-10-19",
+  "right_closed_score_cuts": [
+    942341,
+    2005800,
+    3128550,
+    4534324
+  ],
+  "chart_focus_bin_edges": [
+    0.0,
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+    1.0
+  ],
+  "tie_policy": "Equal scores stay in the same band; upper score cuts are inclusive.",
+  "population_weighting": "None; one vote per profile."
+}
