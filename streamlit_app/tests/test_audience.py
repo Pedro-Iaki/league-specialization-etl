@@ -9,10 +9,17 @@ from app_core.audience import (
     RANK_GROUPS,
     WINDOWS,
     audience_grid,
+    band_distributions,
     build_reference,
     concentration_cells,
+    character_type_counts,
+    historical_mix,
+    label_comparison,
+    leader_states,
+    leading_characters,
     load_reference,
     paired_profiles,
+    overview_grid,
     prepare_audience,
 )
 from app_core.audience_charts import concentration_chart
@@ -162,3 +169,42 @@ def test_bundled_reference_reproduces_approved_cohort_and_bands():
     active = concentration_cells(banded).query("window=='active_pool_lifetime'")
     assert active.n.min() == 313 and active.n.max() == 2425
     assert audience_grid(banded, "lifetime").profiles.sum() == len(banded)
+
+
+def test_page_two_distributions_and_map_reconcile_to_rank_facets(profiles):
+    banded = prepare_audience(profiles, build_reference(profiles, "test-source"))
+    summary = band_distributions(banded)
+    for window in WINDOWS:
+        rows = summary.loc[summary.window.eq(window)]
+        assert rows.n.sum() == len(banded)
+        for row in rows.itertuples():
+            values = banded.loc[banded.activity_band.eq(row.activity_band), f"{window}_top1_share"]
+            assert [row.p10, row.q1, row.median, row.q3, row.p90] == pytest.approx(np.quantile(values, [.1, .25, .5, .75, .9]))
+            assert row.median_hhi == pytest.approx(banded.loc[banded.activity_band.eq(row.activity_band), f"{window}_hhi"].median())
+        expected = audience_grid(banded, window).groupby(["activity_band", "focus_bin"], as_index=False).profiles.sum()
+        pd.testing.assert_frame_equal(overview_grid(banded, window), expected)
+        assert expected.profiles.sum() == len(banded)
+    mix = historical_mix(banded)
+    assert mix.profiles.sum() == len(banded)
+    assert mix.groupby("activity_band").share.sum().eq(1).all()
+    assert label_comparison(banded).to_numpy().sum() == len(banded)
+
+
+def test_character_cutoff_and_unknown_type_do_not_redefine_concentration_or_bands(profiles):
+    banded = prepare_audience(profiles, build_reference(profiles, "test-source"))
+    banded["main_role"] = ["Top", "Jungle", "unknown", None] * 10
+    banded["active_pool_lifetime_primary_champion_key"] = [1, 2, 3, None] * 10
+    banded["active_pool_lifetime_primary_champion_name"] = ["A", "B", "C", None] * 10
+    banded["active_pool_lifetime_primary_champion_points"] = [14_999, 15_000, 30_000, 30_000] * 10
+    original = banded.copy(deep=True)
+    states = leader_states(banded)
+    assert states.value_counts().to_dict() == {"qualified": 20, "below": 10, "unavailable": 10}
+    assert states.loc[1] == "qualified"  # the cutoff is inclusive
+    assert leading_characters(banded).profiles.sum() == 20
+    types = character_type_counts(banded)
+    assert types.character_type.tolist() == list("ABCDE")
+    assert types.profiles.tolist() == [10, 10, 0, 0, 0]
+    for window in WINDOWS:
+        assert audience_grid(banded.loc[states.eq("below")], window).profiles.sum() == 10
+        assert audience_grid(banded.iloc[:0], window).profiles.sum() == 0
+    pd.testing.assert_frame_equal(banded, original)

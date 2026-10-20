@@ -8,8 +8,8 @@ from plotly.subplots import make_subplots
 
 from app_core.audience import RANK_GROUPS
 from app_core.charts import style_figure
-from app_core.config import MIN_SUPPORT_PLAYERS, TEXT
-from app_core.i18n import story_text, t
+from app_core.config import BLUE, GOLD, MIN_SUPPORT_PLAYERS, PLAYSTYLE_COLORS, PLAYSTYLE_ORDER, TEXT
+from app_core.i18n import focus_label, story_text, t
 from app_core.story_charts import BAND_COLORS, PROFILE_DASHES, RANK_COLORS
 
 
@@ -176,4 +176,82 @@ def recap_chart(grid: pd.DataFrame, *, maximum: int | None = None) -> go.Figure:
     fig.update_yaxes(
         tickvals=list(range(1, 6)), autorange="reversed", title=story_text("Band", "Band"), fixedrange=True
     )
+    return fig
+
+
+def distribution_chart(summary: pd.DataFrame) -> go.Figure:
+    """Explicit distribution boxes rather than isolated estimates or implied CIs."""
+    supported = summary.loc[summary.n.ge(MIN_SUPPORT_PLAYERS)]
+    fig = go.Figure(go.Box(
+        orientation="h", y=supported.activity_band.tolist(),
+        q1=supported.q1.tolist(), median=supported["median"].tolist(), q3=supported.q3.tolist(),
+        lowerfence=supported.p10.tolist(), upperfence=supported.p90.tolist(),
+        boxpoints=False, fillcolor="rgba(78,165,217,.3)", line={"color": BLUE, "width": 2},
+        width=.5, showlegend=False, hoverinfo="skip",
+    ))
+    fig.add_trace(go.Scatter(
+        x=supported["median"].tolist(), y=supported.activity_band.tolist(), mode="text",
+        text=[f"{v:.1%}" for v in supported["median"]], textposition="top center",
+        textfont={"color": TEXT, "size": 12}, showlegend=False,
+        customdata=supported[["n", "p10", "q1", "q3", "p90"]].to_numpy().tolist(),
+        hovertemplate="Band %{y}<br>Median: %{x:.1%}<br>Middle 50%: %{customdata[2]:.1%}–%{customdata[3]:.1%}<br>Middle 80%: %{customdata[1]:.1%}–%{customdata[4]:.1%}<br>Profiles: %{customdata[0]:,}<extra></extra>",
+    ))
+    style_figure(fig, height=365)
+    fig.update_layout(margin={"l": 55, "r": 15, "t": 20, "b": 65})
+    fig.update_xaxes(range=[0, 1], tickvals=[0, .25, .5, .75, 1], tickformat=".0%",
+                     title=story_text("Leading-character share", "Leading-champion share"), fixedrange=True)
+    fig.update_yaxes(title=story_text("Activity band", "Mastery band"), tickvals=list(range(1, 6)),
+                     range=[5.6, .4], fixedrange=True)
+    return fig
+
+
+def overview_chart(grid: pd.DataFrame, *, maximum: int) -> go.Figure:
+    table = grid.pivot(index="activity_band", columns="focus_bin", values="profiles")
+    fig = go.Figure(go.Heatmap(
+        x=[.05 + .1 * i for i in range(10)], y=list(range(1, 6)), z=table.to_numpy().tolist(),
+        zmin=0, zmax=max(1, maximum), colorscale=[[0, "#0e1b2b"], [1, "#56B4E9"]],
+        xgap=2, ygap=2, customdata=[[[f"{j * 10}–{(j + 1) * 10}%"] for j in range(10)] for _ in range(5)],
+        colorbar={"orientation": "h", "y": -.42, "len": .65, "thickness": 10, "nticks": 3},
+        hovertemplate="Band %{y}<br>Leading share: %{customdata[0]}<br>Profiles: %{z:,}<extra></extra>",
+    ))
+    style_figure(fig, height=365)
+    fig.update_layout(margin={"l": 55, "r": 15, "t": 15, "b": 105})
+    fig.update_xaxes(range=[0, 1], tickvals=[0, .5, 1], tickformat=".0%",
+                     title=story_text("Leading-character share", "Leading-champion share"), fixedrange=True)
+    fig.update_yaxes(autorange="reversed", tickvals=list(range(1, 6)),
+                     title=story_text("Activity band", "Mastery band"), fixedrange=True)
+    return fig
+
+
+def historical_mix_chart(mix: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    for style in PLAYSTYLE_ORDER:
+        rows = mix.loc[mix.lifetime_playstyle.eq(style)]
+        fig.add_trace(go.Bar(
+            y=rows.activity_band.tolist(), x=rows.share.tolist(), orientation="h", name=focus_label(style),
+            marker_color=PLAYSTYLE_COLORS[style], showlegend=False,
+            customdata=rows[["profiles", "n"]].to_numpy().tolist(),
+            hovertemplate="Band %{y}<br>%{fullData.name}: %{x:.1%}<br>Profiles: %{customdata[0]:,} / %{customdata[1]:,}<extra></extra>",
+        ))
+    style_figure(fig, height=245)
+    fig.update_layout(barmode="stack", margin={"l": 55, "r": 15, "t": 15, "b": 55})
+    fig.update_xaxes(range=[0, 1], tickformat=".0%", title="Share of profiles", fixedrange=True)
+    fig.update_yaxes(title=story_text("Activity band", "Mastery band"), tickvals=list(range(1, 6)),
+                     autorange="reversed", fixedrange=True)
+    return fig
+
+
+def character_counts_chart(counts: pd.DataFrame, *, denominator: int, types: bool = False) -> go.Figure:
+    labels = counts.character_type.tolist() if types else counts.character.tolist()
+    shares = counts.profiles.div(max(1, denominator))
+    fig = go.Figure(go.Bar(
+        x=counts.profiles.tolist(), y=labels, orientation="h", marker_color=GOLD if types else BLUE,
+        text=[f"{t(f'{n:,}')} · {t(f'{share:.1%}')}" for n, share in zip(counts.profiles, shares, strict=True)],
+        textposition="outside", cliponaxis=False, customdata=shares.tolist(),
+        hovertemplate="%{y}<br>Profiles: %{x:,}<br>Share: %{customdata:.1%}<extra></extra>",
+    ))
+    style_figure(fig, height=250 if types else 380)
+    fig.update_layout(margin={"l": 35 if types else 95, "r": 90, "t": 15, "b": 50})
+    fig.update_xaxes(title="Profiles", range=[0, max(1, counts.profiles.max() if len(counts) else 1) * 1.35], fixedrange=True)
+    fig.update_yaxes(categoryorder="array", categoryarray=labels, autorange="reversed", fixedrange=True)
     return fig

@@ -15,6 +15,8 @@ from app_core.experience import TIER_GROUP_MAP as RANK_MAP, TIER_GROUPS as RANK_
 
 DEFINITION_VERSION = "active-pool-lifetime-v1"
 WINDOWS = {"active_pool_lifetime": "Among active characters", "lifetime": "Whole history"}
+CHARACTER_TYPES = {"Top": "A", "Jungle": "B", "Middle": "C", "Bottom": "D", "Support": "E"}
+LEADER_REPORTING_POINTS = 15_000
 REQUIRED_PROFILE_COLUMNS = {
     "as_of_date",
     "tier",
@@ -160,4 +162,66 @@ def maturity_summary(banded: pd.DataFrame) -> pd.DataFrame:
             history_median=("lifetime_top1_share", "median"),
         )
         .reset_index()
+    )
+
+
+def band_distributions(banded: pd.DataFrame) -> pd.DataFrame:
+    """Precomputed box summaries; whiskers span the 10th to 90th percentiles."""
+    rows = []
+    for window in WINDOWS:
+        for band in range(1, 6):
+            values = banded.loc[banded.activity_band.eq(band), f"{window}_top1_share"]
+            hhi = banded.loc[banded.activity_band.eq(band), f"{window}_hhi"]
+            quantiles = values.quantile([.1, .25, .5, .75, .9])
+            rows.append(dict(window=window, activity_band=band, n=len(values),
+                             p10=quantiles.loc[.1], q1=quantiles.loc[.25], median=quantiles.loc[.5],
+                             q3=quantiles.loc[.75], p90=quantiles.loc[.9], median_hhi=hhi.median()))
+    return pd.DataFrame(rows)
+
+
+def overview_grid(banded: pd.DataFrame, window: str) -> pd.DataFrame:
+    """Collapse the rank facets without changing any bins or profile assignments."""
+    return audience_grid(banded, window).groupby(["activity_band", "focus_bin"], as_index=False).profiles.sum()
+
+
+def historical_mix(banded: pd.DataFrame) -> pd.DataFrame:
+    index = pd.MultiIndex.from_product([range(1, 6), PLAYSTYLE_ORDER], names=["activity_band", "lifetime_playstyle"])
+    counts = banded.groupby(["activity_band", "lifetime_playstyle"], observed=True).size()
+    result = counts.reindex(index, fill_value=0).rename("profiles").reset_index()
+    result["n"] = result.groupby("activity_band").profiles.transform("sum")
+    result["share"] = result.profiles.div(result.n.where(result.n.gt(0)))
+    return result
+
+
+def label_comparison(banded: pd.DataFrame) -> pd.DataFrame:
+    return pd.crosstab(banded.lifetime_playstyle, banded.recent_playstyle).reindex(
+        index=PLAYSTYLE_ORDER, columns=PLAYSTYLE_ORDER, fill_value=0
+    )
+
+
+def character_type_counts(banded: pd.DataFrame) -> pd.DataFrame:
+    """Unknown type is excluded only here; it remains in every reference denominator."""
+    counts = banded.main_role.value_counts().reindex(CHARACTER_TYPES, fill_value=0)
+    return pd.DataFrame({"character_type": list(CHARACTER_TYPES.values()), "profiles": counts.to_list()})
+
+
+def leader_states(banded: pd.DataFrame) -> pd.Series:
+    """Apply the reporting cutoff after concentration and fixed-band assignment."""
+    points = banded.active_pool_lifetime_primary_champion_points
+    valid_key = banded.active_pool_lifetime_primary_champion_key.notna()
+    result = pd.Series("unavailable", index=banded.index, name="leader_state")
+    result.loc[points.notna() & points.lt(LEADER_REPORTING_POINTS)] = "below"
+    result.loc[points.ge(LEADER_REPORTING_POINTS) & valid_key] = "qualified"
+    return result
+
+
+def leading_characters(banded: pd.DataFrame) -> pd.DataFrame:
+    qualified = banded.loc[leader_states(banded).eq("qualified")]
+    return (
+        qualified.groupby(["active_pool_lifetime_primary_champion_key", "active_pool_lifetime_primary_champion_name"])
+        .size().rename("profiles").reset_index()
+        .rename(columns={"active_pool_lifetime_primary_champion_key": "character_key",
+                         "active_pool_lifetime_primary_champion_name": "character"})
+        .sort_values(["profiles", "character_key"], ascending=[False, True])
+        .reset_index(drop=True)
     )

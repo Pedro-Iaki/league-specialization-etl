@@ -9,30 +9,34 @@ import plotly.graph_objects as go
 
 from app_core.charts import style_figure
 from app_core.audience import (
-    RANK_GROUPS, WINDOWS as AUDIENCE_WINDOWS, audience_grid, concentration_cells,
-    load_reference as load_audience_reference, maturity_summary, prepare_audience,
+    RANK_GROUPS, WINDOWS as AUDIENCE_WINDOWS, audience_grid, band_distributions,
+    character_type_counts, concentration_cells, historical_mix, label_comparison, leader_states,
+    leading_characters, load_reference as load_audience_reference, maturity_summary, overview_grid, prepare_audience,
 )
-from app_core.audience_charts import concentration_chart, rank_band_sizes_chart, rank_count_chart, recap_chart
-from app_core.config import BLUE, GOLD, MIN_SUPPORT_PLAYERS, PLAYSTYLE_ORDER
+from app_core.audience_charts import (
+    character_counts_chart, concentration_chart, distribution_chart, historical_mix_chart,
+    overview_chart, rank_band_sizes_chart, rank_count_chart, recap_chart,
+)
+from app_core.config import BLUE, GOLD, MIN_SUPPORT_PLAYERS, PLAYSTYLE_COLORS, PLAYSTYLE_ORDER
 from app_core.data import DashboardDataError, data_freshness, load_dataset, load_manifest, load_optional_dataset
 from app_core.experience import experience_display, experience_focus_cells
 from app_core.i18n import focus_label, st, story_text, t, terminology_selector
 from app_core.story_analysis import (
-    CASE_GROUPS, coverage_counts, champion_case_comparison, detectable_gap, growth_uncertainty,
+    detectable_gap, growth_uncertainty,
 )
 from app_core.story_charts import (
     BAND_COLORS, RANK_COLORS, audience_band_chart,
-    case_chart, coverage_chart, growth_interval_chart,
+    growth_interval_chart,
 )
 from app_core.ui import data_source_caption, render_load_error, setup_page
 
 REPOSITORY = "https://github.com/Pedro-Iaki/league-specialization-etl"
 STORY_PAGES = [
-    ("story/01_pipeline.py", "Pipeline and data"),
-    ("story/02_transactions.py", "What transactions would add"),
+    ("story/01_pipeline.py", "The audience question"),
+    ("story/02_audience.py", "Defining an audience"),
     ("story/03_tiers.py", "Comparing audiences"),
-    ("story/04_growth.py", "Specialization and growth"),
-    ("story/05_champions.py", "Champion case studies"),
+    ("story/04_characters.py", "Character interests"),
+    ("story/05_transactions.py", "What transactions would add"),
     ("story/06_findings.py", "Findings and limits"),
 ]
 
@@ -90,54 +94,200 @@ h1, h2, h3, .story-heading { font-family: "Segoe UI", system-ui, sans-serif; }
 
 
 def pipeline_page() -> None:
-    players = story_start(1, "From the Riot API to a privacy-safe data product",
-                          "A League of Legends portfolio: collect player snapshots, model their history, and ask whether focusing on fewer champions relates to rank. Start with the engineering, then follow the evidence.")
-    resource_links()
+    terminology_selector()
+    players = story_start(
+        1, "Turn behavioral observations into audience context.",
+        "A useful audience definition connects what people choose with how active they are and their competitive context. This project builds that view from collected observations, then demonstrates how it could connect to transaction reporting.",
+    )
+    story_prose(story_text(
+        "The source is League of Legends: a game where players choose characters and can compete in ranked matches. Riot's API supplies character activity and rank observations. Purchase history is simulated in a separate branch.",
+        "Riot's API supplies champion mastery and solo/duo rank snapshots. The pipeline turns them into historical models and audience comparisons; a separate simulated purchase branch demonstrates business reporting.",
+    ))
     manifest = load_manifest()
-    core_profiles = manifest.get("datasets", {}).get("business_players", {}).get("rows")
-    metrics = st.columns(4)
-    for column, label, value in zip(metrics, ["Player profiles", "Recorded dbt build", "Recorded incremental run", "Serving mode"],
-                                    [f"{len(players):,}", "150/150", "2m 39s", "Parquet"], strict=True):
-        column.metric(label, value)
-    st.caption("Build evidence: 2026-09-30 · 21 models and 129 tests. Historical validation run, before later model changes; not a fresh build result.")
-    story_section("Architecture", "Six stages, two state stores")
-    steps = [("Collect", "Python, token buckets"), ("Land", "Parquet to Databricks"), ("Bronze", "Raw, deduplicated"),
-             ("Silver", "History and current state"), ("Gold", "Analytical marts"), ("Serve", "Anonymous snapshots")]
+    try:
+        reference = load_audience_reference()
+        paired_n = len(prepare_audience(players, reference))
+    except DashboardDataError:
+        paired_n = None
+    scenario = manifest.get("datasets", {}).get("business_players", {})
+    scenario_n = scenario.get("rows")
+    scenario_date = scenario.get("scenario", {}).get("as_of_date", t("Not recorded"))
+    with st.container(key="story-coverage"):
+        columns = st.columns(3)
+        columns[0].metric("Collected profiles", f"{len(players):,}")
+        columns[1].metric("Paired audience profiles", f"{paired_n:,}" if paired_n is not None else t("Unavailable"))
+        columns[2].metric("Frozen scenario profiles", f"{scenario_n:,}" if scenario_n is not None else t("Not recorded"))
+    story_prose(t(
+        "The analytical audience is a subset of the collected profiles. The transaction scenario is a separate cohort frozen on {p0}; these three counts are not a nested funnel.", p0=scenario_date,
+    ), css="story-meta")
+
+    story_section("01 · The useful output", "An audience you can describe and inspect")
+    for column, kicker, title, body in zip(st.columns(3, gap="medium"),
+        ["Activity and focus", "Rank and character interests", "Transaction integration"],
+        ["Define whom you mean", "Add context and content", "Connect definitions to outcomes"],
+        ["Compare accumulated interests within active characters and across whole history. Keep the same people and activity boundaries throughout.",
+         "Show where groups sit in the collected sample, which characters lead their active pools and which interests overlap.",
+         "A simulated purchase feed demonstrates the reporting contract. Real purchasing data would be needed to investigate customer value or demand."], strict=True):
+        with column:
+            story_card(kicker, title, body)
+
+    story_section("02 · From source to audience", "A traceable path through the pipeline")
+    steps = [("Collect", "Riot API observations"), ("Retain history", "Dated snapshots"),
+             ("Model", "Checked analytical marts"), ("Define audiences", "Activity, focus and rank"),
+             ("Connect outcomes", "Separate simulated purchases"), ("Deliver", "Local anonymous snapshots")]
     items = "".join(f"<li><strong>{i} · {escape(t(title))}</strong><span>{escape(t(copy))}</span></li>"
                     for i, (title, copy) in enumerate(steps, 1))
     st.markdown(f'<ol class="story-flow">{items}</ol>', unsafe_allow_html=True)
-    st.caption("State: SQLite keeps the local task ledger; Postgres keeps the shared registry and cursors. Synthetic purchases use a separate sample branch.")
-    left, right = st.columns(2, gap="medium")
-    with left:
-        story_section("Coverage", "A large profile sample, a small follow-up")
-        st.plotly_chart(coverage_chart(coverage_counts(players, core_profiles)), width="stretch")
-        st.caption("Core context uses the frozen business cohort. Usable recent-week outcomes require at least two ranked games and finite LP/game; the growth chapter uses a separate observed-period extract.")
-    with right:
-        story_section("Observation dates", "When current profiles were last seen")
-        dates = pd.to_datetime(players["snapshot_date"]).dt.normalize().value_counts().sort_index()
-        fig = go.Figure(go.Bar(x=dates.index, y=dates.values, marker_color=BLUE,
-                              hovertemplate="%{x|%Y-%m-%d}<br>Players: %{y:,}<extra></extra>"))
-        fig.update_xaxes(title="Latest profile observation", tickformat="%d %b")
-        fig.update_yaxes(title="Players")
-        st.plotly_chart(style_figure(fig, height=290), width="stretch")
-        st.caption("One latest observation per current profile. This is coverage by date, not collection throughput or a count of all historical snapshots.")
-    cards = st.columns(3, gap="medium")
-    with cards[0]:
-        story_card("Tested", "Checks at each boundary", "Extraction tests, dbt contracts and reconciliation, anonymous export contracts, and dashboard checks.")
-    with cards[1]:
-        story_card("What broke", "Messy data shaped the design", "Unexpected champion IDs, single-champion mastery profiles, and rank counter resets became explicit modeling cases.")
-    with cards[2]:
-        story_card("Open gaps", "Measured claims need measurements", "Collection throughput has not been benchmarked. Recovery still requires an operator; the app serves a manually exported snapshot.")
-    left, right = st.columns(2, gap="medium")
-    with left:
-        story_card("Design decisions", "Snapshots made breadth affordable", "Snapshots reach more players per API request, at the cost of noisier activity estimates. Separate stores own separate jobs; player identifiers stay out of serving files.")
-    with right:
-        story_card("Request economics", "1 + 1/205 ≈ 1.005 requests per new player", "One full ranked page shared across 205 players, then one mastery request each. Refreshing a known player needs two requests. These are request-cost estimates, not measured throughput.")
+    story_prose("Python handles collection and orchestration; SQL and dbt model history on Databricks; Streamlit presents manually exported local snapshots. SQLite owns the local task ledger, while Postgres holds shared collection coordination.")
+
+    story_section("03 · Read the dates", "Profiles are observations, not a live census")
+    dates = pd.to_datetime(players.snapshot_date).dt.normalize().value_counts().sort_index()
+    fig = go.Figure(go.Bar(x=dates.index.tolist(), y=dates.tolist(), marker_color=BLUE,
+                          hovertemplate="%{x|%Y-%m-%d}<br>Players: %{y:,}<extra></extra>"))
+    fig.update_xaxes(title="Latest profile observation", tickformat="%d %b")
+    fig.update_yaxes(title="Profiles")
+    st.plotly_chart(style_figure(fig, height=260), key="story-observation-dates", width="stretch",
+                    config={"displayModeBar": False})
+    st.caption("One latest observation per collected profile. Observation dates differ across people; this chart is not collection throughput or a count of all historical snapshots.")
+    with st.expander("Engineering evidence and boundaries"):
+        st.markdown("Checks cover extraction, model contracts and reconciliation, anonymous exports and dashboard behavior. Historical build evidence records 150 successful nodes on September 30, 2026: 21 models and 129 tests. It is not a fresh build result for this snapshot.")
+        st.markdown("Snapshot collection reaches more people per request, at the cost of inferred activity rather than individual match histories. Request-cost estimates and dated validation are documented in the repository; collection throughput has not been benchmarked.")
+        st.markdown("The dashboard reads local files. Refreshing data is a manual operation; recovery still requires an operator. Player and interval identifiers are excluded from public serving extracts.")
+        resource_links()
+    story_prose("First define activity and character focus for the same people.", css="story-prose story-note")
     story_footer(1)
 
 
+def audience_page() -> None:
+    terminology_selector()
+    players = story_start(
+        2, "Active interests and whole history describe different things.",
+        "An old favorite can remain prominent in a person's history after leaving their active pool. Compare accumulated character concentration within active characters and across whole history, using the same people and activity bands.",
+    )
+    banded = story_audience(players, 2)
+    if banded is None:
+        return
+    story_cohort_note(players, banded)
+    story_section("01 · Two views of interest", "Keep the people fixed; change the denominator")
+    story_prose(story_text(
+        "Leading-character share divides the leading character's accumulated activity score by the total across the characters being considered. The active-pool view filters membership, then uses accumulated scores; it does not measure recent match frequency.",
+        "Leading-champion share divides the highest lifetime mastery by total mastery in the selected pool. The recent-pool view uses existing active membership and lifetime points, not recent gains or ranked-match observations.",
+    ))
+    with st.expander("A small example of the two denominators"):
+        st.markdown("Illustration only: an inactive character has 100,000 points; three active characters have 60,000, 30,000 and 10,000. Whole-history leading share is 100,000 / 200,000 = 50%. Among active characters it is 60,000 / 100,000 = 60%. The leader and denominator can both change.")
+        st.caption("The active-pool share can also be lower than the whole-history share. Filtering characters does not guarantee a higher concentration when the historical leader is outside the active pool.")
+    story_band_key(banded)
+    summary = band_distributions(banded)
+    with st.container(key="story-focus"):
+        for column, window in zip(st.columns(2, gap="medium"), AUDIENCE_WINDOWS, strict=True):
+            with column:
+                story_prose(story_window_label(window), css="story-band-title")
+                st.plotly_chart(distribution_chart(summary.loc[summary.window.eq(window)]),
+                                key=f"story-distribution-{window}", width="stretch", config={"displayModeBar": False})
+    st.caption("Boxes span the middle 50% of profiles; the line and label mark the median. Whiskers span the 10th–90th percentiles. These are distributions, not confidence intervals; both panels use the same 0–100% scale.")
+    medians = banded[["active_pool_lifetime_top1_share", "lifetime_top1_share"]].median()
+    story_prose(t("Across this paired audience, median leading share is {p0} among active characters and {p1} across whole history. The views describe different scopes of accumulated interest, not a measured change over time.",
+                  p0=f"{medians.iloc[0]:.1%}", p1=f"{medians.iloc[1]:.1%}"))
+    story_membership_note(banded)
+
+    story_section("02 · Historical context", "Keep the complete mix of focus groups")
+    story_prose("The four existing Lifetime groups summarize historical concentration. They complement the continuous shares above; they do not classify the new active-pool measure or give exact counts of preferred characters.")
+    legend = "".join(f'<span><i class="story-focus-swatch" style="background:{PLAYSTYLE_COLORS[s]}"></i>{escape(focus_label(s))}</span>' for s in PLAYSTYLE_ORDER)
+    st.markdown(f'<div class="story-focus-legend">{legend}</div>', unsafe_allow_html=True)
+    mix = historical_mix(banded)
+    st.plotly_chart(historical_mix_chart(mix), key="story-historical-mix", width="stretch", config={"displayModeBar": False})
+    with st.expander("How the existing labels differ"):
+        st.markdown("Rows use the existing Lifetime classification; columns use the existing Recent classification. The Recent classifier combines gain weights with equal-membership weights and maturity-dependent membership. This table compares definitions for the same people; it does not show switching between playstyles.")
+        comparison = label_comparison(banded)
+        comparison.index = comparison.index.map(focus_label)
+        comparison.columns = comparison.columns.map(focus_label)
+        comparison.index.name = t("Whole history")
+        comparison.columns.name = t("Existing Recent classification")
+        st.dataframe(comparison, width="stretch")
+        st.caption(t("Counts sum to {p0} paired profiles. No new four-class active-pool rule is introduced.", p0=f"{len(banded):,}"))
+
+    story_section("03 · The audience map", "Locate activity and focus before adding rank")
+    story_prose("Each tile counts profiles in a fixed activity band and a 10-percentage-point interval of leading share. These intervals are display bins, not behavior labels. The next chapter splits this same grid by rank.")
+    grids = {window: overview_grid(banded, window) for window in AUDIENCE_WINDOWS}
+    maximum = max(int(grid.profiles.max()) for grid in grids.values())
+    with st.container(key="story-audience-overview"):
+        for column, window in zip(st.columns(2, gap="medium"), AUDIENCE_WINDOWS, strict=True):
+            with column:
+                story_prose(story_window_label(window), css="story-band-title")
+                st.plotly_chart(overview_chart(grids[window], maximum=maximum), key=f"story-overview-{window}",
+                                width="stretch", config={"displayModeBar": False})
+    st.caption("Color shows profile count on one scale across both views. The five bands and ten focus bins stay fixed in later chapters. This is a cross-section of the collected sample, not a market-size estimate or a path through time.")
+    with st.expander("Inspect distributions, counts and membership"):
+        display = summary.copy()
+        display["window"] = display.window.map(story_window_label)
+        st.dataframe(display.rename(columns={"window": "View", "activity_band": "Activity band", "n": "Profiles",
+                     "p10": "10th percentile", "q1": "25th percentile", "median": "Median leading share",
+                     "q3": "75th percentile", "p90": "90th percentile", "median_hhi": "Median HHI"}), hide_index=True, width="stretch")
+        for window, grid in grids.items():
+            st.markdown(story_window_label(window))
+            st.dataframe(grid.rename(columns={"activity_band": "Activity band", "focus_bin": "Concentration bin (0–9)",
+                         "profiles": "Profiles"}), hide_index=True, width="stretch")
+        st.dataframe(maturity_summary(banded).rename(columns={"maturity": "Tracking history", "n": "Profiles",
+                     "active_median": "Active-pool median", "history_median": "Whole-history median"}),
+                     hide_index=True, width="stretch")
+        st.markdown("At 30 tracked days, membership changes from 0–30-day recency to the existing 0–60-day recency and gain rule. The two scopes are not a uniform recent-play window. Concentration alone does not establish loyalty or exclusive use.")
+        st.link_button("Metrics and methods", f"{REPOSITORY}/blob/main/docs/reference/metrics-and-methods.md")
+    story_prose("Rank adds a layer without changing the people or activity cuts.", css="story-prose story-note")
+    story_footer(2, "pages/1_Overall_Analysis.py", "Population explorer")
+
+
+def story_audience(players: pd.DataFrame, number: int) -> pd.DataFrame | None:
+    try:
+        if number == 4:
+            fields = {"active_pool_lifetime_primary_champion_key", "active_pool_lifetime_primary_champion_name",
+                      "active_pool_lifetime_primary_champion_points"}
+            if not fields.issubset(players.columns):
+                raise DashboardDataError("Character reporting requires the active-pool leader fields")
+        return prepare_audience(players, load_audience_reference())
+    except DashboardDataError as error:
+        st.info("This audience comparison is unavailable for the current snapshot. A matching frozen audience reference and active-pool concentration fields are required.")
+        with st.expander("Snapshot details"):
+            st.code(str(error), language=None)
+        story_footer(number, "pages/1_Overall_Analysis.py", "Population explorer")
+        return None
+
+
+def story_cohort_note(players: pd.DataFrame, banded: pd.DataFrame) -> None:
+    story_prose(t("Collected sample · {p0} paired profiles · Same people in both views · Equal weight per profile",
+                  p0=f"{len(banded):,}"), css="story-meta")
+    missing = int((~players.recent_playstyle.isin(PLAYSTYLE_ORDER)).sum())
+    zero = int((players.recent_playstyle.isin(PLAYSTYLE_ORDER) & players.active_pool_lifetime_mastery_points.eq(0)).sum())
+    story_prose(t("Of {p0} available profiles, {p1} have no Recent classification and {p2} have zero accumulated points in their active pool. They are outside this comparison; missing context is not zero activity.",
+                  p0=f"{len(players):,}", p1=f"{missing:,}", p2=f"{zero:,}"), css="story-meta")
+
+
+def story_window_label(window: str) -> str:
+    return story_text("Among active characters", "Within the recent champion pool") if window == "active_pool_lifetime" else t("Whole history")
+
+
+def story_membership_note(banded: pd.DataFrame) -> None:
+    mature = int(banded.days_tracked.ge(30).sum())
+    story_prose(t("Active membership is inferred. {p0} profiles use the mature 60-day/gain rule; the other {p1} use the short-history 30-day recency rule. Accumulated weighting does not remove this difference in pool selection.",
+                  p0=f"{mature:,}", p1=f"{len(banded) - mature:,}"), css="story-meta")
+
+
+def story_band_key(banded: pd.DataFrame) -> None:
+    with st.container(key="story-band-key"):
+        ranges = banded.groupby("activity_band").lifetime_mastery_points.agg(["min", "max"])
+        for band, column in enumerate(st.columns(5, gap="small"), 1):
+            with column:
+                story_prose(story_text("Activity band {p0}", "Mastery band {p0}", p0=band), css="story-band-title")
+                if band in ranges.index:
+                    low, high = ranges.loc[band, ["min", "max"]]
+                    story_prose(t("{p0}–{p1} points", p0=f"{low:,.0f}", p1=f"{high:,.0f}"), css="story-band-range")
+                    story_prose(t("≈ {p0}–{p1} hour-equivalents", p0=f"{low / 1200:,.0f}", p1=f"{high / 1200:,.0f}"), css="story-band-range")
+                else:
+                    story_prose("No profiles", css="story-band-range")
+    st.caption("Hour-equivalents assume 600 points per match and 30 minutes per match: score / 1,200. They are illustrative, not observed hours, account age or time needed to reach a rank.")
+
+
 def transactions_page() -> None:
-    story_start(2, "What would transaction data add?",
+    story_start(5, "What would transaction data add?",
                 "Riot purchase history is unavailable to this project. This chapter explains the business questions a transaction feed could unlock, and the synthetic branch built to demonstrate the reporting flow.")
     st.info("Illustrative only. Purchases and spending patterns are synthetic; player traits come from real profiles. No spending finding is claimed about real customers.")
     for column, kicker, title, body in zip(st.columns(3, gap="medium"), ["Question 1", "Question 2", "Question 3"],
@@ -158,7 +308,139 @@ def transactions_page() -> None:
         st.code("transaction_id · player_id (private) · product_id\nregion_at_purchase · currency_id · original_price\namount_spent · amount_usd · occurred_at · scenario_id", language=None)
         st.caption("Reconciliation checks cash totals, player grain and currency separation. Player, event and product identifiers are excluded from the public business export.")
     story_card("Portfolio value", "Business questions with a working data path", "The sample demonstrates cohort selection, reproducible generation, transaction modeling and tested reporting. It does not validate a relationship between playstyle and real spending.")
-    story_footer(2, "business.py", "Business sample explorer")
+    story_footer(5, "business.py", "Business sample explorer")
+
+
+def characters_page() -> None:
+    terminology_selector()
+    players = story_start(
+        4, "Character interests make the audience more specific.",
+        "Activity, focus and rank describe the shape of an audience. Character choices add content: inferred character types, leading active characters and shared interests. Each lens answers a different question.",
+    )
+    banded = story_audience(players, 4)
+    if banded is None:
+        return
+    story_cohort_note(players, banded)
+    story_section("01 · Character type", "A separate lens on inferred preferences")
+    story_prose(story_text(
+        "Types A–E summarize the existing inferred preference for five character-position associations. They are nominal labels, not character archetypes or a ranking of player quality. The type describes the profile, not the leading character's class.",
+        "Character type summarizes the profile's inferred lane association: A=Top, B=Jungle, C=Middle, D=Bottom, E=Support. These estimates are not observed match positions and are separate from audience-derived champion archetypes.",
+    ))
+    types = character_type_counts(banded)
+    known = int(types.profiles.sum())
+    left, right = st.columns([1.2, 1], gap="medium")
+    with left:
+        st.plotly_chart(character_counts_chart(types, denominator=known, types=True),
+                        key="story-character-types", width="stretch", config={"displayModeBar": False})
+    with right:
+        story_card("Type and archetype", "Two different definitions",
+                   "Character type is an existing inferred position preference. A character archetype would group characters with similar audiences after adjusting for active-pool breadth. A–E are reserved for types; they are not cluster names.")
+    st.caption(t("Type shares use {p0} profiles with an inferred type; {p1} without one are excluded from this chart only and retained in the audience reference.",
+                 p0=f"{known:,}", p1=f"{len(banded) - known:,}"))
+    with st.expander("How character type is inferred"):
+        st.markdown("A=Top · B=Jungle · C=Middle · D=Bottom · E=Support. These associations come from the existing profile model. Their weights have not been recomputed using the new accumulated active-pool weights; they do not measure the share of matches played in each position.")
+        st.dataframe(types.rename(columns={"character_type": "Character type", "profiles": "Profiles"}), hide_index=True, width="stretch")
+
+    story_section("02 · Leading active characters", "Describe content interests with a clear reporting cutoff")
+    story_prose(story_text(
+        "The leader has the most accumulated points among the model's active characters. Require at least 15,000 points for character reporting, after computing concentration. Lower-point characters remain in the pool denominator, and nobody is moved to a different activity band.",
+        "Select the highest-lifetime-mastery champion within the full existing recent pool, then require at least 15,000 points for leader reporting. This is separate from the log-gap preferred subset and the one-trick rule; it does not use equal recent weights to infer a favorite.",
+    ))
+    states = leader_states(banded)
+    qualified = int(states.eq("qualified").sum())
+    below = int(states.eq("below").sum())
+    unavailable = int(states.eq("unavailable").sum())
+    columns = st.columns(3)
+    columns[0].metric("Qualifying leaders", f"{qualified:,}")
+    columns[1].metric("Below reporting cutoff", f"{below:,}")
+    columns[2].metric("Leader unavailable", f"{unavailable:,}")
+    leaders = leading_characters(banded)
+    featured = leaders.loc[leaders.profiles.ge(MIN_SUPPORT_PLAYERS)].head(10)
+    st.plotly_chart(character_counts_chart(featured, denominator=qualified), key="story-leading-characters",
+                    width="stretch", config={"displayModeBar": False})
+    st.caption(t("Ten largest supported leading-character audiences; shares use {p0} qualifying profiles. Counts of at least three are shown. The leader is an accumulated preference indicator, not a uniquely proven favorite or a recent match-share estimate.", p0=f"{qualified:,}"))
+    st.caption("Equal leader scores resolve by character key in the current export. Without tie metadata, a deterministic leader does not establish a unique favorite.")
+
+    story_section("03 · Shared interests", "Overlap has a direction and a denominator")
+    story_prose("Two characters can attract many of the same people without being substitutes or forming a validated archetype. This example explains membership overlap; its source is the full classified membership cohort, separate from the paired concentration reference.")
+    try:
+        pairs = load_dataset("cooccurrence")
+    except DashboardDataError as error:
+        st.info("Character overlap is unavailable for this snapshot. The paired audience and leading-character views remain available.")
+        with st.expander("Overlap snapshot details"):
+            st.code(str(error), language=None)
+        pairs = None
+    pair_fields = {"recent_pool_player_count", "player_count_a", "player_count_b", "prob_b_given_a", "prob_a_given_b", "as_of_date"}
+    if pairs is not None and pair_fields.issubset(pairs.columns):
+        example = pairs.loc[pairs.champion_name_a.eq("Caitlyn") & pairs.champion_name_b.eq("Jhin")]
+        if example.empty:
+            example = pairs.loc[pairs.champion_name_a.eq("Jhin") & pairs.champion_name_b.eq("Caitlyn")]
+        if not example.empty:
+            pair = example.iloc[0]
+            shared = int(pair.pair_player_count)
+            a, b = pair.champion_name_a, pair.champion_name_b
+            union = int(pair.player_count_a + pair.player_count_b - shared)
+            counts = [int(pair.player_count_a) - shared, shared, int(pair.player_count_b) - shared]
+            labels = [t("{p0} only", p0=a), t("Both characters"), t("{p0} only", p0=b)]
+            fig = go.Figure(go.Bar(x=counts, y=labels, orientation="h", marker_color=[BLUE, GOLD, BLUE],
+                                  text=[f"{n:,}" for n in counts], textposition="outside", cliponaxis=False,
+                                  hovertemplate="%{y}<br>Profiles: %{x:,}<extra></extra>"))
+            style_figure(fig, height=230)
+            fig.update_layout(margin={"l": 100, "r": 50, "t": 15, "b": 50})
+            fig.update_xaxes(title="Profiles", range=[0, max(1, max(counts)) * 1.2], fixedrange=True)
+            fig.update_yaxes(autorange="reversed", fixedrange=True)
+            st.plotly_chart(fig, key="story-overlap-example", width="stretch", config={"displayModeBar": False})
+            story_prose(t("{p0} profiles contain both {p1} and {p2}: {p3} of the {p4} audience and {p5} of the {p6} audience. Their combined distinct reach is {p7} profiles.",
+                          p0=f"{shared:,}", p1=a, p2=b, p3=f"{pair.prob_b_given_a:.1%}", p4=a,
+                          p5=f"{pair.prob_a_given_b:.1%}", p6=b, p7=f"{union:,}"))
+            story_prose(t("Raw lift is {p0}: observed overlap relative to the two overall audience sizes. It does not adjust for differences in how many characters each person has in their pool.", p0=f"{pair.lift:.2f}"))
+            st.caption(t("Pair source: {p0} classified membership profiles as of {p1}; the concentration reference has {p2}. This illustrative pair was selected for explanation, not as the strongest association.",
+                         p0=f"{int(pair.recent_pool_player_count):,}", p1=pd.Timestamp(pair.as_of_date).strftime("%Y-%m-%d"), p2=f"{len(banded):,}"))
+        else:
+            st.info("The illustrative pair is not present in this snapshot. No overlap estimate is substituted.")
+        if len(pairs):
+            st.caption(t("{p0} of {p1} published pairs have raw lift above one. Pool breadth can create widespread overlap; raw lift alone is not a character taxonomy.",
+                         p0=f"{int(pairs.lift.gt(1).sum()):,}", p1=f"{len(pairs):,}"))
+    elif pairs is not None:
+        st.info("This overlap snapshot lacks the audience denominators needed for the example. No overlap estimate is substituted.")
+    with st.expander("What a character archetype would require"):
+        st.markdown("No validated archetype assignments are available in this snapshot. The declared method conditions character associations on pool breadth, compares the resulting association profiles and checks cluster stability with whole-player resampling and cutoff sensitivities before assigning names.")
+        st.markdown("Rank, activity, focus and spending are subsequent comparison dimensions, not clustering features. A leading-character-to-archetype map can be joined by character key after validation; unsupported characters must remain unassigned. The current overlap export does not contain the breadth strata or player-level fitting state needed for those checks.")
+
+    story_section("04 · The audience map", "Add character interests to the same audience reference")
+    story_prose("Select an overall reporting state or one of the ten leading-character audiences. The activity bands, focus bins and rank facets stay fixed. This view describes the leading active character; it is not a complete profile of every interest.")
+    labels = {"all": t("All paired profiles"), "qualified": t("Qualifying leaders"), "below": t("Below reporting cutoff")}
+    if unavailable:
+        labels["unavailable"] = t("Leader unavailable")
+    for row in featured.itertuples():
+        labels[int(row.character_key)] = row.character
+    selection = st.selectbox("Audience slice", list(labels), format_func=labels.__getitem__, key="story_character_audience")
+    if selection == "all":
+        selected = banded
+    elif isinstance(selection, str):
+        selected = banded.loc[states.eq(selection)]
+    else:
+        selected = banded.loc[states.eq("qualified") & banded.active_pool_lifetime_primary_champion_key.eq(selection)]
+    story_prose(t("Showing {p0} of {p1} reference profiles; {p2} remain outside this selection. Filters select people without recalculating activity bands.",
+                  p0=f"{len(selected):,}", p1=f"{len(banded):,}", p2=f"{len(banded) - len(selected):,}"), css="story-meta")
+    window_labels = {w: story_window_label(w) for w in AUDIENCE_WINDOWS}
+    window = st.radio("Audience map view", list(AUDIENCE_WINDOWS), format_func=window_labels.__getitem__,
+                      horizontal=True, key="story_character_map_window")
+    grids = {w: audience_grid(selected, w) for w in AUDIENCE_WINDOWS}
+    maximum = max(int(audience_grid(banded, w).profiles.max()) for w in AUDIENCE_WINDOWS)
+    st.plotly_chart(recap_chart(grids[window], maximum=maximum), key="story-character-recap",
+                    width="stretch", config={"displayModeBar": False})
+    st.caption("The count scale stays fixed to the complete paired reference across selections and both concentration views. Sparse audiences may appear faint; inspect the count table. Character archetypes have not been assigned.")
+    with st.expander("Inspect character coverage and map counts"):
+        st.dataframe(pd.DataFrame({"Reporting state": [t("Qualifying leaders"), t("Below reporting cutoff"), t("Leader unavailable")],
+                                   "Profiles": [qualified, below, unavailable]}), hide_index=True, width="stretch")
+        st.dataframe(featured.rename(columns={"character_key": "Character key", "character": "Character", "profiles": "Profiles"}),
+                     hide_index=True, width="stretch")
+        st.dataframe(grids[window].rename(columns={"activity_band": "Activity band", "rank_group": "Rank group",
+                     "focus_bin": "Concentration bin (0–9)", "profiles": "Profiles", "n": "Profiles in rank-band cell"}),
+                     hide_index=True, width="stretch")
+    story_prose("These audiences can guide questions about character content and discovery. Purchasing preferences need real transaction outcomes; transactions are the next reporting layer.", css="story-prose story-note")
+    story_footer(4, "pages/2_Champion_Explorer.py", "Champion explorer")
 
 
 def tiers_page() -> None:
@@ -171,40 +453,11 @@ def tiers_page() -> None:
             "How does champion concentration differ across tiers and lifetime mastery? Compare the same players within their recent pool and whole history, using fixed mastery bands.",
         ),
     )
-    try:
-        reference = load_audience_reference()
-        banded = prepare_audience(players, reference)
-    except DashboardDataError as error:
-        st.info(
-            "This audience comparison is unavailable for the current snapshot. A matching frozen audience reference and active-pool concentration fields are required."
-        )
-        with st.expander("Snapshot details"):
-            st.code(str(error), language=None)
-        story_footer(3, "pages/1_Overall_Analysis.py", "Population explorer")
+    banded = story_audience(players, 3)
+    if banded is None:
         return
-
     cells = concentration_cells(banded)
-    n = len(banded)
-    missing_recent = int((~players.recent_playstyle.isin(PLAYSTYLE_ORDER)).sum())
-    zero_pool = int(
-        (players.recent_playstyle.isin(PLAYSTYLE_ORDER) & players.active_pool_lifetime_mastery_points.eq(0)).sum()
-    )
-    story_prose(
-        t(
-            "Collected sample · {p0} paired profiles · Same people in both views · Equal weight per profile",
-            p0=f"{n:,}",
-        ),
-        css="story-meta",
-    )
-    story_prose(
-        t(
-            "Of {p0} available profiles, {p1} have no Recent classification and {p2} have zero accumulated points in their active pool. They are outside this comparison; missing context is not zero activity.",
-            p0=f"{len(players):,}",
-            p1=f"{missing_recent:,}",
-            p2=f"{zero_pool:,}",
-        ),
-        css="story-meta",
-    )
+    story_cohort_note(players, banded)
 
     story_section("01 · Audience size", "See how much of the sample each group represents")
     story_prose(
@@ -240,23 +493,7 @@ def tiers_page() -> None:
             "Leading-champion share divides the highest lifetime champion mastery by total mastery in the selected pool. The recent-pool and lifetime views use accumulated points, not recent mastery gains or observed match shares.",
         )
     )
-    with st.container(key="story-band-key"):
-        ranges = banded.groupby("activity_band").lifetime_mastery_points.agg(["min", "max"])
-        for band, column in enumerate(st.columns(5, gap="small"), 1):
-            with column:
-                story_prose(story_text("Activity band {p0}", "Mastery band {p0}", p0=band), css="story-band-title")
-                if band in ranges.index:
-                    low, high = ranges.loc[band, ["min", "max"]]
-                    story_prose(t("{p0}–{p1} points", p0=f"{low:,.0f}", p1=f"{high:,.0f}"), css="story-band-range")
-                    story_prose(
-                        t("≈ {p0}–{p1} hour-equivalents", p0=f"{low / 1200:,.0f}", p1=f"{high / 1200:,.0f}"),
-                        css="story-band-range",
-                    )
-                else:
-                    story_prose("No profiles", css="story-band-range")
-    st.caption(
-        "Hour-equivalents assume 600 points per match and 30 minutes per match: score / 1,200. They are illustrative, not observed hours, account age or time needed to reach a rank."
-    )
+    story_band_key(banded)
 
     bands_on_x = st.toggle(
         story_text("Activity bands on the horizontal axis", "Mastery bands on the horizontal axis"),
@@ -294,15 +531,7 @@ def tiers_page() -> None:
                     width="stretch",
                     config={"displayModeBar": False},
                 )
-    mature = int(banded.days_tracked.ge(30).sum())
-    story_prose(
-        t(
-            "Active membership is inferred. {p0} profiles use the mature 60-day/gain rule; the other {p1} use the short-history 30-day recency rule. Accumulated weighting does not remove this difference in pool selection.",
-            p0=f"{mature:,}",
-            p1=f"{n - mature:,}",
-        ),
-        css="story-meta",
-    )
+    story_membership_note(banded)
 
     story_section("What this shows", "Read the differences within their context")
     if {1, 5}.issubset(set(banded.activity_band)):
@@ -478,16 +707,14 @@ def focus_table(cells: pd.DataFrame) -> pd.DataFrame:
     })
 
 
-def growth_page() -> None:
-    story_start(4, "Specialization and rank growth: an unresolved question",
-                "League Points (LP) measure ranked progress. Here the outcome is LP gained per game above the player's starting-tier baseline. Zero means matching that baseline, not making no progress.")
+def growth_evidence() -> None:
+    st.markdown("League Points (LP) measure ranked progress. Here the outcome is LP gained per game above the player's starting-tier baseline. Zero means matching that baseline, not making no progress.")
     try:
         growth = load_optional_dataset("growth_player_styles")
     except DashboardDataError as error:
         render_load_error(error)
     if growth is None:
         st.info("This snapshot has no observed-period growth extract. The rank explorer still provides the available current-profile comparisons.")
-        story_footer(4, "overview.py", "Specialization and rank explorer")
         return
     summary = growth_uncertainty(growth)
     total = int(summary["observations"].sum())
@@ -534,42 +761,6 @@ def growth_page() -> None:
     with right:
         story_card("What would settle it", "Follow the same players for longer", "Collect more completed weeks, preserve private linkage for player-clustered intervals, and track within-player pool changes. More data alone would still not prove causation.")
     story_card("Business read · hypothesis to test", "Earn the recommendation before building it", "This evidence is too limited to justify a 'specialize to climb' feature. The pipeline provides a way to keep collecting the observations needed to investigate it.", hypothesis=True)
-    story_footer(4, "overview.py", "Specialization and rank explorer")
-
-
-def champions_page() -> None:
-    players = story_start(5, "The champion changes the picture",
-                          "Selected champion groups illustrate how the tier distribution of highly concentrated players can differ. These are exploratory case studies, chosen after seeing the data; they do not establish a champion-difficulty effect.")
-    st.caption("One-trick here means at least 300,000 lifetime mastery points and a recent main-champion share of at least 80% OR recent HHI of at least 0.65. It describes an inferred recent pool, not exclusive play in every match.")
-    try:
-        comparison = champion_case_comparison(players, load_dataset("champion_tier_mastery"))
-    except DashboardDataError as error:
-        render_load_error(error)
-    for name, champions in CASE_GROUPS.items():
-        frame = comparison.loc[comparison["group"].eq(name)]
-        mains = frame.loc[frame["series"].eq("One-tricks")]
-        count = int(mains["total"].iloc[0])
-        story_section(name, " · ".join(champions), "Actual counts · exploratory selection")
-        left, right = st.columns([1.2, 1], gap="medium")
-        with left:
-            st.plotly_chart(case_chart(frame), width="stretch")
-        with right:
-            st.metric("One-tricks in selected champions", f"{count:,}")
-            if count >= MIN_SUPPORT_PLAYERS:
-                featured_tier = "IRON" if name == "Case group A" else "Diamond+"
-                featured = frame.loc[frame["tier"].eq(featured_tier)].set_index("series")
-                st.markdown(t("{p0} of these one-tricks are in {p1}, compared with {p2} of champion-holder records.",
-                              p0=f"{featured.loc['One-tricks', 'share']:.0%}", p1=t(featured_tier),
-                              p2=f"{featured.loc['Champion holders', 'share']:.0%}"))
-            story_card("Read the baseline", "Two comparisons, different questions", "Champion holders show where all mastery holders of these champions sit. The all-champion one-trick line shows where the broader concentrated-player cohort sits. Diamond and Master are pooled as Diamond+.")
-    left, right = st.columns(2, gap="medium")
-    with left:
-        story_card("What this cannot say", "Where players sit is not who climbs", "Low-tier concentration could reflect a beginner audience, selection, or slower climbing. High-tier concentration has similarly competing explanations. These small groups cannot distinguish them.")
-    with right:
-        story_card("How to firm it up", "Define difficulty independently first", "Choose an external difficulty classification before examining outcomes, compare every sufficiently supported champion, and match on experience. No easy-versus-hard claim is made here.")
-    story_card("Business read · hypothesis to test", "Test content needs by champion audience", "Beginner onboarding and advanced practice content may serve different audiences. Validate demand and learning outcomes before turning these descriptive groups into a product decision.", hypothesis=True)
-    story_card("Caveat", "Counts are small and baselines overlap", "One-tricks contribute once through their primary champion. Holder counts pool player–champion records, so someone holding several selected champions can contribute several times. Shares are sample-based, with no population correction.")
-    story_footer(5, "pages/2_Champion_Explorer.py", "Champion explorer")
 
 
 def findings_page() -> None:
@@ -578,9 +769,9 @@ def findings_page() -> None:
     columns = st.columns(3, gap="medium")
     for column, kicker, title, body in zip(columns, ["Finding 1 · Tiers", "Finding 2 · Growth", "Finding 3 · Champions"],
         ["Definitions change the story", "The growth question needs more evidence", "Champion audiences differ"], [
-            "Lifetime and recent concentration produce different ladder patterns. A mastery-adjusted ratio and the experience-stratified comparison help expose that distinction. Trust: descriptive, dependent on the pool definition.",
+            "Active-pool and whole-history concentration describe different scopes of accumulated interest. Fixed activity bands and rank facets keep comparisons on the same profiles. These are descriptive sample results, dependent on pool membership.",
             "The observed-period estimates come from a small selected sample. Bootstrap intervals and the measured-spread sensitivity curve show why modest differences remain hard to resolve. Trust: inconclusive about a general specialization benefit.",
-            "Selected one-trick groups have different tier distributions. Post-selection, small cohorts and overlapping holder baselines limit interpretation. Trust: exploratory, not a difficulty or climbing effect.",
+            "Leading active characters and shared membership give audiences content context. Character types and character archetypes are separate definitions; no validated archetypes or purchasing preferences are claimed.",
         ], strict=True):
         with column:
             story_card(kicker, title, body)
@@ -592,6 +783,8 @@ def findings_page() -> None:
     with columns[2]:
         story_card("Next", "Measure, follow up, validate", "Benchmark extraction throughput. Collect more completed weeks. Add player-clustered analysis before anonymous export. Prespecify champion comparisons and validate product hypotheses with real outcomes.")
     story_card("About the work", "A portfolio in making data usable", "This project connects Python collection and orchestration, SQL and dbt modeling on Databricks, analytical reasoning and a readable data product. The repository documents the choices, failures and tradeoffs behind it.")
+    with st.expander("The separate competitive-growth question"):
+        growth_evidence()
     resource_links(contact=True)
     story_footer(6, "pages/1_Overall_Analysis.py", "Open the data explorers")
 
@@ -603,11 +796,11 @@ def story_start(number: int, title: str, deck: str) -> pd.DataFrame:
     progress = t("The story · {p0} of 6", p0=number) + " · " + t(STORY_PAGES[number - 1][1])
     st.markdown(f'<div class="story-progress">{escape(progress)}</div><h1 class="story-heading">{escape(t(title))}</h1><p class="story-deck">{escape(t(deck))}</p>', unsafe_allow_html=True)
     try:
-        players = load_dataset("players", include_all_tiers=number == 3).drop(columns="population_weight", errors="ignore")
+        players = load_dataset("players", include_all_tiers=number in (1, 2, 3, 4)).drop(columns="population_weight", errors="ignore")
     except DashboardDataError as error:
         render_load_error(error)
     data_source_caption(data_freshness([players]))
-    if number == 3:
+    if number in (1, 2, 3, 4):
         manifest = load_manifest()
         exported = manifest.get("exported_at_utc")
         exported = pd.Timestamp(exported).strftime("%Y-%m-%d") if exported else t("Not recorded")

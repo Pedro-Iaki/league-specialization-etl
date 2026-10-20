@@ -29,7 +29,7 @@ def test_story_next_buttons_complete_the_tour_and_keep_language(language):
     for number in range(1, len(STORY_PAGES) + 1):
         assert not app.exception
         assert app.session_state[LANGUAGE_KEY] == language
-        assert not app.selectbox  # the guided tour needs no analytical filter choices
+        assert len(app.selectbox) == (1 if number == 4 else 0)
         if number > 1:
             assert any(button.key == f"story_previous_{number}" for button in app.button)
         next(button for button in app.button if button.key == f"story_next_{number}").click().run()
@@ -39,7 +39,7 @@ def test_story_next_buttons_complete_the_tour_and_keep_language(language):
         # widget request. Keep its requested page in sync with the rendered page.
         app.switch_page(STORY_PAGES[following - 1][0])
     assert not app.exception
-    assert len(app.get("plotly_chart")) == 2
+    assert len(app.get("plotly_chart")) == 1
     app.switch_page("overview.py").run()
     assert not app.exception
     assert any(widget.value == "Recent activity" for widget in app.selectbox)
@@ -133,31 +133,32 @@ def test_audience_mismatched_snapshot_keeps_navigation(size):
     assert app.button(key="story_previous_3") and app.button(key="story_next_3")
 
 
-def test_audience_missing_reference_does_not_invent_new_bands():
+@pytest.mark.parametrize("number", [2, 3, 4])
+def test_audience_missing_reference_does_not_invent_new_bands(number):
     app = AppTest.from_file(str(APP), default_timeout=45).run()
     with patch("app_core.story.load_audience_reference", side_effect=DashboardDataError("reference mismatch")):
-        app.switch_page(STORY_PAGES[2][0]).run()
+        app.switch_page(STORY_PAGES[number - 1][0]).run()
     assert not app.exception
     assert not app.get("plotly_chart")
     assert any("reference mismatch" in item.value for item in app.code)
-    assert app.button(key="story_next_3")
+    assert app.button(key=f"story_next_{number}")
 
 
 def test_older_snapshot_without_growth_keeps_story_navigation():
     app = AppTest.from_file(str(APP), default_timeout=45).run()
     with patch("app_core.story.load_optional_dataset", return_value=None):
-        app.switch_page(STORY_PAGES[3][0]).run()
+        app.switch_page(STORY_PAGES[5][0]).run()
         assert not app.exception
         assert any("no observed-period growth extract" in item.value for item in app.info)
-        next(button for button in app.button if button.key == "story_next_4").click().run()
+        next(button for button in app.button if button.key == "story_next_6").click().run()
         assert not app.exception
-        assert len(app.get("plotly_chart")) == 2
+        assert len(app.get("plotly_chart")) == 1
 
 
 def test_invalid_growth_snapshot_shows_the_existing_load_error():
     app = AppTest.from_file(str(APP), default_timeout=45).run()
     with patch("app_core.story.load_optional_dataset", side_effect=DashboardDataError("missing growth columns")):
-        app.switch_page(STORY_PAGES[3][0]).run()
+        app.switch_page(STORY_PAGES[5][0]).run()
     assert not app.exception
     assert any("could not be loaded" in item.value for item in app.error)
 

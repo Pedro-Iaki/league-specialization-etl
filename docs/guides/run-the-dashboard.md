@@ -50,14 +50,14 @@ Open the local URL printed by Streamlit. Keep the terminal running while browsin
 
 Start with **The story**. Its current sequence is:
 
-1. **Pipeline and data** — source, pipeline and evidence context.
-2. **What transactions would add** — the missing real purchase-data opportunity and the generated-source contract.
+1. **The audience question** — purpose, source, pipeline, observation dates and separate analytical/scenario coverage.
+2. **Defining an audience** — paired active-pool/whole-history distributions, historical focus groups and the first activity-and-focus map.
 3. **Comparing audiences** — paired active-pool/whole-history concentration, rank and activity-band counts, a fixed audience map, and all four historical focus groups in supporting detail.
-4. **Specialization and growth** — observed competitive outcomes and their limits.
-5. **Champion case studies** — character-audience comparisons.
-6. **Findings and limits** — interpretation and boundaries.
+4. **Character interests** — inferred types A–E, qualifying leading characters, directional overlap and character slices of the same audience map.
+5. **What transactions would add** — the missing real purchase-data opportunity and the generated-source contract.
+6. **Findings and limits** — interpretation, boundaries and the separate competitive-growth evidence in expandable detail.
 
-**Pipeline and data** is the default landing page. This is the implemented navigation; presentation wording and emphasis are still being finalized.
+**The audience question** is the default landing page. Pages 1–4 implement the audience sequence; the transaction and final evidence chapters retain their existing content pending their own refinement.
 
 Use **Explore the data** for a more detailed question:
 
@@ -70,13 +70,21 @@ Use **Explore the data** for a more detailed question:
 | Population Estimates | Sample/adjusted comparisons, support diagnostics, standardization and downloads. |
 | Business sample | Generated spending, simulated tenure, cosmetic acquisition and discounts. |
 
-The **EN / PT** language control supports English and Brazilian Portuguese. **Comparing audiences** also has an independent **Plain language / League terms** control. Both preferences survive story navigation; changing terminology changes wording, not the data. Other pages retain their current terminology while the story revamp continues: champion means character, tier means rank, and mastery is a cumulative activity score. That score is neither hours nor an exact match count.
+The **EN / PT** language control supports English and Brazilian Portuguese. Pages 1–4 also have an independent **Plain language / League terms** control. Both preferences survive story navigation; changing terminology changes wording, not the data. Other pages retain their current terminology while the story revamp continues: champion means character, tier means rank, and mastery is a cumulative activity score. That score is neither hours nor an exact match count.
 
-Page 3 uses 19,722 comparable profiles from the current reference, including the Grandmaster profile. Active-pool and whole-history leading shares both use accumulated mastery weights, with different character-pool denominators. The two main panels share a 0–100% scale. **Show the middle 50% of profiles** displays interquartile ranges around the medians; these are distribution summaries, not confidence intervals. Existing category proportions retain their Wilson intervals in the expandable historical section. Character-type context moves to the later character chapter.
+Page 1 separates the current 37,803 profiles, the 19,722-profile analytical subset and the separately frozen 24,990-profile September 29 transaction scenario. These are question-specific branches, not nested coverage stages. The observation-date chart counts one latest observation per profile; the export date is separate.
+
+Page 2 introduces the paired audience and frozen bands before adding rank. Distribution boxes span the 25th–75th percentiles, lines and labels show medians, and whiskers span the 10th–90th percentiles. These ranges are not confidence intervals. A compact Lifetime composition retains all four historical focus groups; the expandable Lifetime × Recent table compares existing definitions rather than observed switching. Two count maps use common scales and the exact bins later split by rank on page 3.
+
+Pages 2–4 use 19,722 comparable profiles from the current reference, including the Grandmaster profile. Active-pool and whole-history leading shares both use accumulated mastery weights, with different character-pool denominators. On page 3, the two main panels share a 0–100% scale. **Show the middle 50% of profiles** displays interquartile ranges around the medians; these are distribution summaries, not confidence intervals. Existing category proportions retain their Wilson intervals in the expandable historical section.
 
 Activity-score boundaries are fixed for the paired snapshot in `data/audience_reference.json`; equal scores stay together. Optional hour-equivalents assume 600 points per match and 30 minutes per match (`score / 1,200`), without claiming observed hours or time to a rank. The ending map uses 10-percentage-point concentration display bins and rank facets. Its view control changes the pool denominator, while the reference cohort, activity bands and color scale stay fixed.
 
 **Activity bands on the horizontal axis** swaps the line-chart orientation: when enabled, four rank-group lines run across the five bands. When disabled, five activity-band lines run across rank groups. The legend and labels follow the selected view; counts, medians, quartiles and support stay the same.
+
+Page 4 treats **character type** and **character archetype** as separate concepts. Type IDs A–E describe the existing inferred position preference; missing types are omitted only from that chart with an exclusion count. Character reporting requires at least 15,000 accumulated points for the leading active character: 18,629 profiles qualify and 1,093 remain below cutoff. This filter is applied after concentration and band assignment. Equal leader scores currently resolve by character key, so the leader is not proof of a unique favorite.
+
+The Caitlyn–Jhin overlap example uses its own 19,723-profile membership denominator, not the 19,722-profile concentration reference. It shows distinct reach, directional overlap and unadjusted lift. Archetype fitting remains unavailable because the current extracts lack breadth-stratified fitting inputs and player-level stability checks. The ending map therefore uses supported leading-character selections and reporting states; its bins and count scale stay fixed to the full reference. Missing pair data does not disable the character or audience-map views.
 
 ## 4. Read dates and support alongside results
 

@@ -72,8 +72,8 @@ def offline_import(name, *args, **kwargs):
 builtins.__import__ = offline_import
 app = AppTest.from_file(str(Path(sys.argv[1]) / 'app.py'), default_timeout=60).run()
 assert not app.exception, [error.value for error in app.exception]
-assert len(app.get('plotly_chart')) == 2
-for page in ('story/03_tiers.py', 'story/04_growth.py', 'story/05_champions.py', 'business.py'):
+assert len(app.get('plotly_chart')) == 1
+for page in ('story/02_audience.py', 'story/03_tiers.py', 'story/04_characters.py', 'story/05_transactions.py', 'business.py'):
     app.switch_page(page).run()
     assert not app.exception, [error.value for error in app.exception]
 """
