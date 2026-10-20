@@ -92,11 +92,12 @@ def test_activity_aggregates_use_weighted_numerators_and_observed_counts():
     assert result["role_top_pct"] == pytest.approx(2.9 / 13)
 
 
-def test_player_export_needs_only_profiles_and_excludes_identifiers():
+def test_player_export_uses_local_population_weights_and_excludes_identifiers():
     query = DATASET_QUERIES["players"]
     assert "mart_player_profile" in query
     assert "mart_player_population_weights" not in query
-    select = query.split("from", 1)[0]
+    # Private identifiers can appear inside CTEs, but not in the public projection.
+    select = query.rsplit("select", 1)[1].split("from", 1)[0]
     assert "population_weight" not in select
     assert "player_id" not in select and "puuid" not in select
 

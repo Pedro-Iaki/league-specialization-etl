@@ -95,7 +95,7 @@ The [export queries](../../streamlit_app/app_core/queries.py) define these datas
 
 | Dataset | Row meaning before identity columns are removed |
 |---|---|
-| `players` | Current player profile, with population weights attached during export. |
+| `players` | Current player profile, with population weights attached during export and separate `active_pool_lifetime_*` preference fields. |
 | `champions` | Character summary. |
 | `cooccurrence` | Supported unordered character pair. |
 | `champion_player_mastery_share` | Player/character mastery-holder membership passing its activity-score threshold. A person can supply several rows. |
@@ -110,5 +110,11 @@ The [export queries](../../streamlit_app/app_core/queries.py) define these datas
 | `business_players` | Frozen scenario/player summary with real profile context and generated commercial measures. |
 
 Public extracts exclude operational player and interval identifiers; they cannot reconstruct cross-dataset player joins. Public character identifiers remain useful analytical dimensions. Exact required columns are in [contracts.py](../../streamlit_app/app_core/contracts.py); the business dataset additionally uses an explicit [column allowlist](../../streamlit_app/app_core/business.py). Export validation rejects missing required columns, forbidden identifiers and empty results.
+
+The player export derives `active_pool_lifetime_*` by joining the mart's complete `recent_champion_names` membership to existing current mastery records before removing player identifiers. No recency filter, mastery minimum, ranked-follow-up requirement or dbt model change is added. For a player with active pool `A`, each character's share is its Lifetime mastery divided by the sum of Lifetime mastery across `A`. The export includes pool count/total, leading character key/name/points, leading share and HHI. Tied leaders resolve by ascending character key. Empty pools have zero count/total and null preference fields; zero-total pools also have null preference fields.
+
+To report only favorites with at least 15,000 Lifetime points, filter `active_pool_lifetime_primary_champion_points >= 15000` after calculation. The share and HHI still describe the full active pool, including members below that cutoff. Removing low-point characters from the denominator would define a different measure and requires recalculation before aggregation; it cannot be reconstructed from these profile summaries alone.
+
+These fields describe accumulated preference among recently active characters, rather than measured recent play shares. Existing `recent_*`, `lifetime_*`, inferred roles and classifications retain their original definitions. The short-history membership rule uses last-play recency of 0–30 days inclusive at default settings; mature history uses the model's existing 60-day/gain requirements, as defined in [metrics and methods](metrics-and-methods.md#recent-membership-shares-and-preferred-characters). A single active member produces a share of one without proving exclusive recent play. No new gap-selected subset or Fan classification is introduced. New player exports require these fields, while older serving snapshots remain readable until refreshed.
 
 The [manifest](../../streamlit_app/data/manifest.json) records export time, per-dataset size/count/date metadata where available, and scenario provenance. A selective export retains existing manifest entries for unselected files, so one top-level export timestamp does not prove every dataset was refreshed together. Dates, eligibility and grains must accompany numerical claims; equality of row counts does not establish identical cohorts. Streamlit reads these local Parquet files and does not query the warehouse.

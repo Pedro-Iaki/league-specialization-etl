@@ -19,7 +19,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from app_core.business import BUSINESS_PUBLIC_COLUMNS
 from app_core.config import DATASET_FILES
-from app_core.contracts import REQUIRED_COLUMNS
+from app_core.contracts import ACTIVE_POOL_LIFETIME_COLUMNS, REQUIRED_COLUMNS
 from app_core.population import population_weights
 from app_core.queries import DATASET_QUERIES
 
@@ -106,7 +106,10 @@ def fetch_frame(cursor: Any, query: str) -> pd.DataFrame:
 
 
 def validate_public_frame(name: str, frame: pd.DataFrame) -> None:
-    missing = REQUIRED_COLUMNS[name].difference(frame.columns)
+    required = REQUIRED_COLUMNS[name]
+    if name == "players":
+        required = required | ACTIVE_POOL_LIFETIME_COLUMNS
+    missing = required.difference(frame.columns)
     forbidden = FORBIDDEN_PUBLIC_COLUMNS.intersection(frame.columns)
     if missing:
         raise ValueError(f"{name} is missing required columns: {sorted(missing)}")

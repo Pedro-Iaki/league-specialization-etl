@@ -2,6 +2,17 @@
 
 from app_core.business import BUSINESS_PUBLIC_COLUMNS, CASH_DISCOUNT_COLUMNS
 
+# Required on new exports; older serving snapshots remain readable.
+ACTIVE_POOL_LIFETIME_COLUMNS = {
+    "active_pool_lifetime_champion_count",
+    "active_pool_lifetime_mastery_points",
+    "active_pool_lifetime_primary_champion_key",
+    "active_pool_lifetime_primary_champion_name",
+    "active_pool_lifetime_primary_champion_points",
+    "active_pool_lifetime_top1_share",
+    "active_pool_lifetime_hhi",
+}
+
 REQUIRED_COLUMNS = {
     "champion_population_pairs": {"champion_key_a", "champion_name_a", "champion_key_b", "champion_name_b", "region", "queue", "tier", "recent_pool_player_count", "player_count_a", "player_count_b", "pair_player_count"},
     "champion_population_activity": {"champion_name", "tier", "region", "queue", "recent_player_count", "recent_pool_player_count", "mean_recent_share", "role_sample_player_count", "role_top_pct", "role_jungle_pct", "role_middle_pct", "role_bottom_pct", "role_support_pct"},
