@@ -26,7 +26,7 @@ pages = {
 if (LOCAL_DIR / 'membership.parquet').exists():
     pages['Local laboratory'] = [
         st.Page('pages/5_Character_Families.py', title='Character families', url_path='character-families'),
-        st.Page('pages/6_Batch_Scenario_Viewer.py', title='Batch scenario viewer', url_path='batch-scenario-viewer'),
+        st.Page('pages/6_Batch_Scenario_Viewer.py', title='Family cohort builder', url_path='batch-scenario-viewer'),
     ]
 
 st.navigation(pages, expanded=True).run()

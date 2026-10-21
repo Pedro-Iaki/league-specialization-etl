@@ -13,6 +13,8 @@ from app_core.family_batch import (
     FAMILY_BANDS, STATES, aggregate_coverage, evaluate_scenario, scenario_evidence, smallest_family_cover, target_size_cover,
 )
 from app_core.family_plots import co_membership_figure, family_consistency_figure
+from app_core.family_cohort_view import render_cohort_builder
+from app_core.family_cohort import sources_from_cases, fingerprint, subset_scores
 from app_core.population import load_reference, reference_fingerprint
 from app_core.ui import setup_page
 
@@ -30,9 +32,25 @@ def _evidence(scenario: dict, source_hash: str, reference_hash: str, repetitions
 
 
 def render_batch_scenarios() -> None:
-    setup_page('Batch scenario viewer')
-    st.subheader('Batch scenario viewer')
-    st.caption('Compare final character assignments and original-family consistency under the same review rules.')
+    restored = st.session_state.pop('cohort_restore_policy', None)
+    if restored:
+        controls = {'batch_target': 'family_target', 'batch_trim': 'trim_fraction', 'batch_single': 'single_threshold',
+                    'batch_shared': 'shared_threshold', 'batch_gap': 'separation_target',
+                    'batch_cover_approach': 'selection_approach', 'batch_cover_basis': 'cover_basis',
+                    'batch_coverage_minimum': 'minimum_family_size', 'batch_coverage_maximum': 'maximum_family_size',
+                    'batch_ideal_minimum': 'ideal_minimum', 'batch_ideal_maximum': 'ideal_maximum',
+                    'batch_size_preference': 'size_preference', 'batch_target_hard_limits': 'hard_size_limits_applied'}
+        for widget, field in controls.items():
+            if field in restored and st.session_state.get(widget) != restored[field]:
+                st.session_state[widget] = restored[field]
+        for toggle, widget, field in [('batch_limit_family_cost', 'batch_max_family_cost', 'max_family_cost'),
+                                       ('batch_limit_marginal_cost', 'batch_max_marginal_cost', 'max_cost_per_character')]:
+            st.session_state[toggle] = restored.get(field) is not None
+            if restored.get(field) is not None:
+                st.session_state[widget] = restored[field]
+    setup_page('Family cohort builder')
+    st.subheader('Family cohort builder')
+    st.caption('Compare scenario evidence, then curate families with character fit, coverage and overlap in view.')
     path = LOCAL_DIR / 'membership.parquet'
     if not path.exists():
         st.info('Export the local character membership snapshot before comparing scenarios.')
@@ -54,7 +72,7 @@ def render_batch_scenarios() -> None:
         st.session_state['batch_selected_scenarios'] = marked
     else:
         st.session_state['batch_selected_scenarios'] = [name for name in st.session_state['batch_selected_scenarios'] if name in files]
-    with st.container(border=True):
+    with st.expander('Evidence library and batch settings', expanded='batch_results' not in st.session_state):
         buttons = st.columns(3)
         for column, label, names in [(buttons[0], 'Select marked scenarios', marked),
                                      (buttons[1], 'Select all saved scenarios', list(files)),
@@ -111,26 +129,35 @@ def render_batch_scenarios() -> None:
         progress.empty()
         st.session_state['batch_results'] = {'request': request, 'cases': results, 'errors': errors}
     saved = st.session_state.get('batch_results')
+    review_policy = {'family_target': target, 'trim_fraction': trim, 'single_threshold': single,
+                     'shared_threshold': shared, 'separation_target': gap}
+    if shared > single:
+        return
     if saved is None:
         st.info('Select scenarios and run the comparison. Missing bootstrap evidence is computed locally; saved files are preserved.')
+        render_cohort_builder([], characters, None, review_policy, manifest['sha256'], reference_hash)
         return
     if saved['request'] != request:
         st.info('Selection, scenario files, repeat count or repeat seed changed. Run batch comparison to update the results.')
-        return
-    if shared > single:
+        render_cohort_builder([], characters, None, review_policy, manifest['sha256'], reference_hash)
         return
     if saved['errors']:
         st.warning('Some scenarios could not be evaluated. Their errors are listed separately; they are not scored as zero.')
         st.dataframe(pd.DataFrame(saved['errors']), hide_index=True, width='stretch')
     cases = saved['cases']
     if not cases:
+        render_cohort_builder([], characters, None, review_policy, manifest['sha256'], reference_hash)
         return
     evaluated = [dict(case, result=evaluate_scenario(case['evidence'], target, trim, single, shared, gap)) for case in cases]
     _coverage_overview(evaluated, characters)
-    _comparison(evaluated, target)
-    expand = st.checkbox('Expand all scenario charts', key='batch_expand_all')
-    for case in evaluated:
-        _scenario_details(case, target, expand)
+    st.caption(f'{len(evaluated)} scenarios evaluated · {repetitions} bootstrap repeats · seed {repeat_seed} · '
+               f'snapshot {manifest["sha256"][:12]}. Curation reuses these matrices.')
+    with st.expander('Scenario evidence and comparison'):
+        _comparison(evaluated, target)
+        if st.checkbox('Show individual scenario charts', key='batch_show_details'):
+            expand = st.checkbox('Expand all scenario charts', key='batch_expand_all')
+            for case in evaluated:
+                _scenario_details(case, target, expand)
 
 
 def _coverage_overview(cases: list[dict], universe: pd.DataFrame) -> None:
@@ -171,7 +198,8 @@ def _coverage_overview(cases: list[dict], universe: pd.DataFrame) -> None:
                          margin=dict(l=5, r=10, t=40, b=5), legend=dict(orientation='h', y=-.25))
     figure.update_xaxes(title='Maximum characters per family', rangemode='tozero', dtick=1 if max(sizes) <= 15 else None)
     figure.update_yaxes(title='Unique characters covered', range=[0, max(1, total) * 1.08])
-    st.plotly_chart(figure, width='stretch', key='batch_coverage_plot')
+    with st.expander('Library coverage as larger families are allowed'):
+        st.plotly_chart(figure, width='stretch', key='batch_coverage_plot')
     st.caption('Coverage is the union of character IDs across successful scenarios, counted once per character against '
                'the full snapshot catalog. Full families contribute all their members; retained-only families contribute '
                'only the members remaining after weakest-member removal. Below-target families contribute nothing. '
@@ -298,6 +326,9 @@ def _suggested_cover(cases: list[dict], universe: pd.DataFrame, available: pd.Da
             st.warning('Complete coverage is unavailable with these candidates and the current size limits. '
                        f'Uncovered: {", ".join(missing)}.')
     _candidate_table(cover['families'])
+    source = cases[0]['scenario']['source']
+    render_cohort_builder(cases, universe, cover, dict(context, **cases[0]['result']['rules']),
+                          source['membership_sha256'], source['reference_sha256'])
     with st.expander('Character fit and suggested families' if target else 'Smallest option for each character'):
         rows = cover['characters']
         if target and st.checkbox('Show only covered characters outside the ideal range', value=True, key='batch_target_exceptions'):
@@ -322,10 +353,11 @@ def _suggested_cover(cases: list[dict], universe: pd.DataFrame, available: pd.Da
                     'character', 'coverage_status', 'coverage_reason', 'cheapest_remaining_family',
                     'cheapest_remaining_scenario', 'cheapest_remaining_cost_per_character', 'cheapest_remaining_blocked_by'], column_config={
                     'character': 'Character', 'coverage_status': 'Coverage', 'coverage_reason': 'Reason',
-                    'cheapest_remaining_family': 'Cheapest remaining family', 'cheapest_remaining_scenario': 'Source scenario',
+                    'cheapest_remaining_family': 'Lowest cost per additional character: family', 'cheapest_remaining_scenario': 'Source scenario',
                     'cheapest_remaining_blocked_by': 'Option blocked by',
                     'cheapest_remaining_cost_per_character': st.column_config.NumberColumn('Cost / additional character', format='%.3f')})
                 st.caption('Remaining family options are ordered by cost per currently uncovered character. '
+                           'This ranks coverage expansion, not the individual character’s fit. Use the cohort resolver for that comparison. '
                            'A family can exceed either or both limits; the first blocking limit is shown. '
                            'Options overlap, so their additional-character counts must not be added.')
                 _candidate_table(cover['remaining_options'])
@@ -387,6 +419,22 @@ def _viable_families(families: pd.DataFrame, cases: list[dict], universe: pd.Dat
         rows = rows.loc[rows.member_keys.map(lambda members: bool(keys.intersection(members)))]
     st.write(f'{len(rows)} viable families shown · {len(families)} available in this batch')
     _candidate_table(rows)
+    if search and not rows.empty:
+        sources = sources_from_cases(cases)
+        source_ids = {case['id']: fingerprint(case['scenario']) for case in cases}
+        keys = set(universe.loc[universe.character.isin(search), 'character_key'])
+        fits = []
+        for family in rows.itertuples():
+            scores, mean = subset_scores(sources[source_ids[family.scenario_id]], family.member_keys)
+            fits.extend(scores.loc[scores.character_key.isin(keys)].assign(
+                family=family.family, scenario=family.scenario, basis=family.basis, family_mean=mean).to_dict('records'))
+        st.markdown('**Character fit within the included members**')
+        st.dataframe(pd.DataFrame(fits), hide_index=True, width='stretch', column_order=[
+            'character', 'family', 'scenario', 'basis', 'member_fit', 'family_mean', 'peer_support', 'weakest_pair'],
+            column_config={field: st.column_config.NumberColumn(label, format='percent') for field, label in [
+                ('member_fit', 'Character fit'), ('family_mean', 'Family consistency'),
+                ('peer_support', 'Peers reaching 80%'), ('weakest_pair', 'Weakest pair')]})
+        st.caption('Each row scores one searched character against the actual included peers. Retained-family scores exclude removed members.')
     st.download_button('Download all viable families CSV', _candidate_export(families, cases).to_csv(index=False).encode(),
                          file_name='batch-all-viable-families.csv', mime='text/csv')
     if rows.empty:

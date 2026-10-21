@@ -70,6 +70,8 @@ Use **Explore the data** for a more detailed question:
 | Population Estimates | Sample/adjusted comparisons, support diagnostics, standardization and downloads. |
 | Business sample | Generated spending, simulated tenure, cosmetic acquisition and discounts. |
 
+The optional **Local laboratory** section appears when its separate local membership export is available. **Character families** provides discovery controls, family naming, stability checks, overlapping assignment review and scenario save/load. **Family cohort builder** compares saved/uploaded scenarios, then supports manual family selection, character resolution, coverage/overlap diagnostics and separate cohort save/load. See [Explore character families locally](explore-character-families.md) for setup and interpretation. These pages do not change the six story chapters or adopt exploratory groups as a taxonomy.
+
 The **EN / PT** language control supports English and Brazilian Portuguese. Pages 1–4 also have an independent **Plain language / League terms** control. Both preferences survive story navigation; changing terminology changes wording, not the data. Other pages retain their current terminology while the story revamp continues: champion means character, tier means rank, and mastery is a cumulative activity score. That score is neither hours nor an exact match count.
 
 Page 1 separates the current 37,803 profiles, the 19,722-profile analytical subset and the separately frozen 24,990-profile September 29 transaction scenario. These are question-specific branches, not nested coverage stages. The observation-date chart counts one latest observation per profile; the export date is separate.

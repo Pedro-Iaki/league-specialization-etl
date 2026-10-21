@@ -35,6 +35,13 @@ Read only the sources needed for the task. Resolve these paths from this skill's
 - [Run the pipeline](../../../docs/guides/run-the-pipeline.md): manual prerequisites, job/configuration setup, first-build scope, execution and operator recovery.
 - [Refresh dashboard data](../../../docs/guides/refresh-dashboard-data.md): scenario/reference decisions, candidate export, local checks, serving-file replacement and analyst bundle.
 
+## Working journal during active iteration
+
+- When project work advances faster than formal documentation, maintain the local [working journal](../../../sandbox/project_working_notes.tmp/working-journal.md). Read its relevant entries when resuming work; create it at that path if absent. Keep it loosely structured and update it at meaningful implementation, discussion, evidence or direction changes, rather than recording every command.
+- Capture what was done, what was discussed, why decisions changed, the evolving audience/business story, and unresolved branches. Clearly distinguish implemented and verified behavior, agreed direction, proposals and deferred work; verify implementation claims against code when needed.
+- Preserve useful research with its title, direct source link, relevance to the project and evidence limits. State whether a method is merely a reference, proposed for evaluation, tested or adopted; a cited paper does not validate our data or findings.
+- Keep this intermediary journal local under the existing ignore rules. Link to detailed artifacts instead of copying transcripts or maintained documentation. When conclusions settle, reconcile them into the appropriate project documents and mark superseded or incorporated notes; do not defer necessary metric-contract or operator-instruction updates.
+
 ## Scope and review
 
 - Separate demonstrated defects, style preferences and deferred design decisions. Reproduce suspected defects when feasible. Offer the smallest correction in the existing layer before introducing abstractions, options or persistent state.

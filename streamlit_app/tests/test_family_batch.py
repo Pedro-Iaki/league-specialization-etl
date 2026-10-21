@@ -14,6 +14,7 @@ from streamlit.testing.v1 import AppTest
 from app_core.families import FamilySettings, discover_families, prepare_membership, scenario_payload, stability_check
 from app_core.family_batch import aggregate_coverage, evaluate_scenario, scenario_evidence, smallest_family_cover, target_size_cover
 from app_core.family_batch_view import _evidence
+from app_core.family_cohort import cohort_payload
 
 pytest.importorskip('leidenalg', reason='Install requirements-families.txt for the optional local laboratory')
 APP_ROOT = Path(__file__).resolve().parents[1]
@@ -373,6 +374,7 @@ def test_batch_comparison_thresholds_reuse_bootstrap_and_partial_errors_are_visi
         next(x for x in app.selectbox if x.key == 'batch_candidate_basis').set_value('Retained only').run()
         assert any('No viable families match' in x.value for x in app.info)
         next(x for x in app.selectbox if x.key == 'batch_candidate_basis').set_value('Full + retained').run()
+        next(x for x in app.checkbox if x.key == 'batch_show_details').set_value(True).run()
         next(x for x in app.selectbox if x.label == 'Heatmap family').set_value('Unassigned').run()
         next(x for x in app.checkbox if x.key == 'batch_expand_all').set_value(True).run()
         assert not app.exception
@@ -392,3 +394,48 @@ def test_batch_comparison_thresholds_reuse_bootstrap_and_partial_errors_are_visi
         assert errors.Scenario.tolist() == ['bad-source.json']
         next(x for x in app.number_input if x.key == 'batch_repetitions').set_value(3).run()
         assert any('repeat count or repeat seed changed' in x.value for x in app.info)
+
+
+def test_cohort_draft_survives_changed_suggestions_trim_and_pending_batch(batch_page):
+    app = batch_page
+    with patch('app_core.family_batch_view.scenario_evidence', wraps=scenario_evidence) as compute:
+        app.run()
+        app.number_input(key='batch_repetitions').set_value(2).run()
+        app.button(key='batch_run').click().run()
+        app.button(key='cohort_start_suggestion').click().run()
+        assert not app.exception
+        selected = app.session_state['family_cohort']['selected']
+        frozen = [(row['id'], row['member_keys'].copy()) for row in selected]
+        assert len(frozen) == 2
+        app.number_input(key='batch_coverage_minimum').set_value(4).run()
+        assert not app.exception
+        assert next(x.value for x in app.metric if x.label == 'Suggested coverage') == '0/6'
+        assert next(x.value for x in app.metric if x.label == 'Cohort coverage') == '6/6'
+        app.slider(key='batch_trim').set_value(.4).run()
+        app.slider(key=f'cohort_member_target_{app.session_state["cohort_revision"]}').set_value(.95).run()
+        assert not app.exception
+        assert [(row['id'], row['member_keys']) for row in app.session_state['family_cohort']['selected']] == frozen
+        app.number_input(key='batch_repetitions').set_value(3).run()
+        assert not app.exception
+        assert next(x.value for x in app.metric if x.label == 'Cohort coverage') == '6/6'
+        assert compute.call_count == 2
+
+
+def test_loading_cohort_restores_saved_review_controls_before_widgets(batch_page, tmp_path):
+    app = batch_page
+    with patch('app_core.family_cohort_view.LOCAL_DIR', tmp_path):
+        app.run()
+        app.number_input(key='batch_repetitions').set_value(2).run()
+        app.slider(key='batch_target').set_value(.75).run()
+        app.button(key='batch_run').click().run()
+        app.button(key='cohort_start_suggestion').click().run()
+        payload = cohort_payload(app.session_state['family_cohort'])
+        directory = tmp_path / 'cohorts'
+        directory.mkdir()
+        (directory / 'saved.json').write_text(json.dumps(payload))
+        app.slider(key='batch_target').set_value(.95).run()
+        app.selectbox(key='cohort_load_file').select('saved.json').run()
+        app.button(key='cohort_load').click().run()
+        assert not app.exception
+        assert app.slider(key='batch_target').value == .75
+        assert app.session_state['family_cohort']['policy']['family_target'] == .75
