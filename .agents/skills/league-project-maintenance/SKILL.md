@@ -19,13 +19,12 @@ Use this skill for the project's working conventions and engineering decision ru
 
 Read only the sources needed for the task. Resolve these paths from this skill's directory; verify current behavior against code when documentation and implementation differ.
 
-- [Project README](../../../README.md): purpose, architecture, setup and configuration.
+- [Project README](../../../README.md): purpose, analysis, architecture, engineering decisions and validation overview.
 - [Documentation index](../../../docs/README.md): current wiki, guides and references organized by reader task.
 - [Architecture chapter](../../../docs/wiki/architecture.md): data flow, component responsibilities, source branches and serving boundary.
 - [Understanding the analysis](../../../docs/wiki/understanding-the-analysis.md): audience questions, windows, comparison methods and interpretation limits.
 - [Simulated transactions](../../../docs/wiki/simulated-transactions.md): frozen real cohort, generated commercial domain, cash semantics and business interpretation limits.
 - [Engineering decisions](../../../docs/wiki/engineering-decisions.md): design tradeoffs, attributed development lessons, ownership and AI assistance.
-- [Documentation archive](../../../docs/deprecated/README.md): superseded documents and their intended replacements. During the rewrite, use the reviewed handoff supplied for the task as the main source; archived statements are historical and require verification before reuse.
 - [Configuration reference](../../../docs/reference/configuration.md): settings, defaults, service boundaries and manual entrypoints.
 - [Orchestration reference](../../../docs/reference/orchestration.md): stage ordering, state transitions, integrity gates and failure behavior.
 - [Data-model reference](../../../docs/reference/data-models.md): model grains, identities, lineage boundaries and serving contracts.

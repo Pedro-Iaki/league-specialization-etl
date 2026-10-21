@@ -257,7 +257,8 @@ sandbox/Plots/
 TODO
 # Local planning notes and agent handoffs
 /PROJECT_CONTEXT_QA*.md
-/docs/deprecated/private/
+# Historical documentation stays local.
+/docs/deprecated/
 **/TODO*.md
 **/todo*.md
 **/*_plan.md

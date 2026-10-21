@@ -1,0 +1,3 @@
+# Optional local character-family laboratory.
+-r requirements.txt
+leidenalg==0.11.0
