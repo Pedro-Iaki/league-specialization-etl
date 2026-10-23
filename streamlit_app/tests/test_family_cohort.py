@@ -10,7 +10,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from app_core.family_cohort import (
-    candidate_library, cohort_payload, edit_draft, fingerprint, new_draft, overlap_table,
+    candidate_library, cohort_payload, edit_draft, edit_members, fingerprint, new_draft, overlap_table,
     policy_metrics, score_candidates, subset_scores, summarize_cohort, validate_cohort,
 )
 
@@ -60,6 +60,88 @@ def test_subset_fit_recomputed_after_trimming_excludes_diagonal_and_maps_keys(li
     assert subset_scores(changed, [4])[0].member_fit.isna().all()
     with pytest.raises(ValueError, match='unique'):
         subset_scores(source, [0, 0])
+
+
+def test_v2_manual_membership_changes_recompute_saved_scoring_context(library):
+    from app_core.family_cover import base_family_cost
+    universe, sources, policy, candidates = library
+    chosen = [copy.deepcopy(row) for row in candidates if row['family'] == 'A']
+    assert len(chosen) == 2
+    draft = new_draft(sources, universe, policy, 'snapshot', 'reference', chosen)
+    scoring = dict(policy, selection_approach='Compact audience cover', compact_objective='coverage_score_v2',
+                   overlap_penalty=2., size_preference=.3)
+    draft['origin_suggestion'] = dict(method='Compact audience cover', policy=scoring)
+    report = summarize_cohort(draft)
+    families = report['families']
+    assert sorted(families.exclusive_share) == [0., .25]
+    assert families.overlap_cost.sum() == pytest.approx(3.5)
+    for row in families.itertuples():
+        expected = base_family_cost(row.size, row.family_mean, 2, 3, .3)
+        assert row.selection_cost == pytest.approx(expected)
+        assert row.adjusted_cost == pytest.approx(expected + 2 * (1 - row.exclusive_share))
+    # Removing the retained family removes the remaining family's overlap penalty.
+    draft['selected'] = [row for row in chosen if row['basis'] == 'Full family']
+    assert summarize_cohort(draft)['families'].overlap_cost.sum() == 0
+    restored = validate_cohort(cohort_payload(draft), universe, 'snapshot', 'reference')
+    assert restored['origin_suggestion']['policy']['overlap_penalty'] == 2.
+    draft['origin_suggestion']['policy']['compact_objective'] = 'unsupported'
+    with pytest.raises(ValueError, match='objective'):
+        validate_cohort(cohort_payload(draft), universe, 'snapshot', 'reference')
+
+
+def test_manual_membership_is_local_rescored_and_survives_portable_roundtrip(library):
+    universe, sources, policy, candidates = library
+    core = next(row for row in candidates if row['basis'] == 'Retained members only')
+    draft = new_draft(sources, universe, policy, 'snapshot', 'reference', [core])
+    before = copy.deepcopy(draft)
+    changed = edit_members(draft, core['id'], [0, 1, 2, 5], 'Gameplay similarity despite weak observed audience fit')
+    assert draft == before
+    family = changed['selected'][0]
+    assert family['basis'] == 'Manual variant' and family['base_member_keys'] == [0, 1, 2]
+    assert family['member_keys'] == [0, 1, 2, 5] and 'retained_consistency' not in family
+    report = summarize_cohort(changed)
+    assert report['summary']['covered'] == 4
+    assert report['families'].iloc[0].family_mean == pytest.approx(.475)
+    links = report['memberships'].set_index('character_key')
+    assert links.loc[5, 'manual_assignment'] and links.loc[5, 'member_fit'] == 0
+    assert not links.loc[0, 'manual_assignment']
+    assert links.manual_variant.all()
+    restored = validate_cohort(cohort_payload(changed), universe, 'snapshot', 'reference')
+    assert restored['selected'][0] == family
+    edited_again = edit_members(changed, family['id'], [0, 1, 2, 4], 'Another deliberate assignment')
+    assert edited_again['selected'][0]['base_member_keys'] == [0, 1, 2]
+    with pytest.raises(ValueError, match='reason'):
+        edit_members(draft, core['id'], [0, 1, 2, 5], '')
+    with pytest.raises(ValueError, match='at least two'):
+        edit_members(draft, core['id'], [0], 'Too small')
+    assert candidate_library(sources, policy) == candidates
+
+
+def test_manual_membership_ui_preview_apply_and_undo_do_not_recompute_evidence(library, tmp_path):
+    universe, sources, policy, candidates = library
+    core = next(row for row in candidates if row['basis'] == 'Retained members only')
+    script = '''
+import streamlit as st
+from app_core.family_cohort_view import render_cohort_builder
+render_cohort_builder([], st.session_state['catalog'], None, st.session_state['policy'], 'snapshot', 'reference')
+'''
+    app = AppTest.from_string(script, default_timeout=30)
+    app.session_state['catalog'] = universe
+    app.session_state['policy'] = policy
+    app.session_state['family_cohort'] = new_draft(sources, universe, policy, 'snapshot', 'reference', [core])
+    with patch('app_core.family_cohort_view.LOCAL_DIR', tmp_path), \
+         patch('app_core.family_batch.stability_check', side_effect=AssertionError('Unexpected bootstrap')):
+        app.run()
+        assert not app.exception
+        next(widget for widget in app.multiselect if widget.label == 'Included characters').set_value([0, 1, 2, 5]).run()
+        next(widget for widget in app.text_input if widget.label == 'Reason for manual membership').set_value('Shared gameplay role').run()
+        app.button(key='cohort_apply_members').click().run()
+        assert not app.exception
+        assert app.session_state['family_cohort']['selected'][0]['basis'] == 'Manual variant'
+        assert app.session_state['family_cohort']['selected'][0]['member_keys'] == [0, 1, 2, 5]
+        app.button(key='cohort_undo_button').click().run()
+        assert not app.exception
+        assert app.session_state['family_cohort']['selected'][0] == core
 
 
 def test_collection_edits_overlap_and_removal_are_exact_and_inputs_are_preserved(library):
@@ -162,6 +244,131 @@ def test_portable_roundtrip_freezes_members_and_rejects_modified_evidence(librar
     invalid['policy']['ideal_minimum'] = -1
     with pytest.raises(ValueError, match='size preferences'):
         validate_cohort(cohort_payload(invalid), universe, 'snapshot', 'reference')
+
+
+def test_library_suggestion_submits_overlap_and_cost_controls_without_editing_draft(library):
+    from app_core.family_cohort import suggest_from_library
+
+    universe, sources, policy, _ = library
+    script = '''
+import streamlit as st
+from app_core.family_cohort_view import _library_suggestion
+_library_suggestion(st.session_state['draft'])
+'''
+    app = AppTest.from_string(script, default_timeout=30)
+    app.session_state['draft'] = new_draft(sources, universe, policy, 'snapshot', 'reference')
+    with patch('app_core.family_cohort_view.suggest_from_library', wraps=suggest_from_library) as calculate:
+        app.run()
+        assert not app.exception and calculate.call_count == 0
+        app.slider(key='cohort_suggest_overlap').set_value(2.)
+        app.checkbox(key='cohort_suggest_limit_cost').check()
+        app.number_input(key='cohort_suggest_max_cost').set_value(2.)
+        app.number_input(key='cohort_suggest_min').set_value(2)
+        app.number_input(key='cohort_suggest_low').set_value(2)
+        app.number_input(key='cohort_suggest_high').set_value(3)
+        app.button(key='cohort_suggest_calculate').click().run()
+        assert not app.exception and calculate.call_count == 1
+        submitted = calculate.call_args.args[1]
+        assert submitted['overlap_penalty'] == 2. and submitted['max_family_cost'] == 2.
+        assert next(metric.value for metric in app.metric if metric.label == 'Suggested coverage') == '3/6'
+        assert next(metric.value for metric in app.metric if metric.label == 'Extra memberships') == '0'
+        assert app.session_state['draft']['selected'] == []
+        app.number_input(key='cohort_suggest_max_cost').set_value(.5)
+        app.button(key='cohort_suggest_calculate').click().run()
+        assert not app.exception and calculate.call_count == 2
+        assert next(metric.value for metric in app.metric if metric.label == 'Suggested coverage') == '0/6'
+
+
+@pytest.mark.parametrize('basis', [None, 'Full families only'])
+def test_library_suggestion_accepts_minimal_review_policy(library, basis):
+    pytest.importorskip('scipy')
+    universe, sources, policy, _ = library
+    minimal = {field: policy[field] for field in ['family_target', 'trim_fraction', 'single_threshold',
+                                                'shared_threshold', 'separation_target']}
+    if basis is not None:
+        minimal['cover_basis'] = basis
+    script = '''
+import streamlit as st
+from app_core.family_cohort_view import _library_suggestion
+_library_suggestion(st.session_state['draft'])
+'''
+    app = AppTest.from_string(script, default_timeout=30)
+    app.session_state['draft'] = new_draft(sources, universe, minimal, 'snapshot', 'reference')
+    app.run()
+    assert not app.exception
+    app.radio(key='cohort_suggest_method').set_value('Compact audience cover')
+    app.number_input(key='cohort_suggest_low').set_value(2)
+    app.number_input(key='cohort_suggest_high').set_value(3)
+    app.button(key='cohort_suggest_calculate').click().run()
+    assert not app.exception
+    suggestion = app.session_state['cohort_library_suggestion']
+    assert suggestion['policy']['cover_basis'] == (basis or 'Full + retained')
+    assert suggestion['covered'] == (0 if basis == 'Full families only' else 3)
+    assert app.session_state['draft']['selected'] == []
+
+
+def test_compact_library_preview_apply_undo_and_provenance(library, tmp_path):
+    pytest.importorskip('scipy')
+    from app_core.family_cohort import prepare_library_candidates
+
+    universe, sources, policy, _ = library
+    script = '''
+import streamlit as st
+from app_core.family_cohort_view import render_cohort_builder
+render_cohort_builder([], st.session_state['catalog'], None, st.session_state['policy'], 'snapshot', 'reference')
+'''
+    app = AppTest.from_string(script, default_timeout=30)
+    app.session_state['catalog'] = universe
+    app.session_state['policy'] = policy
+    app.session_state['family_cohort'] = new_draft(sources, universe, policy, 'snapshot', 'reference')
+    with patch('app_core.family_cohort_view.LOCAL_DIR', tmp_path), \
+         patch('app_core.family_cohort.prepare_library_candidates', wraps=prepare_library_candidates) as prepare, \
+         patch('app_core.family_batch.stability_check', side_effect=AssertionError('Unexpected bootstrap')):
+        app.run()
+        assert not app.exception and prepare.call_count == 0
+        assert not any(widget.key == 'cohort_suggest_coverage' for widget in app.slider)
+        app.radio(key='cohort_suggest_method').set_value('Compact audience cover').run()
+        assert not app.exception and prepare.call_count == 0
+        assert app.radio(key='cohort_suggest_objective').value == 'coverage_score_v2'
+        app.slider(key='cohort_suggest_overlap').set_value(2.)
+        assert app.slider(key='cohort_suggest_coverage').value == 100
+        assert app.slider(key='cohort_suggest_exclusive').value == 0
+        app.slider(key='cohort_suggest_exclusive').set_value(25)
+        app.number_input(key='cohort_suggest_low').set_value(2)
+        app.number_input(key='cohort_suggest_high').set_value(3)
+        app.number_input(key='cohort_suggest_max').set_value(3)
+        app.button(key='cohort_suggest_calculate').click().run()
+        assert not app.exception and prepare.call_count == 1
+        result = app.session_state['cohort_library_suggestion']['cover']
+        assert result['optimal'] and result['eligible_characters'] == 3 and result['covered'] == 3
+        assert result['minimum_exclusive_share'] == .25
+        assert result['compact_objective'] == 'coverage_score_v2' and result['overlap_penalty'] == 2.
+        assert result['adjusted_cost'] == pytest.approx(result['base_cost'] + result['overlap_cost'])
+        assert result['families'].exclusive_share.ge(.25).all()
+        assert app.session_state['family_cohort']['selected'] == []
+        # Cover-only settings reuse candidate evidence, rather than rebuilding scores.
+        app.slider(key='cohort_suggest_coverage').set_value(90)
+        app.button(key='cohort_suggest_calculate').click().run()
+        assert not app.exception and prepare.call_count == 1
+        app.button(key='cohort_suggest_apply').click().run()
+        assert not app.exception
+        draft = app.session_state['family_cohort']
+        assert len(draft['selected']) == 1
+        assert draft['origin_suggestion']['method'] == 'Compact audience cover'
+        assert draft['origin_suggestion']['policy']['minimum_exclusive_share'] == .25
+        restored = validate_cohort(cohort_payload(draft), universe, 'snapshot', 'reference')
+        assert restored['origin_suggestion']['solver']['stages'][0]['optimal']
+        assert restored['origin_suggestion']['policy']['compact_objective'] == 'coverage_score_v2'
+        assert restored['origin_suggestion']['policy']['overlap_penalty'] == 2.
+        app.button(key='cohort_undo_button').click().run()
+        assert not app.exception and app.session_state['family_cohort']['selected'] == []
+        app.radio(key='cohort_suggest_objective').set_value('legacy_min_overlap').run()
+        assert app.slider(key='cohort_suggest_overlap').disabled
+        app.button(key='cohort_suggest_calculate').click().run()
+        assert not app.exception
+        legacy = app.session_state['cohort_library_suggestion']['cover']
+        assert legacy['compact_objective'] == 'legacy_min_overlap' and legacy['overlap_penalty'] == 0
+        assert legacy['solver']['objective_count'] == 4
 
 
 def test_builder_resolves_edits_and_roundtrips_without_bootstrap(library, tmp_path):

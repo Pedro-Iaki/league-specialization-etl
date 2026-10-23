@@ -201,6 +201,32 @@ def test_target_cover_balances_granularity_and_count_keeps_fallbacks_and_reports
         target_size_cover(candidates, universe, ideal_minimum=15, ideal_maximum=10)
 
 
+def test_overlap_penalty_trades_repetition_against_size_without_losing_coverage():
+    universe = pd.DataFrame({'character_key': range(6), 'character': list('ABCDEF')})
+    candidates = pd.DataFrame([
+        {'family_id': name, 'scenario': 'example', 'family': name, 'member_keys': keys,
+         'included_characters': len(keys), 'qualifying_consistency': consistency, 'basis': 'Full family'}
+        for name, keys, consistency in [('A', [0, 1, 2, 3], 1.), ('B', [2, 3, 4, 5], 1.), ('C', [4, 5], .9)]])
+    options = dict(ideal_minimum=4, ideal_maximum=4, size_preference=.05)
+    baseline = target_size_cover(candidates, universe, **options)
+    reduced = target_size_cover(candidates, universe, overlap_penalty=3., **options)
+    assert baseline['complete'] and reduced['complete']
+    assert set(baseline['families'].family) == {'A', 'B'}
+    assert set(reduced['families'].family) == {'A', 'C'}
+    assert reduced['families'].included_characters.sum() == 6
+    assert reduced['families'].set_index('family').loc['C', 'qualifying_consistency'] == .9
+    reversed_result = target_size_cover(candidates.iloc[::-1], universe, overlap_penalty=3., **options)
+    assert reversed_result['families'].family.tolist() == reduced['families'].family.tolist()
+    # The ceiling applies before overlap; it must not reintroduce the excluded C.
+    limited = target_size_cover(candidates, universe, overlap_penalty=3., max_family_cost=1.05, **options)
+    assert limited['complete'] and set(limited['families'].family) == {'A', 'B'}
+    stopped = target_size_cover(candidates, universe, overlap_penalty=3., max_cost_per_character=.6, **options)
+    assert stopped['covered'] == 4
+    for invalid in [-1., np.nan, np.inf]:
+        with pytest.raises(ValueError, match='Overlap penalty'):
+            target_size_cover(candidates, universe, overlap_penalty=invalid)
+
+
 def test_target_cover_refinement_replaces_a_greedy_broad_choice_without_losing_coverage():
     universe = pd.DataFrame({'character_key': range(6), 'character': list('ABCDEF')})
     candidates = pd.DataFrame([

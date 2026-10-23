@@ -210,7 +210,8 @@ def smallest_family_cover(candidates: pd.DataFrame, universe: pd.DataFrame, incl
 
 def target_size_cover(candidates: pd.DataFrame, universe: pd.DataFrame, include_retained: bool = True,
                       ideal_minimum: int = 10, ideal_maximum: int = 15, size_preference: float = .5,
-                      max_family_cost: float | None = None, max_cost_per_character: float | None = None) -> dict:
+                      max_family_cost: float | None = None, max_cost_per_character: float | None = None,
+                      overlap_penalty: float = 0.) -> dict:
     """Greedy size-aware cover with optional cost exclusions and partial coverage.
 
     Size distance is log2 of the ratio to the nearest ideal boundary, zero in
@@ -218,7 +219,11 @@ def target_size_cover(candidates: pd.DataFrame, universe: pd.DataFrame, include_
     best selected distance. With a marginal limit it preserves the greedy covered
     set, blocks zero-gain additions and checks replacement cost against restored
     coverage. This is a deterministic heuristic, not an exact optimizer.
+    Overlap increases greedy cost by penalty times the already-covered fraction.
+    Refinement charges each family's quality cost for its shared-member fraction.
     """
+    if not np.isfinite(overlap_penalty) or overlap_penalty < 0:
+        raise ValueError('Overlap penalty must be a nonnegative finite number.')
     if ideal_minimum < 1 or ideal_maximum < ideal_minimum or not 0 <= size_preference <= 1:
         raise ValueError('Use a positive ordered ideal size range and a preference between 0 and 1.')
     if any(limit is not None and (not np.isfinite(limit) or limit <= 0)
@@ -240,16 +245,38 @@ def target_size_cover(candidates: pd.DataFrame, universe: pd.DataFrame, include_
     coverable = membership.any(axis=0)
     quality_cost = 2 - pool.qualifying_consistency.to_numpy(dtype=float)
     greedy_cost = pool.selection_cost.to_numpy(dtype=float)
+    pool_sizes = pool.included_characters.to_numpy(dtype=float)
     remaining, selected = coverable.copy(), []
     while remaining.any():
+        covered_so_far = coverable & ~remaining
         gain = membership[:, remaining].sum(axis=1)
-        chosen = int(np.argmax(gain / greedy_cost))
-        if max_cost_per_character is not None and greedy_cost[chosen] / gain[chosen] > max_cost_per_character + 1e-12:
+        repeated_fraction = membership[:, covered_so_far].sum(axis=1) / pool_sizes if overlap_penalty else 0.
+        adjusted_cost = greedy_cost * (1 + overlap_penalty * repeated_fraction)
+        chosen = int(np.argmax(gain / adjusted_cost))
+        if max_cost_per_character is not None and adjusted_cost[chosen] / gain[chosen] > max_cost_per_character + 1e-12:
             break
         selected.append(chosen)
         remaining &= ~membership[chosen]
     covered = coverable & ~remaining
     pair_distances = np.where(membership[:, covered], pool.proportional_distance.to_numpy()[:, None], np.inf)
+
+    def overlap_cost(indices):
+        if not overlap_penalty or not indices:
+            return 0.
+        groups = membership[indices]
+        repeated = groups.sum(axis=0) > 1
+        fractions = groups[:, repeated].sum(axis=1) / pool_sizes[indices]
+        return overlap_penalty * float(np.dot(quality_cost[indices], fractions))
+
+    def added_overlap_costs(others, additions):
+        if not overlap_penalty:
+            return np.zeros(len(additions))
+        existing = membership[others].sum(axis=0)
+        groups = membership[additions]
+        repeated = existing + groups > 1
+        existing_weights = (quality_cost[others] / pool_sizes[others]) @ membership[others]
+        return overlap_penalty * (repeated @ existing_weights
+            + (groups & repeated).sum(axis=1) * quality_cost[additions] / pool_sizes[additions])
 
     def objective(best_distances, family_cost):
         valid = np.isfinite(best_distances).all(axis=-1)
@@ -262,11 +289,11 @@ def target_size_cover(candidates: pd.DataFrame, universe: pd.DataFrame, include_
         selected.sort()
         best_distances = pair_distances[selected].min(axis=0)
         cost = quality_cost[selected].sum()
-        best_score = float(objective(best_distances, cost))
+        best_score = float(objective(best_distances, cost + overlap_cost(selected)))
         best_selection = selected
         unused = np.array([i for i in range(len(pool)) if i not in selected], dtype=int)
         if len(unused) and max_cost_per_character is None:
-            scores = objective(np.minimum(best_distances, pair_distances[unused]), cost + quality_cost[unused])
+            scores = objective(np.minimum(best_distances, pair_distances[unused]), cost + quality_cost[unused]) + added_overlap_costs(selected, unused)
             add = int(np.argmin(scores))
             if scores[add] < best_score - 1e-9:
                 best_score, best_selection = float(scores[add]), selected + [int(unused[add])]
@@ -274,15 +301,17 @@ def target_size_cover(candidates: pd.DataFrame, universe: pd.DataFrame, include_
             others = [i for i in selected if i != removed]
             without = pair_distances[others].min(axis=0) if others else np.full(covered.sum(), np.inf)
             reduced_cost = cost - quality_cost[removed]
-            score = float(objective(without, reduced_cost))
+            score = float(objective(without, reduced_cost + overlap_cost(others)))
             if score < best_score - 1e-9:
                 best_score, best_selection = score, others
             if len(unused):
-                scores = objective(np.minimum(without, pair_distances[unused]), reduced_cost + quality_cost[unused])
+                scores = objective(np.minimum(without, pair_distances[unused]), reduced_cost + quality_cost[unused]) + added_overlap_costs(others, unused)
                 if max_cost_per_character is not None:
                     other_coverage = membership[others].any(axis=0)
                     gain = membership[unused][:, ~other_coverage].sum(axis=1)
-                    allowed = ((gain > 0) & (greedy_cost[unused] <= max_cost_per_character * gain + 1e-12)
+                    repeated_fraction = membership[unused][:, other_coverage].sum(axis=1) / pool_sizes[unused]
+                    adjusted = greedy_cost[unused] * (1 + overlap_penalty * repeated_fraction)
+                    allowed = ((gain > 0) & (adjusted <= max_cost_per_character * gain + 1e-12)
                                & ~membership[unused][:, ~covered].any(axis=1))
                     scores = np.where(allowed, scores, np.inf)
                 swap = int(np.argmin(scores))
@@ -313,7 +342,8 @@ def target_size_cover(candidates: pd.DataFrame, universe: pd.DataFrame, include_
         ['Selected family', 'No viable family in current scope', 'Family cost ceiling'], default='Cost per additional character limit')
     gain = all_membership[:, ~covered].sum(axis=1)
     available['new_characters'] = gain
-    available['cost_per_new_character'] = np.divide(available.selection_cost.to_numpy(dtype=float), gain,
+    available['overlap_adjusted_cost'] = available.selection_cost * (1 + overlap_penalty * all_membership[:, covered].sum(axis=1) / sizes)
+    available['cost_per_new_character'] = np.divide(available.overlap_adjusted_cost.to_numpy(dtype=float), gain,
                                                    out=np.full(len(available), np.inf), where=gain > 0)
     available['blocked_by'] = np.where(~eligible, 'Family cost ceiling', 'Cost per additional character limit')
     remaining_options = available.loc[gain > 0].sort_values(['cost_per_new_character', 'selection_cost', 'family_id'])

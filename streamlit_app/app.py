@@ -26,6 +26,8 @@ pages = {
 if (LOCAL_DIR / 'membership.parquet').exists():
     pages['Local laboratory'] = [
         st.Page('pages/5_Character_Families.py', title='Character families', url_path='character-families'),
+        st.Page('pages/7_Character_Family_Hunter.py', title='Full Family Sweep', url_path='character-family-hunter'),
+        st.Page('pages/8_Anchored_Family_Sweep.py', title='Anchored Family Sweep', url_path='anchored-family-sweep'),
         st.Page('pages/6_Batch_Scenario_Viewer.py', title='Family cohort builder', url_path='batch-scenario-viewer'),
     ]
 

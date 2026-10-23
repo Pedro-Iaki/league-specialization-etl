@@ -1,0 +1,3 @@
+from app_core.family_anchored_view import render_anchored_sweep
+
+render_anchored_sweep()
