@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "name": "Compact v2 combined evidence: new anchored sweep",
+  "output": "data/local_lab/compact-v2-new-anchored",
+  "libraries": {
+    "anchored": "data/character_families/hunter/anchored-1.json",
+    "scenarios": "data/local_lab/current-family-experiments-20261022-000353/scenario-library.json"
+  },
+  "scopes": {
+    "combined": [
+      "scenarios",
+      "anchored"
+    ]
+  },
+  "baseline": "data/local_lab/anchored-24f-coverage-sweep-20261021-201612/coverage-095-exclusive-25/cohort.json.gz",
+  "fixed": {
+    "selection_approach": "Compact audience cover",
+    "minimum_family_size": 5,
+    "maximum_family_size": 28,
+    "ideal_minimum": 9,
+    "ideal_maximum": 16,
+    "size_preference": 0.3,
+    "solve_time_limit": 120,
+    "single_threshold": 0.65,
+    "shared_threshold": 0.35,
+    "separation_target": 0.2,
+    "cover_basis": "Full + retained",
+    "compact_objective": "coverage_score_v2",
+    "overlap_penalty": 1.0,
+    "coverage_target": 0.85
+  },
+  "grid": {
+    "family_target": [
+      0.75,
+      0.8,
+      0.85
+    ],
+    "trim_fraction": [
+      0.2,
+      0.3,
+      0.4
+    ],
+    "minimum_exclusive_share": [
+      0.25,
+      0.4
+    ],
+    "max_family_cost": [
+      null,
+      3
+    ]
+  },
+  "wait": {
+    "enabled": true,
+    "poll_seconds": 30,
+    "timeout_seconds": 86400,
+    "stale_seconds": 3600
+  },
+  "followups": {
+    "shortlist": 0
+  },
+  "retry_seconds": 600,
+  "member_fit_target": 0.8,
+  "save_to_builder": true
+}

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "Completed library smoke comparison",
+  "output": "data/local_lab/family-harness-smoke-v1",
+  "libraries": {"previous": "data/character_families/hunter/anchored-24f92067e71f.json"},
+  "scopes": {"previous": ["previous"]},
+  "baseline": "data/local_lab/anchored-24f-coverage-sweep-20261021-201612/coverage-085-exclusive-40/cohort.json.gz",
+  "fixed": {"solve_time_limit": 10},
+  "grid": {"coverage_target": [0.85, 0.9]},
+  "save_to_builder": false
+}
