@@ -1,0 +1,1868 @@
+{
+  "schema_version": 1,
+  "cohort_id": "champion-audience-families-v1",
+  "name": "Champion audience families v1 - finalized 87.5% cohort",
+  "accepted_on": "2026-10-23",
+  "status": "Final working cohort; analysis closed",
+  "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+  "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+  "reference_pool": {
+    "compositions": 12102,
+    "sha256": "4dab5c1711295d02dbb319cef0392287d1befb920790c00019df7c84fb0669ae",
+    "definition": "Unique reviewed 5-28 champion compositions; exact current composition excluded; newly searched compositions do not enter denominator."
+  },
+  "gates": {
+    "covered_champions": 173,
+    "minimum_family_consistency": 0.9,
+    "minimum_member_fit": 0.8,
+    "minimum_exclusive_share": 0.25,
+    "minimum_family_size": 5,
+    "maximum_family_size": 28,
+    "minimum_relative_jaccard": 0.875
+  },
+  "relative_jaccard": "Mean weighted audience Jaccard to included peers / median of this champion's mean Jaccards across its other reviewed family compositions, all under the selected source context; self excluded.",
+  "observed_metrics": {
+    "covered": 173,
+    "families": 25,
+    "mean_consistency": 0.9806040182040183,
+    "weighted_consistency": 0.9839741467032302,
+    "weakest_fit": 0.8363636363636363,
+    "minimum_family_consistency": 0.9400000000000001,
+    "minimum_exclusivity": 0.25,
+    "extra_memberships": 78,
+    "minimum_relative": 0.8815063289248898
+  },
+  "local_evidence": {
+    "portable_cohort": "data/character_families/cohorts/champion-audience-families-v1-20261023.json.gz",
+    "portable_cohort_sha256": "af9aa05aa9594c9bae68644be9968f6e5cb936bb1f524f28fe39e0230ea83d80",
+    "report": "data/local_lab/final-champion-family-cohort-20261023"
+  },
+  "evidence_limits": [
+    "Source-selected descriptive evidence, not independent validation or individual-choice prediction.",
+    "Manual subsets do not inherit parent recovery; source matrices remain separate.",
+    "The 87.5% floor and frozen reviewed-pool median are accepted review choices, not population parameters.",
+    "This definition is not yet wired into serving data or player categorization."
+  ],
+  "sources": {
+    "d30afc6a519feb72a99fe6998a13a835e578a22caca5cc841496edea1a967e67": {
+      "name": "95-6-100-20261020T232417552023Z.json",
+      "repetitions": 20,
+      "method": "scenario",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38077
+      }
+    },
+    "b10179e00cf4e18489f60714eff5075cec4e146dc06bf8043750c1f4ef480be9": {
+      "name": "Broad",
+      "repetitions": 20,
+      "method": "full_leiden",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND",
+          "MASTER",
+          "GRANDMASTER",
+          "CHALLENGER"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38403
+      }
+    },
+    "6df8e826797297bb1d34d8c29da272b466ad530477cea48a7be3f6c6e1bc7f23": {
+      "name": "low_families_super_high_stability-20261021T003440441786Z.json",
+      "repetitions": 20,
+      "method": "scenario",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND",
+          "MASTER",
+          "GRANDMASTER",
+          "CHALLENGER"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38403
+      }
+    },
+    "667bc1adaec768bd428486c5d8e18d1c7607bb3b8059be3c30241d49e47cb941": {
+      "name": "Broad",
+      "repetitions": 20,
+      "method": "full_leiden",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND",
+          "MASTER",
+          "GRANDMASTER",
+          "CHALLENGER"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38403
+      }
+    },
+    "f3f04652c0a3478e553da9d9b97cd67ec4331bbf029e08eb2cb980e1ffccd60a": {
+      "name": "Vayne · Broad · 60 neighbors",
+      "repetitions": 100,
+      "method": "anchored_leiden",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND",
+          "MASTER",
+          "GRANDMASTER",
+          "CHALLENGER"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38403
+      }
+    },
+    "c0e74e49616e303c1c70ad283848dfd442ac4725ab4fabf21033f6d7d728ed3b": {
+      "name": "Pyke · Broad · 60 neighbors",
+      "repetitions": 20,
+      "method": "anchored_leiden",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND",
+          "MASTER",
+          "GRANDMASTER",
+          "CHALLENGER"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38403
+      }
+    },
+    "aea436862239e4427299d7c84ec2eb06f8fb95abbc7d68c281e2813f1ee83f8a": {
+      "name": "Medium",
+      "repetitions": 20,
+      "method": "full_leiden",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND",
+          "MASTER",
+          "GRANDMASTER",
+          "CHALLENGER"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38403
+      }
+    },
+    "f73d1379695f27608eaa6e70f2b85c1bf373547fd0a64c15a7f661abf539548f": {
+      "name": "Bel'Veth · Broad · 60 neighbors",
+      "repetitions": 20,
+      "method": "anchored_leiden",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND",
+          "MASTER",
+          "GRANDMASTER",
+          "CHALLENGER"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38403
+      }
+    },
+    "43f2d07cf57c26e30835a74d678879c1486ccd9b00d72a5c76eb8600f1c6a1a1": {
+      "name": "Medium",
+      "repetitions": 20,
+      "method": "full_leiden",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND",
+          "MASTER",
+          "GRANDMASTER",
+          "CHALLENGER"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38403
+      }
+    },
+    "a3d77655eab0847e677d4e3952349d2b6097623ae8904ea0eff23806a61ff61c": {
+      "name": "Tight",
+      "repetitions": 20,
+      "method": "full_leiden",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38077
+      }
+    },
+    "925c8b99b4094b020000f72968c3697fff3f7d93c3476719d5091fbf7805ecf6": {
+      "name": "!Broad-control-4-families-Boot78-Cover100-Jaccard.json",
+      "repetitions": 20,
+      "method": "scenario",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND",
+          "MASTER",
+          "GRANDMASTER",
+          "CHALLENGER"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38403
+      }
+    },
+    "43afd57c71a76bf01c0256e3b203bad945799ce6368d86897c96b0d14d48a8a0": {
+      "name": "low_families_super_high_stability_breath_alt-20261021T003715188038Z.json",
+      "repetitions": 20,
+      "method": "scenario",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND",
+          "MASTER",
+          "GRANDMASTER",
+          "CHALLENGER"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38403
+      }
+    },
+    "655312a3b3b01d0b5c2897790c912d6d57f0d364d3ba677d2b0014f87a9ccc9e": {
+      "name": "!Broad-backbone-4-families-Boot86-Cover100-Adjusted.json",
+      "repetitions": 20,
+      "method": "scenario",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND",
+          "MASTER",
+          "GRANDMASTER",
+          "CHALLENGER"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38403
+      }
+    },
+    "a26f4177121b28494a2faa3c7352669febed0e865edf02f18f750ff665da45a4": {
+      "name": "Rakan · Broad · 60 neighbors",
+      "repetitions": 20,
+      "method": "anchored_leiden",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND",
+          "MASTER",
+          "GRANDMASTER",
+          "CHALLENGER"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38403
+      }
+    },
+    "7253be6efd61fc96c65c0d2da8799c10503acdf57cd0c588a6d406a0da9d7a78": {
+      "name": "Sivir · Broad · 60 neighbors",
+      "repetitions": 20,
+      "method": "anchored_leiden",
+      "audience": {
+        "reference_sha256": "5317ae16778aa6666368cd38f8a8bee83e7bcf6bcb75b6a7e7f22587aee5db5b",
+        "reference_version": "2026-10-10-v1",
+        "reference_covered_share": 0.9997999999999999,
+        "excluded_unknown_tier": 0,
+        "membership_sha256": "805fd1d199e81ba73d9bce6440eca7614ec056db3dbec1ddd5b2d8b1f41ef3df",
+        "exported_at_utc": "2026-10-20T08:09:13.759928+00:00",
+        "tiers": [
+          "IRON",
+          "BRONZE",
+          "SILVER",
+          "GOLD",
+          "PLATINUM",
+          "EMERALD",
+          "DIAMOND",
+          "MASTER",
+          "GRANDMASTER",
+          "CHALLENGER"
+        ],
+        "maturity": "All",
+        "excluded_keys": [],
+        "profiles": 38403
+      }
+    }
+  },
+  "families": [
+    {
+      "family_key": "F01",
+      "title": "F01: Zilean / Anivia / Veigar (8 champions)",
+      "candidate_id": "522520e42c64dcab37006d96",
+      "source_id": "655312a3b3b01d0b5c2897790c912d6d57f0d364d3ba677d2b0014f87a9ccc9e",
+      "source_family": "AR02",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 26,
+          "character": "Zilean"
+        },
+        {
+          "character_key": 34,
+          "character": "Anivia"
+        },
+        {
+          "character_key": 45,
+          "character": "Veigar"
+        },
+        {
+          "character_key": 63,
+          "character": "Brand"
+        },
+        {
+          "character_key": 74,
+          "character": "Heimerdinger"
+        },
+        {
+          "character_key": 101,
+          "character": "Xerath"
+        },
+        {
+          "character_key": 115,
+          "character": "Ziggs"
+        },
+        {
+          "character_key": 161,
+          "character": "Vel'Koz"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 1.0,
+        "minimum_member_fit": 1.0,
+        "exclusive_share": 0.25,
+        "minimum_relative_jaccard": 0.9419583515674838
+      }
+    },
+    {
+      "family_key": "F02",
+      "title": "F02: Olaf / Urgot / Sion (21 champions)",
+      "candidate_id": "48fadfa52f267491c8d58182",
+      "source_id": "d30afc6a519feb72a99fe6998a13a835e578a22caca5cc841496edea1a967e67",
+      "source_family": "AR02",
+      "basis": "Retained members only",
+      "members": [
+        {
+          "character_key": 2,
+          "character": "Olaf"
+        },
+        {
+          "character_key": 6,
+          "character": "Urgot"
+        },
+        {
+          "character_key": 14,
+          "character": "Sion"
+        },
+        {
+          "character_key": 19,
+          "character": "Warwick"
+        },
+        {
+          "character_key": 23,
+          "character": "Tryndamere"
+        },
+        {
+          "character_key": 31,
+          "character": "Cho'Gath"
+        },
+        {
+          "character_key": 36,
+          "character": "Dr. Mundo"
+        },
+        {
+          "character_key": 48,
+          "character": "Trundle"
+        },
+        {
+          "character_key": 54,
+          "character": "Malphite"
+        },
+        {
+          "character_key": 75,
+          "character": "Nasus"
+        },
+        {
+          "character_key": 80,
+          "character": "Pantheon"
+        },
+        {
+          "character_key": 82,
+          "character": "Mordekaiser"
+        },
+        {
+          "character_key": 83,
+          "character": "Yorick"
+        },
+        {
+          "character_key": 86,
+          "character": "Garen"
+        },
+        {
+          "character_key": 98,
+          "character": "Shen"
+        },
+        {
+          "character_key": 106,
+          "character": "Volibear"
+        },
+        {
+          "character_key": 122,
+          "character": "Darius"
+        },
+        {
+          "character_key": 223,
+          "character": "Tahm Kench"
+        },
+        {
+          "character_key": 240,
+          "character": "Kled"
+        },
+        {
+          "character_key": 516,
+          "character": "Ornn"
+        },
+        {
+          "character_key": 875,
+          "character": "Sett"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.9769047619047619,
+        "minimum_member_fit": 0.8975,
+        "exclusive_share": 0.4285714285714285,
+        "minimum_relative_jaccard": 0.9277087897238664
+      }
+    },
+    {
+      "family_key": "F03",
+      "title": "F03: Annie / Fiddlesticks / Teemo (12 champions)",
+      "candidate_id": "8a59ce621f890e9227ef1fe2",
+      "source_id": "d30afc6a519feb72a99fe6998a13a835e578a22caca5cc841496edea1a967e67",
+      "source_family": "AR05",
+      "basis": "Retained members only",
+      "members": [
+        {
+          "character_key": 1,
+          "character": "Annie"
+        },
+        {
+          "character_key": 9,
+          "character": "Fiddlesticks"
+        },
+        {
+          "character_key": 17,
+          "character": "Teemo"
+        },
+        {
+          "character_key": 30,
+          "character": "Karthus"
+        },
+        {
+          "character_key": 35,
+          "character": "Shaco"
+        },
+        {
+          "character_key": 45,
+          "character": "Veigar"
+        },
+        {
+          "character_key": 63,
+          "character": "Brand"
+        },
+        {
+          "character_key": 74,
+          "character": "Heimerdinger"
+        },
+        {
+          "character_key": 90,
+          "character": "Malzahar"
+        },
+        {
+          "character_key": 101,
+          "character": "Xerath"
+        },
+        {
+          "character_key": 115,
+          "character": "Ziggs"
+        },
+        {
+          "character_key": 161,
+          "character": "Vel'Koz"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.9439393939393942,
+        "minimum_member_fit": 0.8363636363636363,
+        "exclusive_share": 0.25,
+        "minimum_relative_jaccard": 1.0248987053720495
+      }
+    },
+    {
+      "family_key": "F04",
+      "title": "F04: Kayle / Sivir / Tristana (16 champions)",
+      "candidate_id": "3501c515e43b6adc8fc3f0c0",
+      "source_id": "43afd57c71a76bf01c0256e3b203bad945799ce6368d86897c96b0d14d48a8a0",
+      "source_family": "AR04",
+      "basis": "Retained members only",
+      "members": [
+        {
+          "character_key": 10,
+          "character": "Kayle"
+        },
+        {
+          "character_key": 15,
+          "character": "Sivir"
+        },
+        {
+          "character_key": 18,
+          "character": "Tristana"
+        },
+        {
+          "character_key": 22,
+          "character": "Ashe"
+        },
+        {
+          "character_key": 29,
+          "character": "Twitch"
+        },
+        {
+          "character_key": 42,
+          "character": "Corki"
+        },
+        {
+          "character_key": 51,
+          "character": "Caitlyn"
+        },
+        {
+          "character_key": 67,
+          "character": "Vayne"
+        },
+        {
+          "character_key": 81,
+          "character": "Ezreal"
+        },
+        {
+          "character_key": 96,
+          "character": "Kog'Maw"
+        },
+        {
+          "character_key": 110,
+          "character": "Varus"
+        },
+        {
+          "character_key": 119,
+          "character": "Draven"
+        },
+        {
+          "character_key": 133,
+          "character": "Quinn"
+        },
+        {
+          "character_key": 145,
+          "character": "Kai'Sa"
+        },
+        {
+          "character_key": 202,
+          "character": "Jhin"
+        },
+        {
+          "character_key": 203,
+          "character": "Kindred"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 1.0,
+        "minimum_member_fit": 1.0,
+        "exclusive_share": 0.25,
+        "minimum_relative_jaccard": 0.9054801939400424
+      }
+    },
+    {
+      "family_key": "F05",
+      "title": "F05: Alistar / Blitzcrank / Braum (7 champions)",
+      "candidate_id": "32d06c0489519e3f1a091bbb",
+      "source_id": "c0e74e49616e303c1c70ad283848dfd442ac4725ab4fabf21033f6d7d728ed3b",
+      "source_family": "AF0001",
+      "basis": "Retained members only",
+      "members": [
+        {
+          "character_key": 12,
+          "character": "Alistar"
+        },
+        {
+          "character_key": 53,
+          "character": "Blitzcrank"
+        },
+        {
+          "character_key": 201,
+          "character": "Braum"
+        },
+        {
+          "character_key": 412,
+          "character": "Thresh"
+        },
+        {
+          "character_key": 432,
+          "character": "Bard"
+        },
+        {
+          "character_key": 526,
+          "character": "Rell"
+        },
+        {
+          "character_key": 555,
+          "character": "Pyke"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.9714285714285714,
+        "minimum_member_fit": 0.9416666666666668,
+        "exclusive_share": 0.2857142857142857,
+        "minimum_relative_jaccard": 1.0161165118296034
+      }
+    },
+    {
+      "family_key": "F06",
+      "title": "F06: Xin Zhao / Nocturne / Jarvan IV (5 champions)",
+      "candidate_id": "52b3af482944173d2d69392d",
+      "source_id": "a3d77655eab0847e677d4e3952349d2b6097623ae8904ea0eff23806a61ff61c",
+      "source_family": "HF0083",
+      "basis": "Retained members only",
+      "members": [
+        {
+          "character_key": 5,
+          "character": "Xin Zhao"
+        },
+        {
+          "character_key": 56,
+          "character": "Nocturne"
+        },
+        {
+          "character_key": 59,
+          "character": "Jarvan IV"
+        },
+        {
+          "character_key": 62,
+          "character": "Wukong"
+        },
+        {
+          "character_key": 254,
+          "character": "Vi"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.9650000000000001,
+        "minimum_member_fit": 0.95,
+        "exclusive_share": 1.0,
+        "minimum_relative_jaccard": 1.1451684400687767
+      }
+    },
+    {
+      "family_key": "F07",
+      "title": "F07: Soraka / Morgana / Sona (7 champions)",
+      "candidate_id": "b90cbcf8bca956b900105518",
+      "source_id": "a3d77655eab0847e677d4e3952349d2b6097623ae8904ea0eff23806a61ff61c",
+      "source_family": "HF0088",
+      "basis": "Full family",
+      "members": [
+        {
+          "character_key": 16,
+          "character": "Soraka"
+        },
+        {
+          "character_key": 25,
+          "character": "Morgana"
+        },
+        {
+          "character_key": 37,
+          "character": "Sona"
+        },
+        {
+          "character_key": 99,
+          "character": "Lux"
+        },
+        {
+          "character_key": 147,
+          "character": "Seraphine"
+        },
+        {
+          "character_key": 235,
+          "character": "Senna"
+        },
+        {
+          "character_key": 267,
+          "character": "Nami"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.9714285714285715,
+        "minimum_member_fit": 0.9,
+        "exclusive_share": 0.2857142857142857,
+        "minimum_relative_jaccard": 1.084597171809321
+      }
+    },
+    {
+      "family_key": "F08",
+      "title": "F08: LeBlanc / Orianna / Cassiopeia (10 champions)",
+      "candidate_id": "c109a8d203d7a3f74fe42736",
+      "source_id": "43f2d07cf57c26e30835a74d678879c1486ccd9b00d72a5c76eb8600f1c6a1a1",
+      "source_family": "HF0098",
+      "basis": "Retained members only",
+      "members": [
+        {
+          "character_key": 7,
+          "character": "LeBlanc"
+        },
+        {
+          "character_key": 61,
+          "character": "Orianna"
+        },
+        {
+          "character_key": 69,
+          "character": "Cassiopeia"
+        },
+        {
+          "character_key": 103,
+          "character": "Ahri"
+        },
+        {
+          "character_key": 134,
+          "character": "Syndra"
+        },
+        {
+          "character_key": 142,
+          "character": "Zoe"
+        },
+        {
+          "character_key": 163,
+          "character": "Taliyah"
+        },
+        {
+          "character_key": 800,
+          "character": "Mel"
+        },
+        {
+          "character_key": 893,
+          "character": "Aurora"
+        },
+        {
+          "character_key": 910,
+          "character": "Hwei"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 1.0,
+        "minimum_member_fit": 1.0,
+        "exclusive_share": 0.6,
+        "minimum_relative_jaccard": 0.9839470566216982
+      }
+    },
+    {
+      "family_key": "F09",
+      "title": "F09: Tristana / Miss Fortune / Ashe (13 champions)",
+      "candidate_id": "0d858eebe671235d8842e716",
+      "source_id": "f3f04652c0a3478e553da9d9b97cd67ec4331bbf029e08eb2cb980e1ffccd60a",
+      "source_family": "AF0003",
+      "basis": "Retained members only",
+      "members": [
+        {
+          "character_key": 18,
+          "character": "Tristana"
+        },
+        {
+          "character_key": 21,
+          "character": "Miss Fortune"
+        },
+        {
+          "character_key": 22,
+          "character": "Ashe"
+        },
+        {
+          "character_key": 29,
+          "character": "Twitch"
+        },
+        {
+          "character_key": 51,
+          "character": "Caitlyn"
+        },
+        {
+          "character_key": 67,
+          "character": "Vayne"
+        },
+        {
+          "character_key": 81,
+          "character": "Ezreal"
+        },
+        {
+          "character_key": 96,
+          "character": "Kog'Maw"
+        },
+        {
+          "character_key": 145,
+          "character": "Kai'Sa"
+        },
+        {
+          "character_key": 202,
+          "character": "Jhin"
+        },
+        {
+          "character_key": 222,
+          "character": "Jinx"
+        },
+        {
+          "character_key": 236,
+          "character": "Lucian"
+        },
+        {
+          "character_key": 901,
+          "character": "Smolder"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.9878205128205131,
+        "minimum_member_fit": 0.9566666666666667,
+        "exclusive_share": 0.3076923076923077,
+        "minimum_relative_jaccard": 1.0477296098120192
+      }
+    },
+    {
+      "family_key": "F10",
+      "title": "F10: Fiddlesticks / Master Yi / Teemo (5 champions)",
+      "candidate_id": "5850b561aab7ad13cf2a9b69",
+      "source_id": "655312a3b3b01d0b5c2897790c912d6d57f0d364d3ba677d2b0014f87a9ccc9e",
+      "source_family": "AR01",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 9,
+          "character": "Fiddlesticks"
+        },
+        {
+          "character_key": 11,
+          "character": "Master Yi"
+        },
+        {
+          "character_key": 17,
+          "character": "Teemo"
+        },
+        {
+          "character_key": 35,
+          "character": "Shaco"
+        },
+        {
+          "character_key": 102,
+          "character": "Shyvana"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 1.0,
+        "minimum_member_fit": 1.0,
+        "exclusive_share": 0.4,
+        "minimum_relative_jaccard": 0.9240810951380906
+      }
+    },
+    {
+      "family_key": "F11",
+      "title": "F11: Lee Sin / Graves / Rengar (6 champions)",
+      "candidate_id": "7bcc7b4955f786e23d7ea95b",
+      "source_id": "d30afc6a519feb72a99fe6998a13a835e578a22caca5cc841496edea1a967e67",
+      "source_family": "AR01",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 64,
+          "character": "Lee Sin"
+        },
+        {
+          "character_key": 104,
+          "character": "Graves"
+        },
+        {
+          "character_key": 107,
+          "character": "Rengar"
+        },
+        {
+          "character_key": 120,
+          "character": "Hecarim"
+        },
+        {
+          "character_key": 121,
+          "character": "Kha'Zix"
+        },
+        {
+          "character_key": 141,
+          "character": "Kayn"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.9833333333333334,
+        "minimum_member_fit": 0.95,
+        "exclusive_share": 0.6666666666666666,
+        "minimum_relative_jaccard": 1.0448947176401893
+      }
+    },
+    {
+      "family_key": "F12",
+      "title": "F12: Soraka / Morgana / Sona (16 champions)",
+      "candidate_id": "82695dff5b5a32bc426f1123",
+      "source_id": "aea436862239e4427299d7c84ec2eb06f8fb95abbc7d68c281e2813f1ee83f8a",
+      "source_family": "HF0022",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 16,
+          "character": "Soraka"
+        },
+        {
+          "character_key": 25,
+          "character": "Morgana"
+        },
+        {
+          "character_key": 37,
+          "character": "Sona"
+        },
+        {
+          "character_key": 40,
+          "character": "Janna"
+        },
+        {
+          "character_key": 43,
+          "character": "Karma"
+        },
+        {
+          "character_key": 61,
+          "character": "Orianna"
+        },
+        {
+          "character_key": 89,
+          "character": "Leona"
+        },
+        {
+          "character_key": 103,
+          "character": "Ahri"
+        },
+        {
+          "character_key": 117,
+          "character": "Lulu"
+        },
+        {
+          "character_key": 143,
+          "character": "Zyra"
+        },
+        {
+          "character_key": 147,
+          "character": "Seraphine"
+        },
+        {
+          "character_key": 267,
+          "character": "Nami"
+        },
+        {
+          "character_key": 350,
+          "character": "Yuumi"
+        },
+        {
+          "character_key": 518,
+          "character": "Neeko"
+        },
+        {
+          "character_key": 888,
+          "character": "Renata Glasc"
+        },
+        {
+          "character_key": 902,
+          "character": "Milio"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 1.0,
+        "minimum_member_fit": 1.0,
+        "exclusive_share": 0.4375,
+        "minimum_relative_jaccard": 0.9730175755533124
+      }
+    },
+    {
+      "family_key": "F13",
+      "title": "F13: Fiddlesticks / Sion / Teemo (20 champions)",
+      "candidate_id": "467b7869a0910d3fe1c7e448",
+      "source_id": "655312a3b3b01d0b5c2897790c912d6d57f0d364d3ba677d2b0014f87a9ccc9e",
+      "source_family": "AR01",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 9,
+          "character": "Fiddlesticks"
+        },
+        {
+          "character_key": 14,
+          "character": "Sion"
+        },
+        {
+          "character_key": 17,
+          "character": "Teemo"
+        },
+        {
+          "character_key": 20,
+          "character": "Nunu & Willump"
+        },
+        {
+          "character_key": 27,
+          "character": "Singed"
+        },
+        {
+          "character_key": 31,
+          "character": "Cho'Gath"
+        },
+        {
+          "character_key": 32,
+          "character": "Amumu"
+        },
+        {
+          "character_key": 36,
+          "character": "Dr. Mundo"
+        },
+        {
+          "character_key": 48,
+          "character": "Trundle"
+        },
+        {
+          "character_key": 54,
+          "character": "Malphite"
+        },
+        {
+          "character_key": 75,
+          "character": "Nasus"
+        },
+        {
+          "character_key": 77,
+          "character": "Udyr"
+        },
+        {
+          "character_key": 80,
+          "character": "Pantheon"
+        },
+        {
+          "character_key": 82,
+          "character": "Mordekaiser"
+        },
+        {
+          "character_key": 86,
+          "character": "Garen"
+        },
+        {
+          "character_key": 98,
+          "character": "Shen"
+        },
+        {
+          "character_key": 106,
+          "character": "Volibear"
+        },
+        {
+          "character_key": 223,
+          "character": "Tahm Kench"
+        },
+        {
+          "character_key": 233,
+          "character": "Briar"
+        },
+        {
+          "character_key": 420,
+          "character": "Illaoi"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 1.0,
+        "minimum_member_fit": 1.0,
+        "exclusive_share": 0.25,
+        "minimum_relative_jaccard": 0.8980838369280102
+      }
+    },
+    {
+      "family_key": "F14",
+      "title": "F14: Nunu & Willump / Rammus / Skarner (5 champions)",
+      "candidate_id": "262cf6e106c1288b8ee68cab",
+      "source_id": "b10179e00cf4e18489f60714eff5075cec4e146dc06bf8043750c1f4ef480be9",
+      "source_family": "HF0008",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 20,
+          "character": "Nunu & Willump"
+        },
+        {
+          "character_key": 33,
+          "character": "Rammus"
+        },
+        {
+          "character_key": 72,
+          "character": "Skarner"
+        },
+        {
+          "character_key": 154,
+          "character": "Zac"
+        },
+        {
+          "character_key": 421,
+          "character": "Rek'Sai"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.96,
+        "minimum_member_fit": 0.9,
+        "exclusive_share": 0.8,
+        "minimum_relative_jaccard": 0.898687289427677
+      }
+    },
+    {
+      "family_key": "F15",
+      "title": "F15: Galio / Alistar / Taric (12 champions)",
+      "candidate_id": "c342da1be61a4ff4bf7f5db0",
+      "source_id": "a26f4177121b28494a2faa3c7352669febed0e865edf02f18f750ff665da45a4",
+      "source_family": "AF0002",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 3,
+          "character": "Galio"
+        },
+        {
+          "character_key": 12,
+          "character": "Alistar"
+        },
+        {
+          "character_key": 44,
+          "character": "Taric"
+        },
+        {
+          "character_key": 50,
+          "character": "Swain"
+        },
+        {
+          "character_key": 53,
+          "character": "Blitzcrank"
+        },
+        {
+          "character_key": 57,
+          "character": "Maokai"
+        },
+        {
+          "character_key": 89,
+          "character": "Leona"
+        },
+        {
+          "character_key": 111,
+          "character": "Nautilus"
+        },
+        {
+          "character_key": 201,
+          "character": "Braum"
+        },
+        {
+          "character_key": 412,
+          "character": "Thresh"
+        },
+        {
+          "character_key": 497,
+          "character": "Rakan"
+        },
+        {
+          "character_key": 526,
+          "character": "Rell"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.975,
+        "minimum_member_fit": 0.8954545454545456,
+        "exclusive_share": 0.25,
+        "minimum_relative_jaccard": 0.8963550748450336
+      }
+    },
+    {
+      "family_key": "F16",
+      "title": "F16: Gangplank / Gragas / Jayce (7 champions)",
+      "candidate_id": "f205f6f7daeb78aa1b6e12cd",
+      "source_id": "aea436862239e4427299d7c84ec2eb06f8fb95abbc7d68c281e2813f1ee83f8a",
+      "source_family": "HF0012",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 41,
+          "character": "Gangplank"
+        },
+        {
+          "character_key": 79,
+          "character": "Gragas"
+        },
+        {
+          "character_key": 126,
+          "character": "Jayce"
+        },
+        {
+          "character_key": 150,
+          "character": "Gnar"
+        },
+        {
+          "character_key": 164,
+          "character": "Camille"
+        },
+        {
+          "character_key": 268,
+          "character": "Azir"
+        },
+        {
+          "character_key": 897,
+          "character": "K'Sante"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.9857142857142858,
+        "minimum_member_fit": 0.9500000000000001,
+        "exclusive_share": 0.4285714285714285,
+        "minimum_relative_jaccard": 0.8821180781084487
+      }
+    },
+    {
+      "family_key": "F17",
+      "title": "F17: Kayle / Aurelion Sol / Akshan (5 champions)",
+      "candidate_id": "636936faca50c20e1995a49f",
+      "source_id": "f73d1379695f27608eaa6e70f2b85c1bf373547fd0a64c15a7f661abf539548f",
+      "source_family": "AF0005",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 10,
+          "character": "Kayle"
+        },
+        {
+          "character_key": 136,
+          "character": "Aurelion Sol"
+        },
+        {
+          "character_key": 166,
+          "character": "Akshan"
+        },
+        {
+          "character_key": 200,
+          "character": "Bel'Veth"
+        },
+        {
+          "character_key": 203,
+          "character": "Kindred"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.9400000000000001,
+        "minimum_member_fit": 0.8875,
+        "exclusive_share": 0.6,
+        "minimum_relative_jaccard": 0.9639385511342704
+      }
+    },
+    {
+      "family_key": "F18",
+      "title": "F18: Jax / Renekton / Kennen (8 champions)",
+      "candidate_id": "d5f73723c98b94460a88b4f4",
+      "source_id": "925c8b99b4094b020000f72968c3697fff3f7d93c3476719d5091fbf7805ecf6",
+      "source_family": "AR02",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 24,
+          "character": "Jax"
+        },
+        {
+          "character_key": 58,
+          "character": "Renekton"
+        },
+        {
+          "character_key": 85,
+          "character": "Kennen"
+        },
+        {
+          "character_key": 164,
+          "character": "Camille"
+        },
+        {
+          "character_key": 266,
+          "character": "Aatrox"
+        },
+        {
+          "character_key": 799,
+          "character": "Ambessa"
+        },
+        {
+          "character_key": 897,
+          "character": "K'Sante"
+        },
+        {
+          "character_key": 904,
+          "character": "Zaahen"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.9785714285714286,
+        "minimum_member_fit": 0.9571428571428571,
+        "exclusive_share": 0.5,
+        "minimum_relative_jaccard": 0.8815063289248898
+      }
+    },
+    {
+      "family_key": "F19",
+      "title": "F19: Twisted Fate / Ryze / Gangplank (11 champions)",
+      "candidate_id": "090af72fda7c2861fc918cf5",
+      "source_id": "925c8b99b4094b020000f72968c3697fff3f7d93c3476719d5091fbf7805ecf6",
+      "source_family": "AR02",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 4,
+          "character": "Twisted Fate"
+        },
+        {
+          "character_key": 13,
+          "character": "Ryze"
+        },
+        {
+          "character_key": 41,
+          "character": "Gangplank"
+        },
+        {
+          "character_key": 64,
+          "character": "Lee Sin"
+        },
+        {
+          "character_key": 68,
+          "character": "Rumble"
+        },
+        {
+          "character_key": 104,
+          "character": "Graves"
+        },
+        {
+          "character_key": 112,
+          "character": "Viktor"
+        },
+        {
+          "character_key": 126,
+          "character": "Jayce"
+        },
+        {
+          "character_key": 238,
+          "character": "Zed"
+        },
+        {
+          "character_key": 266,
+          "character": "Aatrox"
+        },
+        {
+          "character_key": 517,
+          "character": "Sylas"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.9581818181818181,
+        "minimum_member_fit": 0.8499999999999999,
+        "exclusive_share": 0.3636363636363636,
+        "minimum_relative_jaccard": 0.9008187252453184
+      }
+    },
+    {
+      "family_key": "F20",
+      "title": "F20: Orianna / Ahri / Lissandra (7 champions)",
+      "candidate_id": "e3b32e905ce023ba75ee2161",
+      "source_id": "aea436862239e4427299d7c84ec2eb06f8fb95abbc7d68c281e2813f1ee83f8a",
+      "source_family": "HF0022",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 61,
+          "character": "Orianna"
+        },
+        {
+          "character_key": 103,
+          "character": "Ahri"
+        },
+        {
+          "character_key": 127,
+          "character": "Lissandra"
+        },
+        {
+          "character_key": 142,
+          "character": "Zoe"
+        },
+        {
+          "character_key": 518,
+          "character": "Neeko"
+        },
+        {
+          "character_key": 711,
+          "character": "Vex"
+        },
+        {
+          "character_key": 800,
+          "character": "Mel"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 1.0,
+        "minimum_member_fit": 1.0,
+        "exclusive_share": 0.2857142857142857,
+        "minimum_relative_jaccard": 1.0633969227377216
+      }
+    },
+    {
+      "family_key": "F21",
+      "title": "F21: Vladimir / Kassadin / Irelia (24 champions)",
+      "candidate_id": "84b2fdbe832cb6bba5c47395",
+      "source_id": "667bc1adaec768bd428486c5d8e18d1c7607bb3b8059be3c30241d49e47cb941",
+      "source_family": "HF0002",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 8,
+          "character": "Vladimir"
+        },
+        {
+          "character_key": 38,
+          "character": "Kassadin"
+        },
+        {
+          "character_key": 39,
+          "character": "Irelia"
+        },
+        {
+          "character_key": 55,
+          "character": "Katarina"
+        },
+        {
+          "character_key": 64,
+          "character": "Lee Sin"
+        },
+        {
+          "character_key": 84,
+          "character": "Akali"
+        },
+        {
+          "character_key": 91,
+          "character": "Talon"
+        },
+        {
+          "character_key": 92,
+          "character": "Riven"
+        },
+        {
+          "character_key": 105,
+          "character": "Fizz"
+        },
+        {
+          "character_key": 114,
+          "character": "Fiora"
+        },
+        {
+          "character_key": 131,
+          "character": "Diana"
+        },
+        {
+          "character_key": 157,
+          "character": "Yasuo"
+        },
+        {
+          "character_key": 164,
+          "character": "Camille"
+        },
+        {
+          "character_key": 234,
+          "character": "Viego"
+        },
+        {
+          "character_key": 238,
+          "character": "Zed"
+        },
+        {
+          "character_key": 245,
+          "character": "Ekko"
+        },
+        {
+          "character_key": 246,
+          "character": "Qiyana"
+        },
+        {
+          "character_key": 266,
+          "character": "Aatrox"
+        },
+        {
+          "character_key": 517,
+          "character": "Sylas"
+        },
+        {
+          "character_key": 777,
+          "character": "Yone"
+        },
+        {
+          "character_key": 799,
+          "character": "Ambessa"
+        },
+        {
+          "character_key": 805,
+          "character": "Locke"
+        },
+        {
+          "character_key": 887,
+          "character": "Gwen"
+        },
+        {
+          "character_key": 950,
+          "character": "Naafiri"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 1.0,
+        "minimum_member_fit": 1.0,
+        "exclusive_share": 0.75,
+        "minimum_relative_jaccard": 0.8833345676228992
+      }
+    },
+    {
+      "family_key": "F22",
+      "title": "F22: Alistar / Taric / Maokai (9 champions)",
+      "candidate_id": "8921f4dd09246fa7614e9cd6",
+      "source_id": "a26f4177121b28494a2faa3c7352669febed0e865edf02f18f750ff665da45a4",
+      "source_family": "AF0002",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 12,
+          "character": "Alistar"
+        },
+        {
+          "character_key": 44,
+          "character": "Taric"
+        },
+        {
+          "character_key": 57,
+          "character": "Maokai"
+        },
+        {
+          "character_key": 78,
+          "character": "Poppy"
+        },
+        {
+          "character_key": 113,
+          "character": "Sejuani"
+        },
+        {
+          "character_key": 201,
+          "character": "Braum"
+        },
+        {
+          "character_key": 427,
+          "character": "Ivern"
+        },
+        {
+          "character_key": 497,
+          "character": "Rakan"
+        },
+        {
+          "character_key": 526,
+          "character": "Rell"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.9777777777777779,
+        "minimum_member_fit": 0.9000000000000001,
+        "exclusive_share": 0.3333333333333333,
+        "minimum_relative_jaccard": 0.921373701124642
+      }
+    },
+    {
+      "family_key": "F23",
+      "title": "F23: Sivir / Kog'Maw / Zeri (7 champions)",
+      "candidate_id": "0dfb3e6effafeb051c35b306",
+      "source_id": "7253be6efd61fc96c65c0d2da8799c10503acdf57cd0c588a6d406a0da9d7a78",
+      "source_family": "AF0001",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 15,
+          "character": "Sivir"
+        },
+        {
+          "character_key": 96,
+          "character": "Kog'Maw"
+        },
+        {
+          "character_key": 221,
+          "character": "Zeri"
+        },
+        {
+          "character_key": 429,
+          "character": "Kalista"
+        },
+        {
+          "character_key": 498,
+          "character": "Xayah"
+        },
+        {
+          "character_key": 523,
+          "character": "Aphelios"
+        },
+        {
+          "character_key": 804,
+          "character": "Yunara"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 1.0,
+        "minimum_member_fit": 1.0,
+        "exclusive_share": 0.2857142857142857,
+        "minimum_relative_jaccard": 0.8940826695332429
+      }
+    },
+    {
+      "family_key": "F24",
+      "title": "F24: Evelynn / Elise / Nidalee (5 champions)",
+      "candidate_id": "5f1917e871b36741affe517e",
+      "source_id": "6df8e826797297bb1d34d8c29da272b466ad530477cea48a7be3f6c6e1bc7f23",
+      "source_family": "AR02",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 28,
+          "character": "Evelynn"
+        },
+        {
+          "character_key": 60,
+          "character": "Elise"
+        },
+        {
+          "character_key": 76,
+          "character": "Nidalee"
+        },
+        {
+          "character_key": 142,
+          "character": "Zoe"
+        },
+        {
+          "character_key": 876,
+          "character": "Lillia"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 0.9400000000000001,
+        "minimum_member_fit": 0.85,
+        "exclusive_share": 0.8,
+        "minimum_relative_jaccard": 0.8884391322526255
+      }
+    },
+    {
+      "family_key": "F25",
+      "title": "F25: Zeri / Samira / Kalista (5 champions)",
+      "candidate_id": "ce9b0775371a1e936bc3ba8f",
+      "source_id": "43afd57c71a76bf01c0256e3b203bad945799ce6368d86897c96b0d14d48a8a0",
+      "source_family": "AR04",
+      "basis": "Manual variant",
+      "members": [
+        {
+          "character_key": 221,
+          "character": "Zeri"
+        },
+        {
+          "character_key": 360,
+          "character": "Samira"
+        },
+        {
+          "character_key": 429,
+          "character": "Kalista"
+        },
+        {
+          "character_key": 804,
+          "character": "Yunara"
+        },
+        {
+          "character_key": 895,
+          "character": "Nilah"
+        }
+      ],
+      "saved_evidence": {
+        "mean_consistency": 1.0,
+        "minimum_member_fit": 1.0,
+        "exclusive_share": 0.4,
+        "minimum_relative_jaccard": 0.8827917963702386
+      }
+    }
+  ]
+}
