@@ -118,7 +118,7 @@ On October 19, 2026, the preceding documentation stages verified:
 
 - One selected root dashboard smoke test passed against local snapshots.
 - 55 selected configuration, job-result and load/confirmation-boundary tests passed using temporary state and mocked remote boundaries.
-- Archived originals remained byte-identical, and current documentation links resolved.
+- Current documentation links resolved.
 
 Run the analytical and snapshot checks from the repository root, using the project's Python environment with its existing test dependencies:
 
@@ -127,6 +127,21 @@ python -B -m pytest streamlit_app/tests/test_metrics.py streamlit_app/tests/test
 ```
 
 This selection passed **59 tests** on October 19, 2026, using the existing project virtual environment. It covers metrics, rank adjustment, direct standardization, experience intervals, ranked-activity estimates, commercial summaries, growth-story calculations, snapshot contracts and small generated-scenario fixtures. It does not represent the entire repository test suite. Live collection, a cloud build and a serving refresh are separate operations.
+
+## Family workflow finalization checks
+
+On October 23, 2026, `python -m pytest streamlit_app/tests -q` passed **331 tests**
+in the existing project environment. This run includes the full and anchored family
+helpers, cohort editing and selection, Compact objectives, experiment resume/export
+boundaries, dashboard rendering and snapshot contracts. It completed with 24 pandas
+categorical deprecation warnings from the existing analysis helper.
+
+The accepted 87.5% family-cohort alternative was separately checked for its 173
+champions, 25 families, 251 memberships, saved source identities, portable loading,
+all review gates and frozen reference-pool checksum. Finalization renamed display
+labels without changing selected memberships or source evidence. These are local
+implementation and artifact checks; this step ran no new discovery/bootstrap,
+cloud build or serving refresh.
 
 ## Execution evidence still in progress
 

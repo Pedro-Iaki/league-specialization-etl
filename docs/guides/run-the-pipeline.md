@@ -4,7 +4,7 @@
 
 This guide is for an operator running collection and delivery into a configured warehouse. It uses the Python coordinator, local SQLite ledger, shared Neon registry and separate Databricks ingestion/build jobs. It makes source requests, writes local state and files, updates shared collection state and writes warehouse data.
 
-To inspect the output without operating those services, use [run the dashboard](run-the-dashboard.md). Cloud setup is partly manual; the repository supplies examples, schemas and job definitions rather than a one-command infrastructure deployment.
+To inspect the bundled output, use [run the dashboard](run-the-dashboard.md): that path needs app dependencies but no infrastructure credentials. Operating this pipeline requires the service resources, permissions and manual setup below. The repository supplies configuration examples, registry DDL and Databricks bundle/job definitions. A complete installation into a newly provisioned environment has not been verified for this documentation; the available evidence covers selected local checks and separately dated cloud runs.
 
 ## 1. Prepare the environment and services
 
@@ -35,6 +35,7 @@ Prepare these service boundaries:
 | Service | Required setup |
 |---|---|
 | Riot | A valid API key and network access for collection and character-reference requests. |
+| Character reference sources | Network access to Data Dragon and the League of Legends Wiki. The runner refreshes character metadata through these endpoints before uploading observations. |
 | Neon Postgres | A database reachable by the collector, with the checked-in [registry schema](../../src/load/player_registry_schema.sql) applied through its SQL console or the operator's database client. It defines the player registry and discovery-page progress tables. |
 | Databricks storage and SQL | A usable SQL warehouse and permissions for the project's catalog, schemas, Delta tables and landing volumes. |
 | Databricks jobs | An ingestion notebook job and a separate dbt build job, with access to the configured repository revision and required compute. |
@@ -76,7 +77,18 @@ On POSIX, use `cp -n` for each source/destination pair to preserve existing file
 
 Keep credentials in local configuration rather than documentation or committed files. Existing process environment values override file values. Omitted keys can select defaults; blank keys do not select defaults. The example job IDs are `0` placeholders that intentionally fail validation.
 
-Use the [ingestion job](../../resources/ingest_players.job.yml) and [dbt job](../../resources/build_dbt.job.yml) definitions to configure the two deployed jobs. Replace the build task's warehouse selection with the operator's warehouse and put the resulting job IDs into extraction configuration. Check Git access and `git_source`: both templates execute branch `main`, so uncommitted local changes do not become remote job code.
+### Adapt and deploy the Databricks jobs
+
+The checked-in [bundle configuration](../../databricks.yml) includes both job definitions and selects the author's workspace. Adapt these values to the environment in which the jobs will run:
+
+| Definition | Operator action |
+|---|---|
+| `databricks.yml` | Select the destination workspace host and authenticate the deployment tooling for that workspace. The bundle defines jobs; provision the warehouse, catalog, volumes, registry and access grants separately. |
+| [Ingestion job](../../resources/ingest_players.job.yml) | Make its Git notebook source accessible to the job identity and confirm available notebook compute supports Unity Catalog volumes and Auto Loader. The definition does not select a cluster or pin a Spark runtime. |
+| [dbt job](../../resources/build_dbt.job.yml) | Replace the fixed warehouse ID, confirm access to that warehouse and allow the declared job environment to install its dependency. |
+| Both jobs | Check the repository URL, branch and execution identity. They select branch `main`, so uncommitted local changes do not become remote job code. Deploy or configure the adapted jobs, then place their resulting positive job IDs in extraction configuration. |
+
+The local root requirements do not configure remote execution. The ingestion notebook uses Databricks-provided Spark and `dbutils`; it contains no package-install step. The dbt job declares `dbt-databricks==1.12.5` in its environment and runs `dbt deps` before the build to obtain the project's dbt package. Confirm those remote dependency and Git access paths along with the storage/table grants.
 
 The deployed dbt task supplies its own connection context. Python's Databricks configuration file does not configure a separate local dbt CLI profile. All settings, defaults and timeout distinctions are in [configuration](../reference/configuration.md).
 

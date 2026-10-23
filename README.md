@@ -2,26 +2,30 @@
 
 **A data pipeline connecting user behavior to customer questions.**
 
-Understanding what users prefer, how their interests change and which audiences overlap can inform content and marketing decisions. This project turns repeated observations into inspectable histories, audience profiles and an interactive dashboard.
+Customer and content decisions depend on understanding what users prefer, how their interests change and which audiences overlap. This project turns repeated behavioral observations into dated histories, audience profiles and an interactive dashboard. Keeping accumulated activity, current interests and observed outcomes separate makes those comparisons interpretable.
 
 Behavioral observations come from Riot's League of Legends API: competitive rank and character activity. **Purchase history is simulated**: generated events join a frozen set of eligible real profiles to demonstrate how a commercial source could extend the analysis.
 
-**[Try locally](#try-the-dashboard) · [Inspect the engineering](#inspect-the-implementation) · [Read the design decisions](docs/wiki/engineering-decisions.md)**
+- **[Architecture](docs/wiki/architecture.md)** — Follow collection decisions, state ownership, integrity gates and delivery through to the dashboard.
+- **[Engineering decisions](docs/wiki/engineering-decisions.md)** — Examine the tradeoffs behind source selection, history, coordination and snapshot serving.
+- **[Validation and evidence](docs/reference/validation-and-evidence.md)** — Inspect the checks, public artifacts, dated results and limits of demonstrated behavior.
+- **[Understanding the analysis](docs/wiki/understanding-the-analysis.md)** — See how audience questions become measurements, comparisons and qualified interpretations.
 
-## Try the dashboard
+The **[full documentation index](docs/README.md)** provides task-based routes to explanations, reproduction guides and exact technical contracts.
 
-The included Streamlit app runs from local Parquet snapshots without a Riot API key, Neon account or Databricks credentials. From the repository root, in a Python environment:
+## Understanding the analysis
 
-```sh
-python -m pip install -r streamlit_app/requirements.txt
-python -m streamlit run streamlit_app/app.py
-```
+Repeated observations make it possible to distinguish an old favorite from a current interest. The analysis builds on that distinction to investigate three questions:
 
-Start with **The story** for the case study, then use **Explore the data** to compare recent preferences with accumulated history, inspect shared character audiences or examine the simulated business scenario. English and Brazilian Portuguese are supported. The [dashboard guide](docs/guides/run-the-dashboard.md) covers environment setup, navigation and troubleshooting.
+- **What defines an audience?** Character breadth, activity concentration and inferred recent preferences describe different aspects of behavior. Interpretable SQL rules summarize these features into profile groups.
+- **How do audiences differ?** Rank, accumulated experience and eligible observed outcomes provide comparison dimensions. Sample summaries, rank-weighted estimates and comparisons at a common rank mix answer different questions.
+- **Which audiences overlap?** Shared character preferences and directional overlap reveal related interests. Overlap relative to audience size helps distinguish common characters from unusually strong associations.
 
-The bundled snapshot contains **37,803 profiles**, as of **October 19, 2026**, exported **October 20, 2026**. The [manifest](streamlit_app/data/manifest.json) records dataset dates and scenario provenance. These files stay frozen until a new manual export. The simulated transaction scenario remains frozen at September 29, 2026.
+The commercial branch joins frozen real profiles to simulated purchases to demonstrate spending and audience comparisons. Each comparison needs an explicit cohort, time window and denominator; missing follow-up remains missing. Activity scores cover several game modes, and character-specific competitive outcomes are inferred. These observations support audience hypotheses, without establishing causal improvement or actual customer demand.
 
-## How data reaches the dashboard
+Read **[Understanding the analysis](docs/wiki/understanding-the-analysis.md)** for the reasoning, **[Simulated transactions](docs/wiki/simulated-transactions.md)** for the commercial scenario, and **[Metrics and methods](docs/reference/metrics-and-methods.md)** for definitions.
+
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -38,9 +42,17 @@ flowchart LR
     business --> export
 ```
 
-Python coordinates collection through a separate ingestion job and dbt build. SQLite records local work and files, Neon holds shared collection progress, and Databricks retains analytical history. A manual export separates dashboard viewing from warehouse availability. The [architecture chapter](docs/wiki/architecture.md) explains the full flow and its boundaries.
+The Python coordinator uses shared freshness and discovery progress to balance ranked-page discovery with refreshing stale profiles. Both paths collect new dated observations. SQLite records local tasks and file lineage; Neon holds shared freshness, work claims and page progress; Databricks retains analytical observations and history.
 
-## Inspect the implementation
+At delivery boundaries, integrity checks and compaction prepare the load inputs. Upload is followed by confirmed ingestion before delivery-related state advances; a separate dbt job then builds the analytical models. Manual export produces the dashboard's local Parquet snapshots, keeping viewing independent of warehouse availability.
+
+Bronze resolves repeated source-date observations, Silver retains normalized history and current state, and Gold derives profiles, eligible periods and audience summaries. The generated transaction branch adds its own facts and spending summaries.
+
+The **[architecture chapter](docs/wiki/architecture.md)** follows the decisions and gates in detail. The **[data-model reference](docs/reference/data-models.md)** maps the layers to models, grains and serving datasets.
+
+## Engineering decisions
+
+The design spends a constrained request budget on repeated behavioral coverage, retains the history needed for comparisons, and makes partial delivery explainable. A bounded Python coordinator keeps stage order explicit; local snapshot serving makes the result accessible at the cost of a manual refresh.
 
 | Engineering problem | Implemented decision | Inspect |
 |---|---|---|
@@ -50,21 +62,25 @@ Python coordinates collection through a separate ingestion job and dbt build. SQ
 | Demonstrate a transaction integration | Freeze real profiles, generate events and reconcile scenario identities, event counts and cash totals. | [Generator](src/sample/generate_transactions.py) · [Validation](src/sample/validation.py) |
 | Deliver an accessible result | Remove operational identifiers and serve checked local Parquet snapshots. | [Exporter](streamlit_app/scripts/export_data.py) · [Public contracts](streamlit_app/app_core/contracts.py) |
 
-Tests cover selected execution boundaries, analytical methods and serving contracts. [Validation and evidence](docs/reference/validation-and-evidence.md) records the scope of local checks and dated warehouse builds; it distinguishes those records from live recovery and performance claims.
+Read **[Engineering decisions](docs/wiki/engineering-decisions.md)** for the rationale, alternatives, limitations and development lessons behind these mechanisms.
 
-## Scope and evidence
+## Validation and evidence
 
-The character activity score, called mastery in the app, covers several game modes and does not directly measure matches or hours. Preferred characters and roles are inferred. Audience and rank comparisons describe selected cohorts; adjusting their rank mix does not remove every selection bias or establish that a behavior causes improvement.
+Validation follows the boundaries where data or responsibility changes:
 
-The transaction scenario demonstrates integration and analytical consistency. Its spending relationships are deliberately configured, so they cannot establish actual demand, revenue or return on investment. [Understanding the analysis](docs/wiki/understanding-the-analysis.md) explains how to read the comparisons.
+- **Execution and delivery:** configuration, local integrity and ingestion-confirmation checks gate progress; [boundary tests](src/extract/tests/test_load_boundaries.py) exercise selected failure paths with mocked services.
+- **Models and generated transactions:** [dbt tests](league_pipeline/tests) check analytical contracts, while [scenario validation](src/sample/validation.py) reconciles identities, event counts and cash totals.
+- **Serving:** [public contracts](streamlit_app/app_core/contracts.py) reject operational identifiers and invalid extracts; the [manifest](streamlit_app/data/manifest.json) records dates, inventory and scenario provenance.
 
-The core pipeline and local dashboard are implemented. Execution is operator-started and snapshot exports are manual. Dashboard presentation is being refined; public hosting is planned.
+The included export has **13 datasets**, including **37,803 profile rows** as of **October 19, 2026**, exported **October 20, 2026**. The simulated transaction scenario remains frozen at **September 29, 2026**. Local checks cover analytical helpers, snapshot contracts and selected dashboard rendering. The evidence reference also records dated historical warehouse builds, separately from inspectable public artifacts and local tests.
 
-## Read more
+Those checks have limits: mocked failures do not prove live recovery, rank adjustment does not remove all selection bias, and configured spending patterns do not establish real commercial results. Read **[Validation and evidence](docs/reference/validation-and-evidence.md)** for the exact scopes, dates and remaining evidence gaps.
 
-The [documentation index](docs/README.md) organizes wiki chapters, practical guides and technical references by task. Operators can start with [run the pipeline](docs/guides/run-the-pipeline.md) or [refresh dashboard data](docs/guides/refresh-dashboard-data.md).
+## Explore the result or reproduce it
 
-Earlier documents remain in the [archive](docs/deprecated/README.md).
+The implemented Streamlit dashboard presents a guided story and analytical explorers in English and Brazilian Portuguese. Public hosting is planned; **[run the bundled dashboard](docs/guides/run-the-dashboard.md)** to inspect it locally without a Riot API key, Neon account or Databricks credentials. Start with **The story**, then use **Explore the data** for closer inspection. Dashboard presentation is being refined.
+
+Operating the source pipeline requires credentials, manually prepared services and adapted job configuration. **[Run the pipeline](docs/guides/run-the-pipeline.md)** details those prerequisites and the first-build sequence; installation into a newly provisioned environment has not been verified. **[Refresh dashboard data](docs/guides/refresh-dashboard-data.md)** covers the separate manual export and snapshot review. The **[documentation index](docs/README.md)** routes more specific questions to their guides and contracts.
 
 ## Author and attribution
 
