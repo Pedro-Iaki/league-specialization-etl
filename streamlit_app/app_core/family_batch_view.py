@@ -8,14 +8,14 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from app_core.families import LOCAL_DIR, load_membership, prepare_membership
+from app_core.families import LOCAL_DIR, load_family_reference, load_membership, prepare_membership
 from app_core.family_batch import (
     FAMILY_BANDS, STATES, aggregate_coverage, evaluate_scenario, scenario_evidence, smallest_family_cover, target_size_cover,
 )
 from app_core.family_plots import co_membership_figure, family_consistency_figure
 from app_core.family_cohort_view import render_cohort_builder
 from app_core.family_cohort import sources_from_cases, fingerprint, subset_scores
-from app_core.population import load_reference, reference_fingerprint
+from app_core.population import reference_fingerprint
 from app_core.ui import setup_page
 
 
@@ -57,7 +57,7 @@ def render_batch_scenarios() -> None:
         return
     try:
         import leidenalg  # noqa: F401
-        reference_hash = reference_fingerprint(load_reference())
+        reference_hash = reference_fingerprint(load_family_reference())
         base, characters, points, _, manifest = _prepared(path.stat().st_mtime_ns,
                                                         (LOCAL_DIR / 'manifest.json').stat().st_mtime_ns, reference_hash)
     except ImportError:

@@ -11,9 +11,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from app_core.families import LOCAL_DIR, FamilySettings, load_membership, prepare_membership
+from app_core.families import LOCAL_DIR, FamilySettings, load_family_reference, load_membership, prepare_membership
 from app_core.family_cohort import fingerprint, source_matrix, subset_scores
-from app_core.population import load_reference, reference_fingerprint
+from app_core.population import reference_fingerprint
 from app_core.ui import setup_page
 
 
@@ -78,7 +78,7 @@ def render_anchored_sweep() -> None:
     try:
         from app_core.family_anchored import PairStatisticsPool, candidate_neighborhood, run_anchored_sweep, sweep_request, validate_anchored_step, validate_resume
         path = LOCAL_DIR / 'membership.parquet'
-        reference_hash = reference_fingerprint(load_reference())
+        reference_hash = reference_fingerprint(load_family_reference())
         base, characters, points, _, manifest = _prepared(path.stat().st_mtime_ns,
             (LOCAL_DIR / 'manifest.json').stat().st_mtime_ns, reference_hash)
     except ImportError:

@@ -94,6 +94,15 @@ def test_rejects_impossible_size_constraints_and_duplicate_membership():
         validate_membership(pd.DataFrame([row]))
 
 
+def test_metadata_only_reference_correction_keeps_saved_lab_identity_but_new_shares_do_not():
+    historical = load_reference(family_analysis.FAMILY_REFERENCE_PATH)
+    current = historical.assign(source='Corrected attribution', reference_version='metadata-correction')
+    with patch.object(family_analysis, 'load_reference', return_value=historical):
+        assert reference_fingerprint(family_analysis.load_family_reference(current)) == reference_fingerprint(historical)
+        current.loc[[0, 1], 'population_share'] = current.loc[[1, 0], 'population_share'].to_numpy()
+        assert reference_fingerprint(family_analysis.load_family_reference(current)) == reference_fingerprint(current)
+
+
 def test_empty_graph_and_adjusted_associations_are_valid(two_families):
     points, characters, weights, settings = two_families
     result = discover_families(points, characters, weights, replace(settings, minimum_shared=100))

@@ -1,3 +1,3 @@
-from app_core.story import transactions_page
+from app_core.customer_story import transactions_page
 
 transactions_page()

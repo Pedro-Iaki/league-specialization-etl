@@ -1,0 +1,275 @@
+{
+  "definition_version": "family-audience-segments-v1",
+  "source_profile_sha256": "df3c50a63be820da3fdf25f17382cf4a6a0da7461aef30dd73aa8c1408eebf53",
+  "source_profile_count": 38403,
+  "as_of_date": "2026-10-20",
+  "scope": {
+    "region": "na1",
+    "queue": "RANKED_SOLO_5x5"
+  },
+  "family_affinity": {
+    "schema_version": 1,
+    "metric_id": "active_pool_lifetime_mastery_family_affinity_v1",
+    "metric_version": 1,
+    "family_cohort_id": "champion-audience-families-v1",
+    "family_definition_sha256": "fdb8f3eaca472fcf24b749a1d6af60ea74b0d908c1dbcfd831a5339a8029f781",
+    "family_order": [
+      "F01",
+      "F02",
+      "F03",
+      "F04",
+      "F05",
+      "F06",
+      "F07",
+      "F08",
+      "F09",
+      "F10",
+      "F11",
+      "F12",
+      "F13",
+      "F14",
+      "F15",
+      "F16",
+      "F17",
+      "F18",
+      "F19",
+      "F20",
+      "F21",
+      "F22",
+      "F23",
+      "F24",
+      "F25"
+    ],
+    "minimum_mastery": 15000,
+    "denominator": "All lifetime mastery within the full model-selected active pool",
+    "attribution": "Full membership in every containing family; coordinates are not additive",
+    "membership_source": "fct_players_champion_activity.is_recent_pool_champion",
+    "weight_source": "fct_masteries_current.champion_points",
+    "date_basis": "Model active membership as of its observation; lifetime points at their retained snapshot. Exporter must record actual source/as-of/snapshot dates.",
+    "tie_atol": 1e-12,
+    "tie_rtol": 0,
+    "weighting_fallback": false,
+    "null_vector_states": [
+      "no_active_pool",
+      "insufficient_mastery",
+      "unmapped_pool",
+      "unavailable_pool"
+    ]
+  },
+  "rank_reference": [
+    {
+      "tier": "IRON",
+      "population_share": 0.0406,
+      "reference_version": "2026-10-10-v2-provenance",
+      "recorded_on": "2026-10-10",
+      "review_after": "2027-04-10",
+      "source": "OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers",
+      "reference_scope": "North America (NA) ranked solo/duo"
+    },
+    {
+      "tier": "BRONZE",
+      "population_share": 0.166,
+      "reference_version": "2026-10-10-v2-provenance",
+      "recorded_on": "2026-10-10",
+      "review_after": "2027-04-10",
+      "source": "OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers",
+      "reference_scope": "North America (NA) ranked solo/duo"
+    },
+    {
+      "tier": "SILVER",
+      "population_share": 0.2137,
+      "reference_version": "2026-10-10-v2-provenance",
+      "recorded_on": "2026-10-10",
+      "review_after": "2027-04-10",
+      "source": "OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers",
+      "reference_scope": "North America (NA) ranked solo/duo"
+    },
+    {
+      "tier": "GOLD",
+      "population_share": 0.2353,
+      "reference_version": "2026-10-10-v2-provenance",
+      "recorded_on": "2026-10-10",
+      "review_after": "2027-04-10",
+      "source": "OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers",
+      "reference_scope": "North America (NA) ranked solo/duo"
+    },
+    {
+      "tier": "PLATINUM",
+      "population_share": 0.1763,
+      "reference_version": "2026-10-10-v2-provenance",
+      "recorded_on": "2026-10-10",
+      "review_after": "2027-04-10",
+      "source": "OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers",
+      "reference_scope": "North America (NA) ranked solo/duo"
+    },
+    {
+      "tier": "EMERALD",
+      "population_share": 0.1234,
+      "reference_version": "2026-10-10-v2-provenance",
+      "recorded_on": "2026-10-10",
+      "review_after": "2027-04-10",
+      "source": "OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers",
+      "reference_scope": "North America (NA) ranked solo/duo"
+    },
+    {
+      "tier": "DIAMOND",
+      "population_share": 0.0368,
+      "reference_version": "2026-10-10-v2-provenance",
+      "recorded_on": "2026-10-10",
+      "review_after": "2027-04-10",
+      "source": "OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers",
+      "reference_scope": "North America (NA) ranked solo/duo"
+    },
+    {
+      "tier": "MASTER",
+      "population_share": 0.0073,
+      "reference_version": "2026-10-10-v2-provenance",
+      "recorded_on": "2026-10-10",
+      "review_after": "2027-04-10",
+      "source": "OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers",
+      "reference_scope": "North America (NA) ranked solo/duo"
+    },
+    {
+      "tier": "GRANDMASTER",
+      "population_share": 0.0004,
+      "reference_version": "2026-10-10-v2-provenance",
+      "recorded_on": "2026-10-10",
+      "review_after": "2027-04-10",
+      "source": "OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers",
+      "reference_scope": "North America (NA) ranked solo/duo"
+    },
+    {
+      "tier": "CHALLENGER",
+      "population_share": 0.0002,
+      "reference_version": "2026-10-10-v2-provenance",
+      "recorded_on": "2026-10-10",
+      "review_after": "2027-04-10",
+      "source": "OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers",
+      "reference_scope": "North America (NA) ranked solo/duo"
+    }
+  ],
+  "rank_reference_sha256": "942b37f83a6351771ddeace1c5c16cad5a908626ee9d6878e14be580f80f182c",
+  "tier_support": [
+    {
+      "tier": "IRON",
+      "sample_players": 5341,
+      "represented": true,
+      "population_share": 0.0406
+    },
+    {
+      "tier": "BRONZE",
+      "sample_players": 5703,
+      "represented": true,
+      "population_share": 0.166
+    },
+    {
+      "tier": "SILVER",
+      "sample_players": 5854,
+      "represented": true,
+      "population_share": 0.2137
+    },
+    {
+      "tier": "GOLD",
+      "sample_players": 4900,
+      "represented": true,
+      "population_share": 0.2353
+    },
+    {
+      "tier": "PLATINUM",
+      "sample_players": 5501,
+      "represented": true,
+      "population_share": 0.1763
+    },
+    {
+      "tier": "EMERALD",
+      "sample_players": 5280,
+      "represented": true,
+      "population_share": 0.1234
+    },
+    {
+      "tier": "DIAMOND",
+      "sample_players": 5498,
+      "represented": true,
+      "population_share": 0.0368
+    },
+    {
+      "tier": "MASTER",
+      "sample_players": 325,
+      "represented": true,
+      "population_share": 0.0073
+    },
+    {
+      "tier": "GRANDMASTER",
+      "sample_players": 1,
+      "represented": true,
+      "population_share": 0.0004
+    },
+    {
+      "tier": "CHALLENGER",
+      "sample_players": 0,
+      "represented": false,
+      "population_share": 0.0002
+    }
+  ],
+  "bands": {
+    "activity_band": {
+      "source": "lifetime_mastery_points",
+      "prefix": "A",
+      "right_closed_cuts": [
+        600000,
+        1500000,
+        2500000,
+        4000000
+      ],
+      "labels": [
+        "Up to 600k",
+        "600k\u20131.5m",
+        "1.5m\u20132.5m",
+        "2.5m\u20134m",
+        "Over 4m"
+      ]
+    },
+    "engagement_band": {
+      "source": "total_games",
+      "prefix": "E",
+      "right_closed_cuts": [
+        24,
+        99,
+        249,
+        499
+      ],
+      "labels": [
+        "1\u201324",
+        "25\u201399",
+        "100\u2013249",
+        "250\u2013499",
+        "500+"
+      ]
+    },
+    "history_band": {
+      "source": "oldest_retained_play_days",
+      "prefix": "H",
+      "right_closed_cuts": [
+        365,
+        1095,
+        1825,
+        2555
+      ],
+      "labels": [
+        "Up to 1 year",
+        "1\u20133 years",
+        "3\u20135 years",
+        "5\u20137 years",
+        "Over 7 years"
+      ]
+    }
+  },
+  "minimum_players": 30,
+  "minimum_effective_players": 20,
+  "cohort": "All current profiles; no family, type, focus, history or spending eligibility filter",
+  "weighting": "Individual-tier calibration on the full profile scope, inherited after filtering",
+  "rank_map_statistic": "P(activity band | rank group), conditional on any selected engagement/history lens",
+  "affinity_statistic": "Weighted mean among scored vectors; unavailable vectors excluded with coverage reported",
+  "primary_statistic": "Exclusive primary-category share of all selected weighted profiles, including tie/missing states",
+  "suppression": "Mask displayed estimates when cell N < 30 or Kish effective N < 20; retain denominators and raw shares"
+}

@@ -63,7 +63,10 @@ def test_all_pages_render_in_portuguese(page):
         app.switch_page(page).run()
     assert not app.exception
     assert any("Fonte de dados" in caption.value for caption in app.sidebar.caption)
-    assert any("Jogadores" in chart.proto.spec or "jogador" in chart.proto.spec for chart in app.get("plotly_chart"))
+    if page == 'app.py' and not app.get('plotly_chart'):
+        assert any('retrato enriquecido com famílias' in item.value for item in app.info)
+    elif page != 'app.py':
+        assert any("Jogadores" in chart.proto.spec or "jogador" in chart.proto.spec for chart in app.get("plotly_chart"))
     if page == "business.py":
         assert len(app.get("plotly_chart")) == 4
         assert any("padrões de gastos são sintéticos" in caption.value for caption in app.caption)

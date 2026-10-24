@@ -2,7 +2,7 @@
 
 from app_core.i18n import language_selector, st, t
 from app_core.story import STORY_PAGES
-from app_core.families import LOCAL_DIR
+from app_core.families import LOCAL_DIR, VECTORS_DIR
 
 st.set_page_config(page_title="players-as-customers-pipeline", page_icon="◈", layout="wide")
 st.session_state["_dashboard_app_shell"] = True
@@ -30,5 +30,8 @@ if (LOCAL_DIR / 'membership.parquet').exists():
         st.Page('pages/8_Anchored_Family_Sweep.py', title='Anchored Family Sweep', url_path='anchored-family-sweep'),
         st.Page('pages/6_Batch_Scenario_Viewer.py', title='Family cohort builder', url_path='batch-scenario-viewer'),
     ]
+    if (VECTORS_DIR / 'vectors.parquet').exists():
+        pages['Local laboratory'].append(
+            st.Page('pages/9_Pool_Archetypes.py', title='Pool archetypes', url_path='pool-archetypes'))
 
 st.navigation(pages, expanded=True).run()

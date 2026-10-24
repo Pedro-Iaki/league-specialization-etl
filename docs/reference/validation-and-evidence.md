@@ -22,6 +22,39 @@ Inspect [configuration validation](../../src/pydantic_models.py), [dbt schema te
 
 ## Inspectable serving snapshot
 
+The current [manifest](../../streamlit_app/data/manifest.json) records the family-enriched export on **October 23, 2026, 11:06:08 UTC**. Its **38,403 profiles are as of October 20**, with retained player snapshots spanning September 17–October 20. The **24,990-customer scenario stays frozen at September 29**; its purchase window is August 1–September 29 inclusive. All customers were associated with current audience context by actual private player key and queue before anonymous projection. Later context is not evidence of purchase-date preference or prediction.
+
+| Dataset | Rows | Columns |
+|---|---:|---:|
+| `champion_population_pairs` | 133,902 | 11 |
+| `champion_population_activity` | 1,557 | 13 |
+| `business_players` | 24,990 | 80 |
+| `champion_player_mastery_share` | 1,168,633 | 7 |
+| `champion_tier_mastery` | 22,567 | 13 |
+| `players` | 38,403 | 87 |
+| `champions` | 173 | 38 |
+| `cooccurrence` | 14,878 | 14 |
+| `growth_players` | 1,255 | 12 |
+| `champion_growth_players` | 4,818 | 13 |
+| `growth_player_styles` | 1,255 | 9 |
+| `champion_tier_growth` | 3,110 | 16 |
+| `ranked_mastery_cohorts` | 3,982 | 10 |
+
+Only profiles and business summaries were replaced in this release. The other eleven datasets are retained byte for byte from the previous serving package; the manifest records that retention and their earlier export provenance. The new top-level export date does not refresh their observations. Row grains are defined in [data models](data-models.md#serving-datasets).
+
+The installed [family definition](../../streamlit_app/definitions/champion-audience-families-v1.json) fixes 25 families, 173 characters and 251 overlapping memberships. Its SHA-256 is `fdb8f3eaca472fcf24b749a1d6af60ea74b0d908c1dbcfd831a5339a8029f781`. The [segment reference](../../streamlit_app/data/audience_segments_reference.json) pins complete-base bands, individual-tier calibration and source-profile identity. Behavioral calibration covers 99.98% of the saved rank reference; 0.02% is unsupported and 0.04% has sparse individual-tier support. Scored family pools cover 50.73% of adjusted profiles, including shared-top states; absent pools remain visible elsewhere.
+
+The preserved scenario reconciles **6,790 cash purchasers, 18,200 nonbuyers and USD 283,693.66** in its 60-day purchase window, plus **USD 7,439,491.86** across generated history. Cash is counted once in integer cents. Purchaser rates include nonbuyers; per-purchaser cash uses purchasers only. No gameplay population weights enter these customer totals. These amounts are generated demonstration data, not actual revenue.
+
+The October 23 integration checked all 13 public schemas, forbidden identifiers, manifest counts/sizes, unique within-file row keys, enriched file/metric hashes, frozen reference identity, scenario preservation, conditional audience totals and cash reconciliation before local promotion. A complete previous serving directory is retained locally for rollback. The six guided chapters render against this coherent package. A focused integrated run passed 75 tests; the new engineering tests passed all three cases after correcting a test assertion. Browser checks covered all six in EN/PT and both terminology modes, with 21 recorded cases at 1440, 1024 and 390 px, unchanged chart numbers across language/terminology and no rendering exceptions or horizontal overflow. The pre-existing explorer emitted one pandas categorical warning. These are local checks, not deployment or independent validation of families. See [run the dashboard](../guides/run-the-dashboard.md) for viewing and [refresh dashboard data](../guides/refresh-dashboard-data.md) for replacement/rollback boundaries.
+
+The final October 23 acceptance exercised **437 dashboard test cases**. The complete run passed 436 and exposed one legacy test that hardcoded the older snapshot's band counts; that assertion was replaced with checks against the installed frozen reference and retained tiers. The final related audience/customer/translation run passed all 29 tests, followed by all 10 language checks after tablet spacing changes. The complete run retained 24 existing pandas categorical warnings. No analytical failure remained after those focused checks; the full suite was not repeated unchanged.
+
+The final browser pass recorded **30 cases** at 1440, 1024 and a strict 390 px, complementing the earlier six-chapter EN/PT review. Checks included rank inversion and hour-label invariance, retained-history and ranked-volume selections, searchable family choice, primary versus affinity, optional focus/breadth, sparse estimates, customer refinements, independent language/terminology persistence and returning to the opening page. The final review corrected clipped customer-axis titles and tablet language/flow spacing. There were no page-level horizontal overflows or runtime errors in the accepted cases. Frozen serving/backup hashes and the adopted family definition stayed unchanged. Required serving references are explicitly allowed in Git; local experiments and private notes remain excluded. These checks establish local readiness, not hosted availability.
+
+## Historical serving and chapter checks: October 20, 2026
+
+
 The current [manifest](../../streamlit_app/data/manifest.json) records export time **October 20, 2026, 03:17:24 UTC**. Gameplay profiles are as of **October 19, 2026**, with latest-known player observations spanning September 17–October 19. The validated transaction scenario remains frozen at **September 29, 2026**; its provenance and generated events were preserved.
 
 | Dataset | Rows | Counting unit |
@@ -50,7 +83,7 @@ The subsequent page-3 alignment on October 20 passed **144 dashboard tests** and
 
 The October 20 implementation of story pages 1, 2 and 4 passed **154 dashboard tests**, followed by **32 focused tests** against the final changes. Browser review at 1440, 1024 and 390 px covered the three chapters, English/Portuguese and both terminology modes. A final page-4 review also exercised the whole-history view and a leading-character selection, preserving the expected 663-profile Yasuo audience without overflow or rendering exceptions. The terminology-switch check caught and corrected a deferred widget-label mapping issue before completion. The full run retained the same 24 legacy categorical warnings described above.
 
-The chapter checks reconcile page 2's distribution summaries and collapsed grid to page 3's rank facets, preserve the fixed cohort/bands after character filtering, retain missing-type profiles outside the type chart, and distinguish the 19,723-profile pair source from the 19,722-profile concentration reference. The chapter sequence now places transactions fifth and retains the separate growth evidence in the final chapter's expandable detail. All 13 dataset hashes, the manifest and the frozen audience reference remained unchanged. No warehouse models, transaction scenario or archetype assignments were regenerated.
+The chapter checks reconcile page 2's distribution summaries and collapsed grid to page 3's rank facets, preserve the fixed cohort/bands after character filtering, retain missing-type profiles outside the type chart, and distinguish the 19,723-profile pair source from the 19,722-profile concentration reference. That historical chapter sequence placed transactions fifth and retained separate growth evidence in the final chapter; the October 23 audience story replaces that ending with engineering and evidence. All 13 dataset hashes, the manifest and the frozen audience reference remained unchanged. No warehouse models, transaction scenario or archetype assignments were regenerated.
 
 ## Historical serving snapshot: September 29, 2026
 

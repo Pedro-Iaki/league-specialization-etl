@@ -1,5 +1,7 @@
 # Metrics and methods
 
+The accepted [player-pool archetypes](player-pool-archetypes.md) have a separate all-active-mastery feature contract and fixed NMF inference. Do not substitute the cutoff-based story-family affinity vector.
+
 [Project README](../../README.md) · [Documentation index](../README.md) · [Data models](data-models.md) · [Population adjustment](population-adjustment.md)
 
 This reference defines the implemented calculations and their interpretation. Use [data models](data-models.md) for grains and lineage, [population adjustment](population-adjustment.md) for estimands and weights, and [validation and evidence](validation-and-evidence.md) for dated counts and checks. Parameter defaults are listed in [configuration](configuration.md).
@@ -40,6 +42,78 @@ Lifetime shares use positive accumulated character mastery. For both lifetime an
 4. Otherwise retain all candidates. A single candidate is preferred by itself.
 
 The preferred share is the sum of the selected characters' shares in the **whole** pool. It need not equal one. This heuristic identifies a useful concentration boundary; it is not a learned preference model.
+
+## Player family affinity
+
+The pure calculation in [family_affinity.py](../../streamlit_app/app_core/family_affinity.py)
+implements `active_pool_lifetime_mastery_family_affinity_v1` over the accepted
+[25-family definition](character-family-cohort.md). The optional
+[joint export path](../guides/refresh-dashboard-data.md#family-enriched-profile-and-business-exports)
+calculates these fields before anonymization and validates them on loading.
+The wider [audience segment helpers](audience-segments.md) freeze base weights,
+bands and map denominators; guided pages 1–4 use them in the coherent local serving package. This metric does not change the existing
+Recent pool shares or concentration classifications described above.
+
+Take the existing model-selected active champions and their **lifetime** mastery
+points. Use all active mastery as the denominator, including low-mastery and
+unmapped champions. A champion contributes to a family only when it has at least
+15,000 points and belongs to that family:
+
+```text
+family affinity = active lifetime mastery of qualifying family members
+                  / lifetime mastery of all active champions
+```
+
+The threshold is inclusive and applies after active membership selection. It is
+different from the older leading-character-only reporting cutoff. Neither the
+preferred subset nor observed-gain shares determine this vector. Each champion
+contributes fully to every containing family, so coordinates are individually
+between zero and one but need not sum to one. These are overlapping affinities,
+not probabilities, recent play rates, or additive audience shares.
+
+For example, active champions with 60,000, 30,000 and 10,000 points have a total
+of 100,000. If family A contains the first two and family B contains the last two,
+their affinities are 90% and 30%. The 10,000-point champion remains in the
+denominator but does not score. The two coordinates sum to 120% because the
+30,000-point champion belongs to both families.
+
+The category is the unique highest-affinity family, or **Shared top** when several
+families tie. Preserve all tied IDs; do not break ties by ID or family size. One
+shared champion can produce a tie, so this category does not mean diversified
+interests. Top score and first-versus-second gap accompany the label without a
+mandatory dominance threshold. Comparisons use positive coordinates with absolute
+tolerance `1e-12` and relative tolerance zero; display rounding does not change
+classification. A unique top retains all positive runner-up ties. A shared top
+has gap zero, runner-up score equal to top, and no arbitrarily selected runner-up
+IDs. If no other coordinate is positive, a unique top has runner-up score zero
+and an empty runner-up list.
+
+| State | Meaning | Vector and ranking fields |
+|---|---|---|
+| Primary family | One positive maximum | Ordered vector, family ID, top and runner-up scores/IDs, gap. |
+| Shared top | Several positive maxima | Ordered vector and tied IDs; primary ID null; gap zero. |
+| No active pool | Source confirmed an empty pool | Null vector and scores; confirmed zero pool counts. |
+| Insufficient mastery | Nonempty pool with no champion at 15,000 points | Null vector and scores; measured counts/mass retained. |
+| Unmapped pool | Qualifying mastery exists but no scoring champion is in the definition | Null vector and scores; unmapped mass retained. |
+| Pool unavailable | Membership evidence was not supplied | Null vector, scores and unobserved counts. |
+
+There is no equal-weight fallback: it would change from accumulated investment to
+membership under the same metric name. For a positive denominator, disjoint
+below-cutoff, above-cutoff unmapped, and scored mastery shares sum to one. These
+coverage components are separate from the overlapping family coordinates.
+Unknown below-cutoff champions count only in below-cutoff mass. Invalid points
+and duplicate champion keys fail validation rather than becoming zero or being
+counted twice.
+
+The result stores one nullable ordered vector; metadata records F01–F25, the
+definition SHA-256, metric version, threshold, denominator, tie convention and
+source/date basis. Exporters must attach actual dates and calculate fields while
+player identity is available, then anonymize the joint row. Independently
+anonymous profile and membership files are not joinable by row order. Population
+weights apply across players when aggregating, not within their champion vectors.
+Mean affinity excludes null vectors and reports scoring coverage. Use exclusive
+primary categories, including appropriate tied/missing states, for additive
+audience or cash totals; never sum overlapping family filters as unique reach.
 
 ## Concentration and classification
 
@@ -108,29 +182,13 @@ The default minimum shared audience is five players. Overlap indicates co-member
 
 The explorer's [experience view](../../streamlit_app/app_core/experience.py) uses classified Lifetime profiles and five pooled, approximately equal-count mastery bands. Stable source order breaks ties, so identical mastery values can cross a boundary. Bands are formed before optional Master exclusion. Rank groups are Iron–Silver, Gold–Platinum, Emerald and Diamond+. Each category's raw share divides its profile count by all classified profiles in the band/rank cell. Overall composition pools counts across bands rather than averaging their percentages. These are descriptive sample views, not causal decompositions or population adjustments. The default display support is three total classified players in the cell, rather than three members of the category. Supported zero shares remain zero. Individual 95% Wilson intervals do not provide simultaneous tests of every group difference.
 
-Story pages 2-4 instead use the paired [audience comparison](../../streamlit_app/app_core/audience.py): both existing classifications must be available, account and active-pool Lifetime points must be positive, rank must be recognized, and top-share/HHI values must be finite proportions. The October 19 reference contains 19,722 profiles: 18,080 profiles lack a Recent classification and one more has zero active-pool Lifetime points. No positive-gain, ranked-follow-up, character-type, favorite-cutoff or spending condition is added. Each profile has equal weight. All apex ranks present, including the one Grandmaster, enter Diamond+.
+Guided pages 1-4 use the wider [family-audience base](audience-segments.md), including profiles without focus, inferred type or scored family evidence. Page 2 shows joint activity/ranked-volume shares; page 3 shows activity shares conditional on rank. Page 4 applies the adopted family scores and primary labels to the same activity/rank geometry. Engagement/history filters retain original full-base individual-tier weights and fixed bands. Rank-reference labels remain overall prevalence, separately from selected-audience composition. Transposition changes layout only.
 
-The paired comparison uses exported active-pool Lifetime concentration alongside whole-history Lifetime concentration. Top share divides the leading character's accumulated points by all points in the relevant pool; HHI is a supporting check. These are inferred accumulated preferences, not shares of recent matches. Recent gain/equal-membership classification remains a separate measure. Short-history and mature membership rules still affect the selected pool; the page exposes this distinction and their different concentration summaries.
+The family map defaults to weighted mean affinity among scored pools, including measured zeros and reporting scoring coverage. Its separate primary-share mode divides unique primary-family mass by the whole cell, including ties and unavailable evidence. The primary overview reaggregates Other before suppression and keeps explicit non-family states. Known-type compositions compare the selected primary family with all primary families; unavailable types are excluded only there, with coverage disclosed. The type weighting remains the existing Recent-pool point weighting and is distinct from the lifetime-active family score. See [audience segments](audience-segments.md) for support and optional-lens contracts.
 
-The [audience reference](../../streamlit_app/data/audience_reference.json) freezes value-based activity quintiles and binds them to the player file's SHA-256. Current upper-inclusive integer cuts are 942,341; 2,005,800; 3,128,550; 4,534,324. Equal scores stay together; no row-order tie split is used in this story reference. The exact integer interpolation avoids floating-point rounding at an integer boundary. Reuse these assignments across views and rank/type/archetype slices. The reference is built manually after a refresh by [export_audience_reference.py](../../streamlit_app/scripts/export_audience_reference.py); a missing/mismatched reference makes the comparison unavailable while retaining navigation. The explorer's existing band construction remains separate.
+The prior paired concentration reference remains a legacy artifact, separate from the guided audience base. [audience.py](../../streamlit_app/app_core/audience.py) requires both classifications, positive account and active-pool Lifetime points, recognized rank and finite concentration values. The older October 19 reference contains 19,722 equal-weight profiles with activity cuts 942,341; 2,005,800; 3,128,550; 4,534,324. Its concentration denominator is all mastery in the relevant pool; leading-character reporting separately applies a 15,000-point leader cutoff. These are historical comparison contracts, not the current family's scoring or presentation rules. The accepted 25-family map is versioned separately; its evidence and limits are described in [character-family cohort](character-family-cohort.md). The guided story no longer substitutes a raw pair-overlap example or leading-character category for those families.
 
-Main concentration panels use a shared 0–100% scale, medians and optional 25th–75th percentile ranges. These describe distributions, not confidence intervals. Cells with fewer than three profiles retain counts but omit their median lines. The axis toggle transposes the same summaries into rank-group lines across five bands or band lines across four rank groups, without recalculating assignments, medians or quartiles. Band positions are ordinal, not equally spaced time or a trajectory. The supporting historical section retains all four Lifetime classes, with individual 95% Wilson intervals for category proportions only.
-
-The final audience map counts profiles in ten fixed 10-percentage-point top-share bins within each band/rank cell. Bins are left-inclusive/right-exclusive, except the last includes 100%; they are display intervals, not new playstyle classes. Both concentration views use the same color scale and reference N. Zero-count bins remain zero. Rank facets sum to the full paired cohort, and an accessible table retains counts. The 15,000-point leading-character reporting cutoff is not applied to this concentration comparison or its denominator.
-
-For interpretive context, the story also displays `activity score / 1,200` as approximate hour-equivalents, assuming 600 points per match and 30 minutes per match. These assumptions are illustrative, not calibrated estimates of actual match duration or point accrual. Rescaling does not change band membership, measure account age or establish time to reach a rank. Differences between game modes or players can affect both assumptions.
-
-Page 2 introduces this same paired cohort before rank is added. Its distribution boxes use the 25th, 50th and 75th percentiles, with explicitly defined 10th–90th percentile whiskers. These are equal-profile quantiles, not confidence limits or conventional 1.5-IQR outlier fences. The first count map collapses the rank dimension of page 3's map exactly; its bins and activity assignments are identical. The supporting historical mix retains the four existing Lifetime groups. The 4×4 Lifetime/Recent table uses the same paired people and compares classification definitions, not observed behavior changes.
-
-Page 4's character type is the existing inferred lane association: A=Top, B=Jungle, C=Middle, D=Bottom, E=Support. These nominal IDs are distinct from audience-derived character archetypes and from the leading character's own position metadata. Type weights have not been recomputed using accumulated active-pool points. Missing/unknown type is omitted only from the type chart; the page states the excluded count and retains those profiles in other denominators.
-
-Leading-character reporting selects the existing exported active-pool Lifetime leader, then requires its accumulated points to be at least 15,000. The cutoff is inclusive and applied after concentration and band calculation: no low-point pool member is removed from a concentration denominator. Currently 18,629 profiles qualify, 1,093 are below cutoff and none has an unavailable leader. Unavailable keys or point values remain a separate reporting state rather than silently reducing the reference N. Equal leading scores currently break by character key; without tie metadata the deterministic leader is not a uniquely demonstrated favorite. This rule is separate from the preferred log-gap subset and the deferred Fan rule.
-
-The character recap selects either a reporting state or one of the ten largest supported leading-character audiences. The full reference's activity cuts, concentration bins and rank facets remain fixed; selected plus unselected profiles reconcile to the reference. Both concentration views and every selection retain the complete reference's color maximum. Small selected audiences can therefore look faint. Tables expose the counts; zero-count bins are not missing estimates.
-
-The illustrative Caitlyn–Jhin pair is computed from the separate 19,723-profile membership cohort: 3,117 Caitlyn members, 3,209 Jhin members and 1,352 shared. Distinct reach is 4,974; directional overlap is 43.4% and 42.1%; raw lift is 2.666. The example is explanatory rather than selected as the strongest pair. It does not describe the exact 19,722-person concentration cohort or an adjusted archetype model. All 14,878 published pairs currently have raw lift above one, so the global reference alone is insufficient to distinguish specific shared interests from heterogeneous pool breadth.
-
-No validated archetype map is served. The specified next method conditions association on active-pool breadth, clusters association profiles and requires whole-player bootstrap stability and cutoff/maturity sensitivity checks before naming groups. The current public extracts lack breadth-stratified counts and transient player-level fitting state. Type, leader coverage and explanatory overlap are the supported page-4 fallback; no model is fitted from raw lift alone. Rank, activity, focus and spending are subsequent comparison dimensions, not clustering features. Neither known type, qualifying leader nor archetype assignment is required to enter the concentration reference.
+Optional hour equivalents use mastery / 1,200, assuming 600 points per match and 30 minutes per match. These are illustrative assumptions, not calibrated estimates of match duration or point accrual. Rescaling does not change band membership, measure account age or establish time to reach a rank. Differences between game modes or players can affect both assumptions.
 
 ## Simulated commercial measures
 
@@ -151,10 +209,14 @@ All measures below describe generated events attached to frozen real profiles. [
 
 Simulated account age starts at the first fictional purchase. Activity bands are relative mastery-based proxies, even where current code retains a `playtime` name; they do not measure hours. Empty denominators produce missing measures where undefined. Zero spending for a nonpayer is meaningful and is retained.
 
+The guided customer chapter uses [customer audience helpers](../../streamlit_app/app_core/customer_audiences.py) on the identity-safe family-enriched business export. Each customer belongs to one primary family or explicit tied/missing state. Other families is reaggregated before ratios, keeping every row and cash amount once. It does not allocate revenue across overlapping affinity coordinates. Cash totals use integer cents; rates and per-purchaser USD are calculated from those totals. Customer summaries ignore gameplay calibration weights.
+
+Its three plots show purchaser share, cash per purchaser, and profile versus cash composition for the same selection. Fixed activity/engagement ranges and current rank/type use the attached `audience_` traits. These later observations remain distinct from frozen scenario traits and purchases. The default retains the complete scenario, including nonbuyers. The display masks purchaser/composition estimates below 30 profiles and purchaser-amount estimates below 30 cash purchasers, keeping raw totals and denominators unchanged. A supported zero purchaser share is zero; cash per purchaser and cash composition are undefined without cash purchasers or total cash respectively. These are descriptive fictional outputs, not confidence intervals or market estimates. See [synthetic transactions](../wiki/simulated-transactions.md#connect-the-family-audience-definition).
+
 ## Support and uncertainty
 
 Support rules are method-specific. Pair support, display controls and direct-standardization support are separate settings; no new universal minimum is implied by this reference. [Population adjustment](population-adjustment.md) defines the current five-observation standardization rule and coverage warning.
 
-The current [growth story](../../streamlit_app/app_core/story_analysis.py) uses 2,000 row bootstrap resamples with seed 42 for eligible per-player outcome summaries, with a minimum of three supported rows per style. Its anonymous input cannot identify repeated players for clustering. A separate historical verification used 10,000 player-cluster resamples with a fixed baseline. Those intervals are not interchangeable. An interval containing zero does not prove zero effect.
+The retained [growth-analysis helper](../../streamlit_app/app_core/story_analysis.py) uses 2,000 row bootstrap resamples with seed 42 for eligible per-player outcome summaries, with a minimum of three supported rows per style. Its anonymous input cannot identify repeated players for clustering. A separate historical verification used 10,000 player-cluster resamples with a fixed baseline. Those intervals are not interchangeable. An interval containing zero does not prove zero effect.
 
-The story's detectable-gap calculation is a two-group normal approximation using pooled within-style variance, two-sided alpha .05 and target power .80. It does not measure achieved power or establish a release requirement. Direct-standardized means currently have no calculated confidence interval. A common support/uncertainty policy and any future rank-skew summary remain deferred analytical work.
+That older helper's detectable-gap calculation is a two-group normal approximation using pooled within-style variance, two-sided alpha .05 and target power .80. It does not measure achieved power or establish a release requirement. Direct-standardized means currently have no calculated confidence interval. A common support/uncertainty policy and any future rank-skew summary remain deferred analytical work.

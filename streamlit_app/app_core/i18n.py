@@ -97,7 +97,7 @@ def language_selector() -> None:
 
     if "_dashboard_language_choice" not in _st.session_state:
         _st.session_state["_dashboard_language_choice"] = current_language()
-    with _st.columns([5, 1])[1]:
+    with _st.columns([3, 1])[1]:
         _st.segmented_control(
             t("Language"), ["EN", "PT"],
             key="_dashboard_language_choice", on_change=select,
@@ -239,6 +239,15 @@ class LocalizedStreamlit:
                 original = kwargs.get("format_func", str)
                 language = current_language()
                 version = (LOCALE_DIR / f"{language.lower()}.json").stat().st_mtime_ns
+                if name == "selectbox":
+                    # Selectboxes send display strings over the wire. Push the
+                    # canonical value back with its current-language label so
+                    # the next interaction cannot resend a stale translation.
+                    contexts = _st.session_state.setdefault("_localized_selectbox_contexts", {})
+                    context = (language, _st.session_state.get(TERMINOLOGY_KEY), version)
+                    if contexts.get(kwargs["key"]) != context and kwargs["key"] in _st.session_state:
+                        _st.session_state[kwargs["key"]] = _st.session_state[kwargs["key"]]
+                    contexts[kwargs["key"]] = context
                 # Widget serializers may call this after the script has ended.
                 # Bind the displayed language instead of reading session state there.
                 kwargs["format_func"] = lambda value: _translate(str(original(value)), language, version)

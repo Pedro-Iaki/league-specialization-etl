@@ -11,15 +11,15 @@ from app_core.audience import (
     audience_grid,
     band_distributions,
     build_reference,
-    concentration_cells,
     character_type_counts,
+    concentration_cells,
     historical_mix,
     label_comparison,
     leader_states,
     leading_characters,
     load_reference,
-    paired_profiles,
     overview_grid,
+    paired_profiles,
     prepare_audience,
 )
 from app_core.audience_charts import concentration_chart
@@ -163,11 +163,16 @@ def test_bundled_reference_reproduces_approved_cohort_and_bands():
     frame = data.load_dataset("players", include_all_tiers=True)
     banded = prepare_audience(frame, reference)
     assert len(banded) == reference["cohort_n"]
-    assert banded.tier.eq("GRANDMASTER").sum() == 1
-    assert banded.groupby("activity_band").size().tolist() == [3945, 3944, 3944, 3944, 3945]
+    # A refreshed serving package has its own paired cohort; preserve every
+    # eligible tier and apply the saved cuts rather than asserting old counts.
+    expected = paired_profiles(frame)
+    pd.testing.assert_series_equal(banded.groupby("tier").size(), expected.groupby("tier").size())
+    expected_bands = pd.cut(expected.lifetime_mastery_points,
+                            [-np.inf, *reference["right_closed_score_cuts"], np.inf], labels=range(1, 6))
+    assert banded.activity_band.tolist() == expected_bands.tolist()
     assert banded.groupby("lifetime_mastery_points").activity_band.nunique().eq(1).all()
     active = concentration_cells(banded).query("window=='active_pool_lifetime'")
-    assert active.n.min() == 313 and active.n.max() == 2425
+    assert active.n.sum() == len(banded)
     assert audience_grid(banded, "lifetime").profiles.sum() == len(banded)
 
 

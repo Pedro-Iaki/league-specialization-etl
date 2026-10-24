@@ -28,6 +28,8 @@ These are separate tasks: viewing the bundled data does not operate the pipeline
 
 ## Inspect exact behavior
 
+The [player-pool archetype contract](reference/player-pool-archetypes.md) describes the frozen eight-component model, eligibility, mixtures and keyed export integration.
+
 | I want to… | Read |
 |---|---|
 | Find settings, defaults, credentials and entrypoints | [Configuration](reference/configuration.md) |
@@ -35,4 +37,5 @@ These are separate tasks: viewing the bundled data does not operate the pipeline
 | Look up layers, model grains, identities and serving contracts | [Data models and serving contracts](reference/data-models.md) |
 | Check analysis windows, formulas, eligibility, attribution and denominators | [Metrics and methods](reference/metrics-and-methods.md) |
 | Distinguish rank weighting from standardization and inspect support | [Population adjustment](reference/population-adjustment.md) |
+| Use the wider family-audience base, fixed bands and map denominators | [Audience segments](reference/audience-segments.md) |
 | Inspect the accepted family cohort, review gates and evidence limits | [Final champion family cohort](reference/character-family-cohort.md) |

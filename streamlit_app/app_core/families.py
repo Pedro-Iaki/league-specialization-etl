@@ -15,6 +15,8 @@ from app_core.config import REPO_ROOT
 from app_core.population import ALL_TIERS, calibrate_population, load_reference, reference_fingerprint
 
 LOCAL_DIR = REPO_ROOT / 'data' / 'character_families'
+VECTORS_DIR = REPO_ROOT / 'data' / 'local_lab' / 'player-family-vectors-20261023'
+FAMILY_REFERENCE_PATH = REPO_ROOT / 'streamlit_app' / 'definitions' / 'rank-population-20261010-v1.csv'
 
 
 @dataclass(frozen=True)
@@ -76,10 +78,19 @@ def load_membership(directory: Path = LOCAL_DIR) -> tuple[pd.DataFrame, dict]:
     return frame, manifest
 
 
+def load_family_reference(current: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Keep saved lab identities across metadata-only corrections; new shares invalidate them."""
+    current = load_reference() if current is None else current
+    historical = load_reference(FAMILY_REFERENCE_PATH)
+    columns = ['tier', 'population_share']
+    return historical if historical[columns].equals(current[columns]) else current
+
+
 def prepare_membership(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray, dict]:
     """Freeze base-cohort tier weights before any laboratory filtering."""
     base = frame.loc[frame.tier.isin(ALL_TIERS)].copy().reset_index(drop=True)
-    base, diagnostics = calibrate_population(base)
+    reference = load_family_reference()
+    base, diagnostics = calibrate_population(base, reference)
     records = {int(m['key']): str(m['name']) for pool in base.members for m in (pool if pool is not None else [])}
     characters = pd.DataFrame(sorted(records.items()), columns=['character_key', 'character'])
     positions = {key: i for i, key in enumerate(characters.character_key)}
@@ -87,7 +98,6 @@ def prepare_membership(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame,
     for row, pool in enumerate(base.members):
         for member in pool if pool is not None else []:
             points[row, positions[int(member['key'])]] = float(member['points'])
-    reference = load_reference()
     provenance = {
         'reference_sha256': reference_fingerprint(reference),
         'reference_version': reference.reference_version.iloc[0],
@@ -424,7 +434,9 @@ def validate_scenario(payload: dict, characters: pd.DataFrame, source_hash: str)
             or source.get('membership_sha256') != source_hash):
         raise ValueError('Scenario belongs to a different membership snapshot or schema.')
     FamilySettings(**payload['settings'])
-    if source.get('reference_sha256') != reference_fingerprint(load_reference()):
+    current_reference = load_reference()
+    if source.get('reference_sha256') not in {
+            reference_fingerprint(current_reference), reference_fingerprint(load_family_reference(current_reference))}:
         raise ValueError('Scenario uses a different population reference.')
     if (not isinstance(source.get('tiers'), list) or not set(source['tiers']).issubset(ALL_TIERS)
             or source.get('maturity') not in {'All', 'Under 30 days', '30 days or more'}

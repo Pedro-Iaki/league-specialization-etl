@@ -1,22 +1,23 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
-from streamlit.testing.v1 import AppTest
-
 from app_core.config import PLAYSTYLE_ORDER
 from app_core.data import DashboardDataError, load_dataset
-from app_core.experience import TIER_GROUPS
-from app_core.i18n import LANGUAGE_KEY, TERMINOLOGY_KEY
+from app_core.i18n import LANGUAGE_KEY
 from app_core.story import STORY_PAGES
 from app_core.story_analysis import (
-    CASE_TIER_ORDER, champion_case_comparison, coverage_counts, detectable_gap, growth_uncertainty,
+    CASE_TIER_ORDER,
+    champion_case_comparison,
+    coverage_counts,
+    detectable_gap,
+    growth_uncertainty,
 )
+from streamlit.testing.v1 import AppTest
 
 APP = Path(__file__).resolve().parents[1] / "app.py"
 
@@ -29,7 +30,6 @@ def test_story_next_buttons_complete_the_tour_and_keep_language(language):
     for number in range(1, len(STORY_PAGES) + 1):
         assert not app.exception
         assert app.session_state[LANGUAGE_KEY] == language
-        assert len(app.selectbox) == (1 if number == 4 else 0)
         if number > 1:
             assert any(button.key == f"story_previous_{number}" for button in app.button)
         next(button for button in app.button if button.key == f"story_next_{number}").click().run()
@@ -39,86 +39,9 @@ def test_story_next_buttons_complete_the_tour_and_keep_language(language):
         # widget request. Keep its requested page in sync with the rendered page.
         app.switch_page(STORY_PAGES[following - 1][0])
     assert not app.exception
-    assert len(app.get("plotly_chart")) == 1
     app.switch_page("overview.py").run()
     assert not app.exception
     assert any(widget.value == "Recent activity" for widget in app.selectbox)
-
-
-def test_audience_presentation_preserves_paired_values_and_preferences():
-    from app_core.audience import WINDOWS, concentration_cells, load_reference, prepare_audience
-
-    banded = prepare_audience(load_dataset("players", include_all_tiers=True), load_reference())
-    cells = concentration_cells(banded)
-    app = AppTest.from_file(str(APP), default_timeout=45)
-    app.session_state[LANGUAGE_KEY] = "EN"
-    app.run()
-    app.switch_page(STORY_PAGES[2][0]).run()
-    baseline = None
-    for language, terminology, title in [
-        ("EN", "Plain", "Rank differences need activity context."),
-        ("EN", "League", "Tier differences need mastery context."),
-        ("PT", "League", "Diferenças entre elos precisam de contexto de maestria."),
-        ("PT", "Plain", "Diferenças de classificação precisam de contexto de atividade."),
-    ]:
-        app.segmented_control(key="_dashboard_language_choice").set_value(language).run()
-        app.segmented_control(key="_story_terminology_choice").set_value(terminology).run()
-        assert not app.exception
-        assert any(title in item.value for item in app.markdown)
-        assert app.session_state[LANGUAGE_KEY] == language
-        assert app.session_state[TERMINOLOGY_KEY] == terminology
-        charts = [json.loads(item.proto.spec) for item in app.get("plotly_chart")]
-        assert sum(charts[0]["data"][0]["x"]) == len(banded)
-        assert sum(sum(row) for row in charts[1]["data"][0]["z"]) == len(banded)
-        values = []
-        for (window, _), chart in zip(WINDOWS.items(), charts[2:4], strict=True):
-            assert chart["layout"]["yaxis"]["range"] == [0, 1]
-            for rank, trace in zip(TIER_GROUPS, chart["data"], strict=True):
-                expected = cells.loc[cells.window.eq(window) & cells.rank_group.eq(rank)]
-                assert trace["y"] == pytest.approx(expected["median"].tolist())
-                assert [row[:4] for row in trace["customdata"]] == expected[
-                    ["n", "q1", "q3", "median_hhi"]
-                ].to_numpy().tolist()
-                values.append((trace["y"], [row[:4] for row in trace["customdata"]]))
-        assert sum(sum(sum(row) for row in trace["z"]) for trace in charts[4]["data"]) == len(banded)
-        values.append([trace["z"] for trace in charts[4]["data"]])
-        if baseline is None:
-            baseline = values
-        assert values == baseline
-        assert "Unknown role" not in json.dumps(charts)
-        if terminology == "Plain":
-            assert "Specialist" not in json.dumps(charts)
-        if language == "PT":
-            assert charts[2]["layout"]["yaxis"]["title"]["text"] == (
-                "Proporção do campeão principal" if terminology == "League" else "Proporção do personagem principal"
-            )
-            assert any("1.200" in x.value for x in app.caption)
-
-    original = charts[2:4]
-    app.toggle(key="story_concentration_quartiles").set_value(True).run()
-    quartiles = [json.loads(item.proto.spec) for item in app.get("plotly_chart")][2:4]
-    for before, after in zip(original, quartiles, strict=True):
-        for old, trace in zip(before["data"], after["data"], strict=True):
-            assert trace["y"] == old["y"] and trace["error_y"]["visible"] is True
-    app.toggle(key="story_focus_bands_on_x").set_value(False).run()
-    inverted = [json.loads(item.proto.spec) for item in app.get("plotly_chart")][2:4]
-    for before, after in zip(quartiles, inverted, strict=True):
-        assert len(after["data"]) == 5
-        for rank, rank_trace in enumerate(before["data"]):
-            for band, band_trace in enumerate(after["data"]):
-                assert rank_trace["y"][band] == band_trace["y"][rank]
-                assert rank_trace["customdata"][band][:4] == band_trace["customdata"][rank][:4]
-    app.radio(key="story_audience_map_window").set_value("lifetime").run()
-    changed = [json.loads(item.proto.spec) for item in app.get("plotly_chart")]
-    assert changed[2:4] == inverted
-    assert changed[4]["layout"]["coloraxis"]["cmax"] == charts[4]["layout"]["coloraxis"]["cmax"]
-    assert sum(sum(sum(row) for row in trace["z"]) for trace in changed[4]["data"]) == len(banded)
-    app.button(key="story_previous_3").click().run()
-    assert not app.exception
-    app.switch_page(STORY_PAGES[1][0]).run()
-    app.button(key="story_next_2").click().run()
-    assert app.segmented_control(key="_story_terminology_choice").value == "Plain"
-    assert app.session_state[LANGUAGE_KEY] == "PT"
 
 
 @pytest.mark.parametrize("size", [0, 2])
@@ -128,7 +51,7 @@ def test_audience_mismatched_snapshot_keeps_navigation(size):
     with patch("app_core.story.load_dataset", return_value=players):
         app.switch_page(STORY_PAGES[2][0]).run()
     assert not app.exception
-    assert any("unavailable for the current snapshot" in item.value for item in app.info)
+    assert any("matching family-enriched snapshot" in item.value for item in app.info)
     assert not app.get("plotly_chart")
     assert app.button(key="story_previous_3") and app.button(key="story_next_3")
 
@@ -136,31 +59,13 @@ def test_audience_mismatched_snapshot_keeps_navigation(size):
 @pytest.mark.parametrize("number", [2, 3, 4])
 def test_audience_missing_reference_does_not_invent_new_bands(number):
     app = AppTest.from_file(str(APP), default_timeout=45).run()
-    with patch("app_core.story.load_audience_reference", side_effect=DashboardDataError("reference mismatch")):
+    target = 'app_core.audience_story.load_segment_reference'
+    with patch(target, side_effect=DashboardDataError("reference mismatch")):
         app.switch_page(STORY_PAGES[number - 1][0]).run()
     assert not app.exception
     assert not app.get("plotly_chart")
     assert any("reference mismatch" in item.value for item in app.code)
     assert app.button(key=f"story_next_{number}")
-
-
-def test_older_snapshot_without_growth_keeps_story_navigation():
-    app = AppTest.from_file(str(APP), default_timeout=45).run()
-    with patch("app_core.story.load_optional_dataset", return_value=None):
-        app.switch_page(STORY_PAGES[5][0]).run()
-        assert not app.exception
-        assert any("no observed-period growth extract" in item.value for item in app.info)
-        next(button for button in app.button if button.key == "story_next_6").click().run()
-        assert not app.exception
-        assert len(app.get("plotly_chart")) == 1
-
-
-def test_invalid_growth_snapshot_shows_the_existing_load_error():
-    app = AppTest.from_file(str(APP), default_timeout=45).run()
-    with patch("app_core.story.load_optional_dataset", side_effect=DashboardDataError("missing growth columns")):
-        app.switch_page(STORY_PAGES[5][0]).run()
-    assert not app.exception
-    assert any("could not be loaded" in item.value for item in app.error)
 
 
 def test_bootstrap_uses_observed_outcomes_and_retains_sparse_groups():

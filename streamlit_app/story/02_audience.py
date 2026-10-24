@@ -1,3 +1,3 @@
-from app_core.story import audience_page
+from app_core.audience_story import audience_page
 
 audience_page()

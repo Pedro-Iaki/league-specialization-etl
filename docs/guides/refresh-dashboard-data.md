@@ -37,9 +37,9 @@ if ($LASTEXITCODE -ne 0) { throw "Scenario load failed; stop before rebuilding a
 
 The first command replaces the default frozen cohort and generated scenario files under `data/business_sample`. The load replaces the two dedicated raw sample tables. Then run the configured dbt build job, which includes sample seeds and spending models. A failed/incomplete load or stale Gold spending mart must be resolved before exporting the business dataset. The [scenario contract](../reference/data-models.md#frozen-transaction-contract) and [pipeline bootstrap guide](run-the-pipeline.md#6-complete-a-fresh-warehouses-generated-source) explain the boundaries.
 
-Review the local [rank reference CSV](../../league_pipeline/seeds/rank_population_reference.csv) before calculating population estimates. If changing it, update shares, version, dates and provenance together, then inspect coverage and weight diagnostics. The author-supplied MetaSRC/NA solo origin and the file's still-generic metadata are distinguished in [population adjustment](../reference/population-adjustment.md#ownership-and-reference-input); do not describe the metadata update or external verification as already complete.
+Review the local [rank reference CSV](../../league_pipeline/seeds/rank_population_reference.csv) before calculating population estimates. If changing it, update shares, version, dates and provenance together, then inspect coverage and weight diagnostics. Its accepted saved shares are attributed to OP.GG/NA solo-duo; the October 23 metadata correction preserves the values and does not independently authenticate a historical capture. See [population adjustment](../reference/population-adjustment.md#ownership-and-reference-input).
 
-The player exporter attaches weights using this local CSV, and the dashboard recalculates weights from its local CSV rather than trusting cached values. The serving manifest does not record an exact reference fingerprint. Keep the reviewed reference revision with the snapshot; the optional analyst bundle below records both input hashes.
+The player exporter and population explorers calculate weights using the reviewed local seed CSV rather than trusting cached values. Guided behavioral chapters use the reference embedded in the matching frozen audience-segment JSON. Family-enriched player exports record the seed fingerprint and version in the manifest; legacy exports do not. Preserve the matching packaged rank CSV and review the seed revision with the snapshot; the optional analyst bundle below records both input hashes.
 
 ## 3. Export to a fresh candidate directory
 
@@ -60,6 +60,27 @@ Without `--dataset`, all configured queries are attempted. An absent optional bu
 
 Each Parquet replacement uses a temporary file, but the whole export is not atomic. If a later dataset fails, earlier output files can already have changed while the manifest remains unwritten or old. Inspect that candidate; use a new directory for a clean retry.
 
+### Family-enriched profile and business exports
+
+Add `--family-audience` to calculate the versioned [family-affinity metric](../reference/metrics-and-methods.md#player-family-affinity). A complete candidate export uses:
+
+```powershell
+.\.venv\Scripts\python.exe streamlit_app/scripts/export_data.py --output-dir $refreshDir --family-audience
+if ($LASTEXITCODE -ne 0) { throw "Family export failed; do not replace the serving snapshot." }
+```
+
+To update just these datasets in a separately staged complete package, also pass `--dataset players --dataset business_players`. Preserve the other files and their original dates explicitly; the new export time does not make them current. Rebuild the matching audience reference after any profile replacement. The flag is optional; omitting it retains the legacy export shape.
+
+The exporter reads active membership, lifetime champion mastery and profile dimensions together while actual player keys remain available. It calculates family fields on those associated rows, then drops keys and champion-member records from the public output. Business rows are joined to the same current profiles by private player key and queue, preserving the frozen scenario and every customer, including nonbuyers. No anonymous row-order or feature matching is used. Unmatched customers have an unavailable family state rather than an invented preference.
+
+Existing business traits and dates remain unchanged. Current profile context has an `audience_` prefix and its own observation dates. For example, October audience traits attached to September synthetic purchases describe a cross-date demonstration; they do not establish September preferences or predictive performance. Regenerating transactions is unnecessary when this real-key linkage is available.
+
+The manifest records the family definition hash, metric version, coordinate order, scoring rules, dataset hashes, source dates, association coverage and existing scenario metadata. The loader rejects mismatched hashes, incompatible metric metadata and invalid vectors or categories. `oldest_retained_play_at` is the earliest valid last-play marker among retained positive-mastery champions; its elapsed days are a history lower bound, not account creation. Family scoring uses lifetime mastery within model-selected active membership, not preferred characters or recent gain weights.
+
+The family-enriched package, loader, wider audience aggregations and all six guided chapters are implemented in local serving. A new export is still only a candidate until the complete package and its references pass review and are installed together.
+
+### Freeze the matching audience reference
+
 Freeze the audience reference for that complete candidate before replacing serving files:
 
 ```powershell
@@ -67,7 +88,17 @@ Freeze the audience reference for that complete candidate before replacing servi
 if ($LASTEXITCODE -ne 0) { throw "Audience reference failed; do not replace the serving snapshot." }
 ```
 
-This local step creates value-based score cuts once for the paired cohort and records the player-file hash. It neither queries the warehouse nor changes the models. The reference is an additional serving artifact, not a fourteenth warehouse dataset. Page 3 rejects an absent or mismatched reference instead of silently rebucketing a newer snapshot.
+This legacy local step creates value-based score cuts once for the paired cohort and records the player-file hash. It neither queries the warehouse nor changes the models. The reference is an additional serving artifact, not a fourteenth warehouse dataset. Legacy paired consumers reject an absent or mismatched reference instead of silently rebucketing a newer snapshot. Guided pages 1–4 use the wider reference below.
+
+For a family-enriched release, also freeze the **wider** [audience-segment reference](../reference/audience-segments.md):
+
+```powershell
+.\.venv\Scripts\python.exe streamlit_app/scripts/export_audience_reference.py --audience-segments --snapshot (Join-Path $refreshDir "player_profiles.parquet") --output (Join-Path $refreshDir "audience_segments_reference.json")
+if ($LASTEXITCODE -ne 0) { throw "Audience segments failed; keep the existing serving package." }
+Copy-Item -LiteralPath league_pipeline/seeds/rank_population_reference.csv -Destination (Join-Path $refreshDir "rank_population_reference.csv") -ErrorAction Stop
+```
+
+This records the full base, saved tier reference, readable fixed activity/engagement/history cuts and support policy. It updates the neighboring candidate manifest with the reference hash after checking its player-file identity. It does not recalibrate a focus-only or family-only subset. Keep the legacy paired reference for existing paired consumers. Later page filters reuse the frozen inputs instead of rewriting this file.
 
 ## 4. Check the candidate locally
 
@@ -83,6 +114,7 @@ import pandas as pd
 from streamlit_app.scripts.export_data import validate_public_frame
 from app_core.config import DATASET_FILES
 from app_core.audience import prepare_audience
+from app_core.data import _validate_dataset
 
 candidate = Path(sys.argv[1])
 manifest = json.loads((candidate / "manifest.json").read_text(encoding="utf-8"))
@@ -93,7 +125,11 @@ for name, filename in DATASET_FILES.items():
     path = candidate / filename
     frame = pd.read_parquet(path)
     validate_public_frame(name, frame)
+    _validate_dataset(name, frame)
     assert (len(frame), len(frame.columns), path.stat().st_size) == (item["rows"], item["columns"], item["size_bytes"]), name
+    if "family_affinity" in item:
+        assert item["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest(), name
+        assert frame.attrs["family_affinity"] == item["family_affinity"], name
     if name == "business_players":
         scenario = item["scenario"]
         assert len(frame) == scenario["player_count"], "Business player count mismatch"
@@ -102,6 +138,16 @@ reference = json.loads((candidate / "audience_reference.json").read_text(encodin
 profile_path = candidate / DATASET_FILES["players"]
 assert reference["source_profile_sha256"] == hashlib.sha256(profile_path.read_bytes()).hexdigest()
 prepare_audience(pd.read_parquet(profile_path), reference)
+if "audience_segments_reference" in manifest:
+    from app_core.audience_segments import prepare_segments
+    item = manifest["audience_segments_reference"]
+    path = candidate / item["file"]
+    assert item["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    segments = json.loads(path.read_text(encoding="utf-8"))
+    assert segments["source_profile_sha256"] == hashlib.sha256(profile_path.read_bytes()).hexdigest()
+    prepare_segments(pd.read_parquet(profile_path), segments)
+    rank_csv = pd.read_csv(candidate / "rank_population_reference.csv")
+    pd.testing.assert_frame_equal(rank_csv, pd.DataFrame(segments["rank_reference"]), check_dtype=False)
 print(f"Validated {len(DATASET_FILES)} local datasets and their audience reference")
 '@ | .\.venv\Scripts\python.exe -B - $refreshDir
 if ($LASTEXITCODE -ne 0) { throw "Candidate validation failed; keep the current serving snapshot." }
@@ -133,7 +179,9 @@ It requires no warehouse connection and writes a separate bundle, including a ma
 
 ## 6. Replace the serving files and reopen the app
 
-Stop Streamlit before replacement. After the complete candidate passes review, preserve the existing serving directory and copy only the reviewed manifest-listed Parquet files, followed by the manifest:
+For the eight-archetype candidate workflow, use the [archetype export contract](../reference/player-pool-archetypes.md). Include the model file named by the candidate manifest's `pool_archetypes.file` alongside references during replacement. Its hash and per-dataset model fingerprints are required by the loader.
+
+Stop the local Streamlit instances that read this serving directory before replacement. After the complete candidate passes review, preserve the entire existing serving directory and copy only the reviewed manifest-listed Parquet files and matching references, followed by the manifest. The directory backup preserves unrelated files; candidate analysis exports and private evidence do not belong in serving:
 
 ```powershell
 $backupDir = Join-Path "data" ("dashboard_backup_" + (Get-Date -Format "yyyyMMdd_HHmmss"))
@@ -144,10 +192,14 @@ foreach ($entry in $candidateManifest.datasets.PSObject.Properties.Value) {
     Copy-Item -LiteralPath (Join-Path $refreshDir $entry.file) -Destination streamlit_app/data -ErrorAction Stop
 }
 Copy-Item -LiteralPath (Join-Path $refreshDir "audience_reference.json") -Destination streamlit_app/data/audience_reference.json -ErrorAction Stop
+if (Test-Path -LiteralPath (Join-Path $refreshDir "audience_segments_reference.json")) {
+    Copy-Item -LiteralPath (Join-Path $refreshDir "audience_segments_reference.json") -Destination streamlit_app/data/audience_segments_reference.json -ErrorAction Stop
+    Copy-Item -LiteralPath (Join-Path $refreshDir "rank_population_reference.csv") -Destination streamlit_app/data/rank_population_reference.csv -ErrorAction Stop
+}
 Copy-Item -LiteralPath (Join-Path $refreshDir "manifest.json") -Destination streamlit_app/data/manifest.json -ErrorAction Stop
 ```
 
-This is still a sequence of file operations. If copying fails, keep the app stopped and restore the backed-up file set and manifest together or complete replacement from the validated candidate. Do not mix files from unrelated attempts. Private cohort/event files under `data/business_sample` do not belong in the public serving directory.
+For a directory swap, prepare a sibling staging directory by copying the existing package, overlay only the reviewed release files above, validate it again and verify every resolved path stays inside the intended workspace before moving directories. Preserve the old directory at a new backup path, then rename the staged package into serving; restore the backup if the second move fails. Do not replace files under a running reader. The copy example above is still a sequence of file operations. If copying fails, keep the app stopped and restore the entire backed-up directory or complete replacement from the validated candidate. Preserve the failed directory separately when restoring; overlaying old files can leave incompatible newer reference files behind. Do not mix files from unrelated attempts. Private cohort/event files under `data/business_sample` do not belong in the public serving directory.
 
 Launch the app using [run the dashboard](run-the-dashboard.md). Check the story, representative explorer views, dates and the business scenario. The loader keys its cache on manifest modification time; restarting also avoids retaining old cached frames. For repository verification, the existing snapshot-contract checks can then run against the active serving path:
 

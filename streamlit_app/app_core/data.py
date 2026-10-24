@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,25 @@ def _read_snapshot(name: str) -> pd.DataFrame:
             "streamlit_app directory."
         )
     frame = pd.read_parquet(path)
+    item = load_manifest().get('datasets', {}).get(name, {})
+    if name in {'players', 'business_players'} and ('archetype_state' in frame or item.get('pool_archetypes')):
+        from app_core.archetype_serving import load_model, model_metadata
+        entry = load_manifest().get('pool_archetypes', {})
+        model_path = DATA_DIR / entry.get('file', 'missing-archetype-model')
+        if (not model_path.is_file() or hashlib.sha256(model_path.read_bytes()).hexdigest() != entry.get('file_sha256')
+                or item.get('sha256') != hashlib.sha256(path.read_bytes()).hexdigest()
+                or item.get('pool_archetypes') != model_metadata(load_model(model_path))):
+            raise DashboardDataError('Archetype snapshot/model does not match its manifest.')
+        frame.attrs['pool_archetypes'] = item['pool_archetypes']
+    if name in {'players', 'business_players'} and ('family_affinity' in frame or item.get('family_affinity')):
+        if (not item.get('family_affinity') or item.get('sha256') != hashlib.sha256(path.read_bytes()).hexdigest()
+                or item.get('rows') != len(frame)):
+            raise DashboardDataError('Family audience snapshot hash/metadata does not match its manifest.')
+        frame.attrs['family_affinity'] = item['family_affinity']
+        if name == 'business_players' and (
+                'scenario_id' not in frame or set(frame.scenario_id) != {item.get('scenario', {}).get('scenario_id')}
+                or item.get('scenario', {}).get('player_count') != len(frame)):
+            raise DashboardDataError('Family business snapshot does not match its frozen scenario.')
     if name == "business_players":
         metadata = load_manifest().get("datasets", {}).get(name, {}).get("scenario", {})
         if metadata and set(frame["scenario_id"]) == {metadata.get("scenario_id")}:
@@ -67,7 +87,13 @@ def _validate_dataset(name: str, frame: pd.DataFrame) -> pd.DataFrame:
     if missing:
         missing_columns = ", ".join(sorted(missing))
         raise DashboardDataError(f"Dataset '{name}' is missing: {missing_columns}")
-    if name == "business_players" and set(frame.columns) - set(BUSINESS_PUBLIC_COLUMNS):
+    if name in {'players', 'business_players'} and ('family_affinity' in frame or 'family_affinity' in frame.attrs):
+        from app_core.family_exports import validate_family_frame
+        try:
+            validate_family_frame(frame, frame.attrs.get('family_affinity'), business=name == 'business_players')
+        except (TypeError, ValueError) as error:
+            raise DashboardDataError(str(error)) from error
+    elif name == "business_players" and set(frame.columns) - set(BUSINESS_PUBLIC_COLUMNS):
         raise DashboardDataError("Business dataset violates the anonymous column allowlist")
     return frame
 

@@ -1,3 +1,3 @@
-from app_core.story import characters_page
+from app_core.family_story import characters_page
 
 characters_page()

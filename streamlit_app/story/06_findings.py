@@ -1,3 +1,3 @@
-from app_core.story import findings_page
+from app_core.evidence_story import findings_page
 
 findings_page()

@@ -10,9 +10,9 @@ Shared [Python helpers](../../streamlit_app/app_core/population.py) own calibrat
 
 The CSV requires all ten recognized tiers exactly once, with positive finite shares summing to one within absolute tolerance `1e-8`. Each metadata column must contain one common nonmissing value: `reference_version`, `recorded_on`, `review_after`, `source` and `reference_scope`. The review date must follow the recorded date. A fingerprint is calculated from canonical sorted CSV content. Structural validation does not authenticate the external source.
 
-As inspected on October 19, 2026, the file is version `2026-10-10-v1`, recorded October 10, with review after April 10, 2027. Its source still reads **“User-provided estimate”**, and scope **“Unspecified region and queue.”** The author supplies MetaSRC, October 10, 2026, North America ranked solo/duo as the intended provenance and confirms NA solo as the scope. Updating that metadata and independently matching an external capture remain in progress. The author-supplied origin must not be mistaken for provenance already encoded and independently verified in the CSV.
+The saved October 10, 2026 shares are accepted by the author, who corrects their source to [OP.GG tier statistics](https://op.gg/lol/statistics/tiers), with North America ranked solo/duo as the intended scope. On October 23 the metadata was aligned as version `2026-10-10-v2-provenance`, retaining every numeric share, the October 10 recorded date and April 10, 2027 review date. This changes the canonical fingerprint but not calibrated weights. The live page confirms the source location and NA selector; it is not an independently matched historical capture. No replacement values were scraped.
 
-The dashboard shows reference metadata and warns when review is due; it does not automatically fetch a replacement or stop using the file at that date. Some current captions still reflect the generic metadata. The documentation rewrite does not change the reference or those controls.
+The dashboard shows reference metadata and warns when review is due; it does not automatically fetch a replacement or stop using the file at that date. The [new audience-segment contract](audience-segments.md) freezes the reference with the profile snapshot. Historical family-discovery files retain their original reference hashes; correcting provenance does not change the accepted champion memberships.
 
 ## Calibration before filtering
 
@@ -98,7 +98,7 @@ Supported coverage is .9994, full-cohort Kish size is approximately 28,734.54, a
 
 ## Interpretation and maintenance
 
-Population calculations are used by supported explorer views. The guided story, commercial summaries and experience view remain sample-based unless a specific calculation states otherwise. A dashboard-wide label must not be taken as evidence that every chart uses the same estimator.
+Population calculations are used by supported explorer views and the guided behavioral chapters. Guided pages 1–4 freeze individual-tier weights on the complete current profile scope before filtering; page 6 reports that same coverage. Page 5 and commercial summaries use unweighted scenario customers, and the experience explorer retains its sample-based estimator. A dashboard-wide label must not be taken as evidence that every chart uses the same estimator.
 
 Tier weighting cannot correct within-tier selection, division/page selection, refresh behavior, sparse Master collection, complete-profile requirements or selection into observable outcomes. It cannot establish that specialization causes rank improvement or that simulated spending reflects real customers. Reference coverage measures represented target mass, not freedom from bias.
 

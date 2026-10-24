@@ -8,8 +8,9 @@ The [versioned definition](../../streamlit_app/definitions/champion-audience-fam
 records all 25 selected families, champion keys and names, stable F01–F25 labels,
 source identities, evidence summaries, input fingerprints and review rules.
 Display names list representative included champions; they are not inferred player
-personas. This definition is ready for downstream implementation and is not yet
-consumed by the public dashboard or a player categorization model.
+personas. The pure [player-affinity calculation](metrics-and-methods.md#player-family-affinity)
+now consumes this definition. An optional joint export supplies profile and
+business audience fields. The character-interest chapter uses these fields in the local serving package. The customer chapter plots synthetic measures by exclusive primary labels; page 6 explains the evidence and implementation boundaries.
 
 ## Acceptance and measured results
 
@@ -104,16 +105,33 @@ the standard exports. The preceding sensitivity validation independently rebuilt
 raw audience matrices, alternative scores and exact medians. No additional
 discovery or bootstrap was run for finalization.
 
-## Boundary for the next step
+## Player affinity and integration boundary
 
-First define player family participation: which existing champion-activity weights
-to use, what happens when a champion belongs to several families, whether the
-resulting vector sums to one, and how missing activity is represented. Splitting
-a champion's weight across its families and counting full participation in each
-family answer different questions; neither attribution rule has been adopted yet.
+The adopted and tested pure helper uses lifetime champion mastery restricted to
+existing active membership. Each member at or above 15,000 points contributes
+fully to every containing family, divided by mastery across the full active
+pool. Below-cutoff and unmapped mass remain visible; coordinates need not sum to
+one. This independent-affinity interpretation is distinct from fractional
+allocation across families. The [metric reference](metrics-and-methods.md#player-family-affinity)
+owns its formula, states, ties, denominator and metadata.
 
-Then implement a simple descriptive categorization from those percentages and
-inspect its distribution. Rank, specialization, role, weekly activity, inferred
-account age and mastery band can be added progressively as audience filters.
-Clustering is optional later work. Reopen family search only for new evidence or
-a concrete problem found during downstream use.
+A unique maximum supplies the primary family, while ties remain Shared top.
+Top score and gap preserve detail without adding combination categories or a
+mandatory dominance threshold. Empty, insufficient, unmapped and unavailable
+evidence have null vectors rather than fabricated zero interest. No equal-weight
+fallback is applied under the mastery metric.
+
+The [joint export](../guides/refresh-dashboard-data.md#family-enriched-profile-and-business-exports)
+calculates affinity on keyed profiles and attaches current audience fields to
+the frozen business scenario by private player key and queue before removing
+identifiers. Frozen scenario traits remain separate from current `audience_`
+traits. This supports a synthetic demonstration, not historical preferences.
+The manifest pins the metric, family definition, file hashes and source dates;
+load validation rejects incompatible family data. The wider
+[audience aggregations](audience-segments.md) are implemented; the character-interest chapter now uses these measures in the local serving package.
+The customer chapter plots synthetic measures by these exclusive primary labels in the coherent local serving package. Existing anonymous files cannot be
+joined by presumed common row order. Rank,
+recorded competitive volume, inferred role, supported history markers and mastery
+bands complement family interests; focus remains optional. A retained play date
+or collection duration is not account creation. Reopen family search only for
+new evidence or a concrete problem found during downstream use.

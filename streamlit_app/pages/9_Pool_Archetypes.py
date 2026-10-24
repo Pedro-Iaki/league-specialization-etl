@@ -1,0 +1,3 @@
+from app_core.pool_archetypes_view import render_pool_archetypes
+
+render_pool_archetypes()
