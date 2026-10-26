@@ -89,7 +89,20 @@ the local browser-test prerequisites. Pass `--published` to exercise the actual
 Portuguese catalog instead, including language switching with pending edits and
 in-flight queries. Pseudo-localization alone cannot establish translation quality.
 
-Portuguese display terminology uses “classificação competitiva”, “histórico
-registrado da conta”, “Único / Combinado / Difuso” and “compras simuladas”. Archetype
-names are translated display labels; A1–A8 and the reviewed model remain unchanged.
-ADCs retains its acronym with an explanation for readers unfamiliar with the game.
+Portuguese copy is written for a Brazilian reader, rather than following English
+sentence structure. Prefer direct questions and concrete actions over literal
+phrases such as “públicos interpretados”, “invocação completa” or “concessões”.
+Technical terms belong in method explanations when they help explain the result.
+
+Use “classificação competitiva”, “histórico registrado da conta” and “compras
+simuladas” consistently. “Avaliado pelo modelo” means a scored profile, not a
+validated prediction. Single/Blend/Diffuse display as “Um destaque / Vários
+destaques / Sem destaque”; the accompanying explanation defines the 0.20 loading
+threshold. These labels do not imply exclusive interests or popularity rankings.
+“Interesse principal definido” requires a unique, non-Diffuse maximum. Shared
+context is presented as “Filtros comuns a A e B”.
+
+Archetype names are translated display labels; A1–A8 and the reviewed model remain
+unchanged. ADCs retains its acronym with a plain explanation. Use the same names
+in prose, dropdowns and charts. Check the rendered sentence with its actual
+parameters: a catalog can pass structural tests and still read unnaturally.

@@ -1,43 +1,45 @@
-# Documentation
+# Read the project
 
-The [project README](../README.md) gives the project overview and the argument for its engineering and analysis. Use this index to choose a deeper explanation, a reproduction task or an exact contract.
+This project turns economical behavioral observations into audience comparisons, then demonstrates how a separate purchase source could extend them. The [project overview](../README.md) introduces the result; [run the dashboard](guides/run-the-dashboard.md) to explore the bundled data without infrastructure credentials.
 
-## Understand the project
+## Follow the reasoning
 
-| I want to… | Read |
+Read these three chapters in order for the main argument. The technical references are optional depth, not prerequisites.
+
+1. **[Understanding the analysis](wiki/understanding-the-analysis.md)**: How activity observations became character families, player archetypes and useful audience questions; what those comparisons can establish.
+2. **[Architecture](wiki/architecture.md)**: How collection, history, coordination and checked delivery make that analysis possible.
+3. **[Engineering decisions](wiki/engineering-decisions.md)**: Why the implementation took this shape, what changed during development and which tradeoffs remain.
+
+Use **[Validation and evidence](reference/validation-and-evidence.md)** to inspect the resulting artifacts and distinguish tested behavior, recorded executions and remaining limits. **[Simulated transactions](wiki/simulated-transactions.md)** explains the commercial demonstration when you reach Purchases.
+
+## Reproduce or maintain a result
+
+| Task | Guide |
 |---|---|
-| Follow collection decisions, execution state and delivery gates | [Architecture](wiki/architecture.md) |
-| Understand how audience questions become measurements and comparisons | [Understanding the analysis](wiki/understanding-the-analysis.md) |
-| Review design choices, tradeoffs and ownership | [Engineering decisions](wiki/engineering-decisions.md) |
-| Assess checks, inspectable artifacts and the limits of recorded evidence | [Validation and evidence](reference/validation-and-evidence.md) |
-| Understand the default story, comparison predicates and denominators | [Dashboard story contract](reference/dashboard-story.md) |
-| Understand what generated purchases demonstrate | [Simulated transactions](wiki/simulated-transactions.md) |
+| Launch the current interface | [Run the dashboard](guides/run-the-dashboard.md) |
+| Prepare services and operate collection/delivery | [Run the pipeline](guides/run-the-pipeline.md) |
+| Prepare, validate and replace a serving snapshot | [Refresh dashboard data](guides/refresh-dashboard-data.md) |
+| Maintain display languages | [Translation guide](../streamlit_app/story_component/locales/README.md) |
 
-For an engineering review, follow architecture into engineering decisions and validation. For an analytical review, begin with understanding the analysis, then follow its links to the relevant definitions and evidence.
+Viewing, collecting and refreshing serving data are separate operations. The dashboard does not require a new collection, a warehouse connection or a model fit.
 
-## Operate or reproduce it
+## Look up an exact contract
 
-| I want to… | Read |
+| Question | Reference |
 |---|---|
-| View the bundled result locally without infrastructure credentials | [Run the dashboard](guides/run-the-dashboard.md) |
-| Maintain the Portuguese and English story catalogs | [Story translation guide](../streamlit_app/story_component/locales/README.md) |
-| Prepare services and operate collection and warehouse delivery | [Run the pipeline](guides/run-the-pipeline.md) |
-| Export, check and replace the local serving snapshot | [Refresh dashboard data](guides/refresh-dashboard-data.md) |
-| Explore full and anchored champion families locally | [Character family laboratory](guides/explore-character-families.md) |
-| Run resumable comparisons over saved family evidence | [Family experiments](guides/run-family-experiments.md) |
+| What does each current chapter select and calculate? | [Dashboard story](reference/dashboard-story.md) |
+| Which character groups were accepted, and why? | [Champion families](reference/character-family-cohort.md) |
+| How are players scored against the eight accepted mixtures? | [Player-pool archetypes](reference/player-pool-archetypes.md) |
+| What do the metrics and population weights mean? | [Metrics](reference/metrics-and-methods.md) / [Population adjustment](reference/population-adjustment.md) |
+| Which tables, identities and state transitions implement the pipeline? | [Data models](reference/data-models.md) / [Orchestration](reference/orchestration.md) |
+| Which settings and entrypoints control operation? | [Configuration](reference/configuration.md) |
 
-These are separate tasks: viewing the bundled data does not operate the pipeline, and a successful warehouse build does not refresh the dashboard. The pipeline guide identifies manual setup and the limits of verified reproduction.
+## Optional research tools and legacy views
 
-## Inspect exact behavior
+The retained `legacy_app.py` hosts earlier explorers and local research tools. They are useful for inspecting or extending the method; they are not required to understand or run the current story.
 
-The [player-pool archetype contract](reference/player-pool-archetypes.md) describes the frozen eight-component model, eligibility, mixtures and keyed export integration.
+- [Family laboratory](guides/explore-character-families.md): reproduce discovery and inspect saved evidence.
+- [Family experiments](guides/run-family-experiments.md): compare collection-selection policies over existing evidence.
+- [Legacy audience segments](reference/audience-segments.md): earlier family-based views and their aggregation contracts.
 
-| I want to… | Read |
-|---|---|
-| Find settings, defaults, credentials and entrypoints | [Configuration](reference/configuration.md) |
-| Trace stage order, allocation, state transitions, retries and failure boundaries | [Orchestration and execution state](reference/orchestration.md) |
-| Look up layers, model grains, identities and serving contracts | [Data models and serving contracts](reference/data-models.md) |
-| Check analysis windows, formulas, eligibility, attribution and denominators | [Metrics and methods](reference/metrics-and-methods.md) |
-| Distinguish rank weighting from standardization and inspect support | [Population adjustment](reference/population-adjustment.md) |
-| Use the wider family-audience base, fixed bands and map denominators | [Audience segments](reference/audience-segments.md) |
-| Inspect the accepted family cohort, review gates and evidence limits | [Final champion family cohort](reference/character-family-cohort.md) |
+The guides describe reusable workflows. Session instructions and abandoned experiments are not part of the public reading path; accepted decisions and their evidence are retained in the references above.

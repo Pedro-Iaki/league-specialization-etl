@@ -29,6 +29,18 @@ I chose weekly buckets as a practical compromise between observation capacity an
 
 Exploration in Python/Pandas helped expose those needs before I formalized the warehouse models. dbt then made SQL dependencies, grains and checks inspectable. Databricks brought storage, compute, jobs and execution inspection into one environment; learning that platform was also part of my aim. These were choices for this project, without a formal comparison proving one platform universally cheaper or better. The [data-model reference](../reference/data-models.md) shows the resulting contracts.
 
+## Separate discovery from a reproducible audience definition
+
+Early concentration rules described how narrowly people played, but did not explain which interests they shared. Character co-occurrence added that relationship. A single exclusive graph partition still forced every character into one group, even where audiences overlapped or placements depended on the neighborhood being considered.
+
+Full-roster and anchored Leiden searches supplied alternative groups. Resampling matrices exposed stable cores and weak members, while collection review balanced coverage, overlap and individual fit. The accepted result is 25 overlapping champion families with frozen source identities and review gates. The [family reference](../reference/character-family-cohort.md) records that selection; its consistency scores reuse discovery evidence and are not held-out accuracy.
+
+The next layer needed to describe players who use several families. NMF over family-affinity features supplies eight recurring profiles with nonnegative mixture strengths. K-means remained a diagnostic comparison, rather than the adopted exclusive assignment. Informal naming feedback helped make the components readable without being treated as statistical validation.
+
+Freezing the fitted transformation, feature order and training weights makes routine export independent of whichever cohort is being served. Fixed inference was checked against the original laboratory fit, including small differences around the expression threshold. Player and business rows are enriched while private keys are available, then anonymized. This avoids refitting during viewing and prevents guessed associations between anonymous files.
+
+The story uses these archetypes to compare audiences, not to rank interests by popularity: family size, overlap and character prevalence remain influential. The [archetype contract](../reference/player-pool-archetypes.md) owns the numerical details. The engineering result is a traceable path from exploratory evidence to a stable serving definition, with the uncertainty of the interpretation kept visible.
+
 ## Make collection progress durable
 
 I remember the local ledger revealing that early collection kept returning to the same first-page records. That observation led to persistent discovery progress. I no longer have the original evidence for a before/after efficiency comparison, so this is a development recollection rather than a measured performance result.
@@ -80,3 +92,5 @@ My process uses small reviewed changes and maintained project guidance. I also k
 Over several months, the lesson was how much remains after a rudimentary extract/load/transform path works. State, data quality, modeling, lineage and delivery took much longer than I initially expected. I deliberately built some parts by hand to understand them, which was a learning choice rather than a production recommendation.
 
 I would start with a smaller scope and finish it more deliberately. Loosely directed AI changes can also look plausible while increasing review and rework; a clear goal and constrained edits matter. This release is judged by an explainable implementation and its evidence, rather than a conclusive gameplay result or an unachieved population-size target.
+
+Continue with [Validation and evidence](../reference/validation-and-evidence.md) to inspect the current result, recorded runs and boundaries of those claims.

@@ -10,7 +10,7 @@ source identities, evidence summaries, input fingerprints and review rules.
 Display names list representative included champions; they are not inferred player
 personas. The pure [player-affinity calculation](metrics-and-methods.md#player-family-affinity)
 now consumes this definition. An optional joint export supplies profile and
-business audience fields. The character-interest chapter uses these fields in the local serving package. The customer chapter plots synthetic measures by exclusive primary labels; page 6 explains the evidence and implementation boundaries.
+business audience fields. The current story uses these families as inputs and explanatory evidence for the [eight player-pool archetypes](player-pool-archetypes.md). Direct family-affinity charts and exclusive primary-family customer comparisons belong to the retained legacy interface.
 
 ## Acceptance and measured results
 
@@ -127,9 +127,9 @@ the frozen business scenario by private player key and queue before removing
 identifiers. Frozen scenario traits remain separate from current `audience_`
 traits. This supports a synthetic demonstration, not historical preferences.
 The manifest pins the metric, family definition, file hashes and source dates;
-load validation rejects incompatible family data. The wider
-[audience aggregations](audience-segments.md) are implemented; the character-interest chapter now uses these measures in the local serving package.
-The customer chapter plots synthetic measures by these exclusive primary labels in the coherent local serving package. Existing anonymous files cannot be
+load validation rejects incompatible family data. The legacy [audience aggregations](audience-segments.md) use these cutoff-based affinities and primary-family labels. The current story's archetype features instead include all active members without the 15,000-point cutoff and use an equal-member fallback for nonempty zero-total pools. These are intentionally different representations; the [archetype contract](player-pool-archetypes.md) owns their exact construction and eligibility.
+
+Existing anonymous files cannot be
 joined by presumed common row order. Rank,
 recorded competitive volume, inferred role, supported history markers and mastery
 bands complement family interests; focus remains optional. A retained play date

@@ -71,6 +71,7 @@ function render(){
  if(disclosurePage===page)document.querySelectorAll('details[id]').forEach(d=>d.open?openDetails.add(d.id):openDetails.delete(d.id));else {openDetails.clear();if(page===5)openDetails.add('builder-a');}disclosurePage=page;
  document.getElementById('progress').textContent=t('common.progress',{page:number(page),total:number(7),title:titles()[page-1]});
  document.getElementById('prev').disabled=page===1;document.getElementById('next').disabled=page===7;
+ document.getElementById('prev').style.visibility=page===1?'hidden':'visible';document.getElementById('next').style.visibility=page===7?'hidden':'visible';
  document.getElementById('nav').innerHTML=short().map((n,i)=>`<button data-page="${i+1}" aria-selected="${page===i+1}" onclick="go(${i+1})">${i+1}. ${n}</button>`).join('');
  let body='';
  if(page===1)body=purpose();

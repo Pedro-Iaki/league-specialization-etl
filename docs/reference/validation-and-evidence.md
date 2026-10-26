@@ -1,10 +1,42 @@
 # Validation and evidence
 
-[Project README](../../README.md) · [Documentation index](../README.md) · [Orchestration](orchestration.md) · [Data models](data-models.md)
+[Project overview](../../README.md) / [Documentation](../README.md)
 
-This reference separates implemented checks, inspectable frozen artifacts, reviewed historical run records and behavior that has not been demonstrated live. Counts below describe dated snapshots. The October 20 refresh inspected existing successful warehouse jobs and exported their outputs; it did not start a new collection, warehouse build or transaction generation.
+This page distinguishes inspectable artifacts, recorded verification and claims that remain untested. Counts describe dated snapshots, not targets to impose on future exports. Start with the current result; historical checks below explain provenance without serving as a checklist of every development iteration.
 
-Use [orchestration](orchestration.md) for execution-state semantics, [data models](data-models.md) for grains, [metrics and methods](metrics-and-methods.md) for calculations, and [population adjustment](population-adjustment.md) for coverage and weight diagnostics.
+## Inspectable serving snapshot
+
+The [story manifest](../../streamlit_app/data/story/manifest.json) identifies the default dashboard's behavioral and customer snapshots. The accepted October 24 package contains:
+
+| Measure | Recorded result |
+|---|---:|
+| Behavioral profiles, as of October 20 | 38,403 |
+| Profiles scored against the frozen archetypes | 13,348 |
+| Empty active pools | 17,765 |
+| Nonempty pools below the four-character minimum | 7,290 |
+| Frozen scenario members | 24,990 |
+| Cash purchasers in the scenario window | 6,790 |
+| Cash in that window | USD 283,693.66 |
+
+Behavioral tracking spans 0-34 days; 5,669 profiles have at least 30 tracked days. The current snapshot therefore uses both short-history and mature active-membership rules. Missing archetype eligibility is retained in coverage, not silently removed from the base.
+
+The app reads local files and sends aggregates to its bundled component. Viewing requires no warehouse, local laboratory directory or execution database. The [evidence manifest](../../streamlit_app/story_component/evidence-manifest.json) identifies sanitized family diagnostics, component explanations and run summaries. Private archives remain local. `legacy_app.py` retains the older package under `streamlit_app/data`; its [manifest](../../streamlit_app/data/manifest.json) is a separate inventory.
+
+## Recorded local acceptance
+
+These are dated results from the existing project environment, not tests rerun each time this page is read. Counts from overlapping suites must not be added into a single total.
+
+| Scope | Recorded verification | Limit |
+|---|---|---|
+| October 25 Streamlit migration | 98 analytical/host/offline/legacy tests; final 12-test focused recheck. 90 actual browser states across desktop/mobile and terminology modes, covering comparisons, Apply/pending state, navigation, purchase carry and response handling. | Local acceptance, not hosted load testing. |
+| October 25 language publication | All 450 messages supplied in English and Portuguese; 24 focused tests and 28 actual Portuguese chapter/width/terminology states. | Reviewed display copy, not independent professional translation review. |
+| October 25 scrolling | Wheel/footer checks for seven chapters at two widths, plus PageDown and navigation reset. | The checked layouts and interactions, not every browser/device. |
+| Frozen family selection | 173 characters, 25 families, 251 memberships, original source identities and all accepted review gates checked; portable cohort reloaded. | Reused selection evidence, not held-out validation. |
+| Frozen archetype integration | Laboratory feature agreement and component-count reconciliation; fixed-inference differences measured, keyed profile/customer association and scenario preservation checked. | See the [archetype reference](player-pool-archetypes.md) for solver differences and eligibility. |
+
+The migration also checked syntax, new Python lint, package hashes and absence of raw Parquet exposure over HTTP. Legacy checks retained known pandas categorical deprecation warnings. Later portability fixes in `36c89e5` made snapshot/model hash handling independent of checkout line endings and normalized packaged metadata; those changes are distinct from the October 25 acceptance record and are not a new collection or model fit.
+
+[Run the dashboard](../guides/run-the-dashboard.md) describes local verification entrypoints. Hosted availability, clean-environment installation and live injected-failure recovery require their own evidence; the recorded local checks do not establish them.
 
 ## Validation boundaries
 
@@ -20,148 +52,39 @@ Use [orchestration](orchestration.md) for execution-state semantics, [data model
 
 Inspect [configuration validation](../../src/pydantic_models.py), [dbt schema tests](../../league_pipeline/models/gold/schema.yml), [custom SQL tests](../../league_pipeline/tests), [transaction validation](../../src/sample/validation.py), [serving contracts](../../streamlit_app/app_core/contracts.py) and [snapshot contract tests](../../streamlit_app/tests/test_snapshot_contracts.py) for the actual gates. The spending source contract uses fixed two-decimal money fields and distinguishes fiat cash from in-game currency.
 
-## Inspectable serving snapshot
+## Frozen transaction scenario
 
-The default Streamlit entry point now serves the approved seven-chapter v2 story.
-Its separate [story manifest](../../streamlit_app/data/story/manifest.json) registers
-the archetype-enriched behavioral and customer snapshots from the validated October
-24 candidate: **38,403 profiles**, **13,348 scored archetype profiles**, **17,765 empty
-pools**, **7,290 below-minimum pools**, and the unchanged **24,990-member** simulated
-scenario with **6,790 purchasers** and **USD 283,693.66** in the cash window. Guided
-profile counts remain 2,109/3,107 (frequency), 2,817/3,883 (standing), 2,357/2,736
-(primary interests), and 2,430/1,026 (Single/Blend). These are snapshot diagnostics,
-not constants enforced on future exports.
+The manifest identifies generator **v1.2**, seed **42**, and a 24,990-profile cohort. It records **3,900,172 generated events**, including **447,282 fiat events**. These event totals are scenario metadata, not rows in the public player-level business extract.
 
-The component assets contain only presentation and sanitized saved evidence.
-`app_core/story_query.py` applies the canonical predicates to local Python frames;
-Streamlit sends aggregates through its component bridge. No warehouse, local-lab
-directory, run database or sandbox HTTP service is required to view the shipped
-story. Public evidence and adopted definitions are pinned by
-`story_component/evidence-manifest.json`. The earlier source-validation work and its
-interpretation limits remain applicable. `legacy_app.py` preserves the prior
-interface against its original snapshots. The October 23 validation below describes
-that legacy package and remains historical evidence.
+Generated history runs from October 2, 2018 to September 29, 2026; its recent purchase window is August 1–September 29, 2026 inclusive. Real profile context and generated purchase history have separate provenance. Reproducibility depends on the frozen cohort, seed, configuration and generator version together, rather than the seed alone.
 
-The October 25 Streamlit migration passed **98 focused analytical, component-host,
-offline-loading and legacy rendering tests**. A final **12-test** query/host recheck
-also passed after formatting. The actual Streamlit component passed **90 browser
-states** across desktop/mobile widths and Plain/Precise terminology, including all
-guided options, compound and expressed-interest filters, Apply/pending edits,
-purchase carry, dropdown keyboard behavior, disclosure persistence, invalid-query
-recovery and delayed responses. JavaScript syntax, new Python lint, package hashes
-and lack of raw Parquet exposure over HTTP were checked. The legacy entry matches
-the previous app and all 95 original sandbox backup files are unchanged. Existing
-legacy explorer checks emit pandas categorical deprecation warnings; they did not
-fail. These are local acceptance results, not public deployment or load testing.
+The [scenario tests](../../src/sample/tests/test_business_sample.py) exercise reproducibility, grain, cash separation and rejection of invalid/incomplete/stale inputs using small fixtures and mocked warehouse calls. Their success is not evidence of a fresh full-volume generation or live load.
 
-The initial localization preparation centralized 450 English messages and
-provided an identical-key empty PT-BR draft, initially publishing only English.
-Catalog/schema, placeholder, fallback, escaping, plural,
-default-publication and Intl formatting checks passed within a 24-test focused
-query/host/localization run. The existing 90-state browser sweep passed after
-extraction; 28 additional synthetic-locale states verified copy coverage and
-desktop/mobile layout, selection/disclosure/scroll preservation, no query on locale
-change and switching during an in-flight comparison. Physical scrolling checks
-passed all seven chapters at both widths. These initial checks prepared translation;
-pseudo-localization alone does not establish Portuguese wording quality.
+## Recorded execution evidence
 
-The subsequent Portuguese publication supplies all 450 translated messages and
-makes PT-BR the default, with English selectable in the header. The 24 focused
-tests passed against the published catalogs. Actual Portuguese browser checks
-cover 28 chapter/width/terminology states, selection and pending-edit preservation,
-switching during a query, and untranslated-source-message detection. Physical
-wheel scrolling and footer reach passed all seven chapters at both widths;
-PageDown and navigation reset also passed. Display labels were reviewed for
-Portuguese meaning and diagram fit. This is local implementation review, not an
-independent professional translation review. Analytical IDs, source evidence,
-model artifacts, predicates and scenario amounts are unchanged.
+Inspection on October 25 reconciled two separate local archives under ignored `data/evidence/`. The public story exposes sanitized timelines and one task/compaction/load lineage example from the October 19 SQLite ledger.
 
-The current [manifest](../../streamlit_app/data/manifest.json) records the family-enriched export on **October 23, 2026, 11:06:08 UTC**. Its **38,403 profiles are as of October 20**, with retained player snapshots spanning September 17–October 20. The **24,990-customer scenario stays frozen at September 29**; its purchase window is August 1–September 29 inclusive. All customers were associated with current audience context by actual private player key and queue before anonymous projection. Later context is not evidence of purchase-date preference or prediction.
+| Archive | Recorded execution | Timing evidence |
+|---|---|---|
+| October 19 | 12 completed rounds, four completed ingestion/build cycles; 12 successful round reports and 4,920 reported player-refresh operations. | Exit code 0; 16,520.49 seconds. The timer has no start timestamp. |
+| October 20 | 12 completed rounds and four completed ingestion/build cycles. | Exit code 0; 16,725.88 seconds, aligned with console timestamps 03:05:49-07:44:35 UTC. |
 
-| Dataset | Rows | Columns |
-|---|---:|---:|
-| `champion_population_pairs` | 133,902 | 11 |
-| `champion_population_activity` | 1,557 | 13 |
-| `business_players` | 24,990 | 80 |
-| `champion_player_mastery_share` | 1,168,633 | 7 |
-| `champion_tier_mastery` | 22,567 | 13 |
-| `players` | 38,403 | 87 |
-| `champions` | 173 | 38 |
-| `cooccurrence` | 14,878 | 14 |
-| `growth_players` | 1,255 | 12 |
-| `champion_growth_players` | 4,818 | 13 |
-| `growth_player_styles` | 1,255 | 9 |
-| `champion_tier_growth` | 3,110 | 16 |
-| `ranked_mastery_cohorts` | 3,982 | 10 |
+These durations include collection, pacing and cloud waits; they are not extraction-throughput measurements. Task attempts are not exact HTTP request counts. The archives do not establish the initial backlog, historical environment overrides or cold/warm compute state, and the October 19 ledger must not be attributed to October 20. A copied context note was corrected against its matching captures, with the original preserved.
 
-Only profiles and business summaries were replaced in this release. The other eleven datasets are retained byte for byte from the previous serving package; the manifest records that retention and their earlier export provenance. The new top-level export date does not refresh their observations. Row grains are defined in [data models](data-models.md#serving-datasets).
+The records support successful execution within their captured scope, not lineage for every dashboard row. Selected failure/retry paths have automated tests; a live injected failure followed by recovery has not been demonstrated. Shared claims and delivery confirmation are implemented mechanisms, not proof of exactly-once delivery or a tested multi-machine deployment.
 
-The installed [family definition](../../streamlit_app/definitions/champion-audience-families-v1.json) fixes 25 families, 173 characters and 251 overlapping memberships. Its line-ending-normalized SHA-256 is `2ad543a77c0ce09e9d35d3189c656a88becc079df18c0fae2fdcfaa5a463b1db`. The [segment reference](../../streamlit_app/data/audience_segments_reference.json) pins complete-base bands, individual-tier calibration and source-profile identity. Behavioral calibration covers 99.98% of the saved rank reference; 0.02% is unsupported and 0.04% has sparse individual-tier support. Scored family pools cover 50.73% of adjusted profiles, including shared-top states; absent pools remain visible elsewhere.
+## Historical checkpoints
 
-The preserved scenario reconciles **6,790 cash purchasers, 18,200 nonbuyers and USD 283,693.66** in its 60-day purchase window, plus **USD 7,439,491.86** across generated history. Cash is counted once in integer cents. Purchaser rates include nonbuyers; per-purchaser cash uses purchasers only. No gameplay population weights enter these customer totals. These amounts are generated demonstration data, not actual revenue.
+Earlier versions are useful for tracing development, but their profile counts, page numbering and UI checks do not describe today's story.
 
-The October 23 integration checked all 13 public schemas, forbidden identifiers, manifest counts/sizes, unique within-file row keys, enriched file/metric hashes, frozen reference identity, scenario preservation, conditional audience totals and cash reconciliation before local promotion. A complete previous serving directory is retained locally for rollback. The six guided chapters render against this coherent package. A focused integrated run passed 75 tests; the new engineering tests passed all three cases after correcting a test assertion. Browser checks covered all six in EN/PT and both terminology modes, with 21 recorded cases at 1440, 1024 and 390 px, unchanged chart numbers across language/terminology and no rendering exceptions or horizontal overflow. The pre-existing explorer emitted one pandas categorical warning. These are local checks, not deployment or independent validation of families. See [run the dashboard](../guides/run-the-dashboard.md) for viewing and [refresh dashboard data](../guides/refresh-dashboard-data.md) for replacement/rollback boundaries.
+| Checkpoint | What it established |
+|---|---|
+| September 29 profiles, exported October 10 | 37,172 profiles; the original frozen commercial cohort and early outcome comparisons. |
+| October 20 export | 37,803 profiles as of October 19; 3,602 had at least 30 tracked days. All 13 candidate datasets passed contracts; existing successful ingestion/build jobs were inspected, not rerun. |
+| October 23 family-enriched legacy package | 38,403 profiles and unchanged 24,990 scenario members; keyed family integration, full-package checks and six-chapter browser acceptance. Eleven other datasets retained earlier export provenance. |
+| September 30 / October 18 warehouse records | Reviewed records reported 150 / 195 successful resources respectively. Original cloud outputs are not included in the public serving export; these records are separate from the archived executions above. |
 
-The final October 23 acceptance exercised **437 dashboard test cases**. The complete run passed 436 and exposed one legacy test that hardcoded the older snapshot's band counts; that assertion was replaced with checks against the installed frozen reference and retained tiers. The final related audience/customer/translation run passed all 29 tests, followed by all 10 language checks after tablet spacing changes. The complete run retained 24 existing pandas categorical warnings. No analytical failure remained after those focused checks; the full suite was not repeated unchanged.
-
-The final browser pass recorded **30 cases** at 1440, 1024 and a strict 390 px, complementing the earlier six-chapter EN/PT review. Checks included rank inversion and hour-label invariance, retained-history and ranked-volume selections, searchable family choice, primary versus affinity, optional focus/breadth, sparse estimates, customer refinements, independent language/terminology persistence and returning to the opening page. The final review corrected clipped customer-axis titles and tablet language/flow spacing. There were no page-level horizontal overflows or runtime errors in the accepted cases. Frozen serving/backup hashes and the adopted family definition stayed unchanged. Required serving references are explicitly allowed in Git; local experiments and private notes remain excluded. These checks establish local readiness, not hosted availability.
-
-## Historical serving and chapter checks: October 20, 2026
-
-
-The current [manifest](../../streamlit_app/data/manifest.json) records export time **October 20, 2026, 03:17:24 UTC**. Gameplay profiles are as of **October 19, 2026**, with latest-known player observations spanning September 17–October 19. The validated transaction scenario remains frozen at **September 29, 2026**; its provenance and generated events were preserved.
-
-| Dataset | Rows | Counting unit |
-|---|---:|---|
-| `players` | 37,803 | Current player profiles, including the new active-pool Lifetime preference fields. |
-| `champions` | 173 | Character summaries. |
-| `cooccurrence` | 14,878 | Supported unordered character pairs. |
-| `champion_player_mastery_share` | 1,168,633 | Player/character memberships. |
-| `champion_tier_mastery` | 22,567 | Character/rank/threshold summaries. |
-| `growth_players` | 1,255 | Eligible player/starting-rank summaries. |
-| `growth_player_styles` | 1,255 | Eligible player/starting-rank/period-classification summaries. |
-| `champion_growth_players` | 4,818 | Attributed player/character/starting-rank summaries. |
-| `champion_tier_growth` | 3,110 | Character/starting-rank/scope summaries. |
-| `ranked_mastery_cohorts` | 3,982 | Player/window summaries. |
-| `business_players` | 24,990 | Preserved frozen scenario/player summaries. |
-| `champion_population_activity` | 1,557 | Character/current-rank/scope summaries. |
-| `champion_population_pairs` | 133,902 | Character-pair/current-rank/scope summaries. |
-
-The full player extract contains **19,723 paired Recent/Lifetime classifications** and **18,080 profiles without a Recent classification**. Tracking spans 0–33 days; **3,602 profiles have at least 30 tracked days**, so the mature membership rule now applies to part of the sample. Active-pool Lifetime preferences have positive mastery support for **19,722 profiles**; one additional classified pool has zero Lifetime mastery and retains null preference fields. There are **18,629 profiles** whose leading active character has at least 15,000 Lifetime points. These counts cover the full extract. Legacy default views omit its one Grandmaster profile; the paired page-3 comparison includes it in Diamond+ and excludes the zero-total pool, yielding 19,722 comparable profiles. September cohort counts and descriptive findings below must not be carried forward without recalculation.
-
-Read-only job checks before and after export found successful ingestion run `1011929478031051` and dbt run `85473963130053`, with no active runs or changes to their identities, profile count/dates or scenario metadata during export. The configured build scope was `dbt deps` and `dbt build`. Those run responses did not expose a resolved Git commit; the local exporter revision was `e72cd63`.
-
-All 13 candidate datasets passed public contracts, privacy checks and manifest row/column/size checks. Additional checks covered active-pool membership counts, share denominators, HHI and scenario consistency. All six story pages plus specialization/rank, character, population-estimate and business explorer pages rendered against the candidate. Six snapshot/preference tests passed against the installed files. The previous serving package was backed up, and replacement files were verified by hash before the local preview restarted. A new analyst bundle records the refreshed snapshot and the unchanged rank reference; its generic reference-scope metadata remains an interpretation limit.
-
-The subsequent page-3 alignment on October 20 passed **144 dashboard tests** and a final **13-test focused run**. Checks cover the paired cohort, apex inclusion, fixed value-based bands and score ties, medians/quartiles, chart transposition, audience-map reconciliation, stale-reference behavior, language/terminology invariance and existing snapshot/explorer behavior. Headless browser checks at 1440, 1024 and 390 px covered EN/PT, Plain/League, both axis orientations and quartile toggling without page overflow or rendering exceptions. Median ranges are distribution quartiles; Wilson intervals remain limited to historical category proportions. The full run emitted 24 categorical-compatibility warnings from the legacy composition helper in `analysis.py`; these were not suppressed or represented as test failures. All 13 serving-file hashes and the manifest remained unchanged during this page implementation.
-
-The October 20 implementation of story pages 1, 2 and 4 passed **154 dashboard tests**, followed by **32 focused tests** against the final changes. Browser review at 1440, 1024 and 390 px covered the three chapters, English/Portuguese and both terminology modes. A final page-4 review also exercised the whole-history view and a leading-character selection, preserving the expected 663-profile Yasuo audience without overflow or rendering exceptions. The terminology-switch check caught and corrected a deferred widget-label mapping issue before completion. The full run retained the same 24 legacy categorical warnings described above.
-
-The chapter checks reconcile page 2's distribution summaries and collapsed grid to page 3's rank facets, preserve the fixed cohort/bands after character filtering, retain missing-type profiles outside the type chart, and distinguish the 19,723-profile pair source from the 19,722-profile concentration reference. That historical chapter sequence placed transactions fifth and retained separate growth evidence in the final chapter; the October 23 audience story replaces that ending with engineering and evidence. All 13 dataset hashes, the manifest and the frozen audience reference remained unchanged. No warehouse models, transaction scenario or archetype assignments were regenerated.
-
-## Historical serving snapshot: September 29, 2026
-
-The previous manifest recorded export time **October 10, 2026, 23:37:07 UTC**. Player profiles were as of **September 29, 2026**, with underlying player snapshots dated September 16–29. These are different dates with different meanings.
-
-Parquet metadata was checked locally against all 13 manifest entries on October 19, 2026: row counts and column counts matched. The [data-model reference](data-models.md#serving-datasets) supplies the complete grain definitions.
-
-| Dataset | Rows | Counting unit |
-|---|---:|---|
-| `players` | 37,172 | Current player profiles. |
-| `champions` | 173 | Character summaries. |
-| `cooccurrence` | 14,878 | Supported unordered character pairs. |
-| `champion_player_mastery_share` | 1,139,520 | Player/character memberships, not unique people. |
-| `champion_tier_mastery` | 22,350 | Character/rank/threshold summaries, including overlapping thresholds and rollups. |
-| `growth_players` | 1,066 | Eligible player/starting-rank summaries. |
-| `growth_player_styles` | 1,066 | Eligible player/starting-rank/period-classification summaries. |
-| `champion_growth_players` | 4,089 | Attributed player/character/starting-rank summaries. |
-| `champion_tier_growth` | 2,842 | Character/starting-rank/scope summaries. |
-| `ranked_mastery_cohorts` | 4,296 | Player/window summaries; one person can appear in multiple windows. |
-| `business_players` | 24,990 | Frozen real profiles joined to simulated commercial summaries. |
-| `champion_population_activity` | 1,384 | Character/current-rank/scope summaries. |
-| `champion_population_pairs` | 119,024 | Character-pair/current-rank/scope summaries. |
-
-The manifest is an inventory, not a claim that all files were refreshed atomically. A selective export keeps existing entries for unselected datasets. Check per-dataset dates and scenario identity before combining results, and retain this dated table until an actual refreshed artifact has been inspected.
+The [pre-consolidation evidence record](https://github.com/Pedro-Iaki/league-specialization-etl/blob/7dbb30d/docs/reference/validation-and-evidence.md) preserves detailed inventories and historical test runs. Its references to a "current" manifest belong to that documentation revision; use the matching historical artifact, not a replaced serving file, to reproduce an older result. Timings from individual runs are not throughput guarantees.
 
 ## Cohort counts branch by question
 
@@ -179,65 +102,3 @@ The reviewed analysis of the September 29 export distinguishes the following coh
 These are branches, not successive stages of one conversion funnel. The historical complete period on September 27 contained 3,373 players before outcome filtering, including 2,291 with zero games. The estimated ranked-mastery-share cohort also contained 1,074 people but differed from the latest LP-eligible cohort by eight people in each direction. Counts alone are insufficient evidence of shared membership, particularly after public identifiers are removed.
 
 All September 29 profiles had fewer than 30 tracked days, with maximum 13. Recent pools were gain-weighted for 3,374 players, equal-membership-weighted for 21,616, and absent for 12,182. This explains that historical snapshot's recent-activity measures, rather than the refreshed cohort's mixture of short-history and mature membership rules.
-
-## Frozen transaction scenario
-
-The manifest identifies generator **v1.2**, seed **42**, and a 24,990-profile cohort. It records **3,900,172 generated events**, including **447,282 fiat events**. These event totals are scenario metadata, not rows in the public player-level business extract.
-
-Generated history runs from October 2, 2018 to September 29, 2026; its recent purchase window is August 1–September 29, 2026 inclusive. Real profile context and generated purchase history have separate provenance. Reproducibility depends on the frozen cohort, seed, configuration and generator version together, rather than the seed alone.
-
-The [scenario tests](../../src/sample/tests/test_business_sample.py) exercise reproducibility, grain, cash separation and rejection of invalid/incomplete/stale inputs using small fixtures and mocked warehouse calls. Their success is not evidence of a fresh full-volume generation or live load.
-
-## Historical warehouse records
-
-The reviewed project record reports these completed builds:
-
-| Date | Recorded scope and outcome | Recorded elapsed time |
-|---|---|---|
-| September 30, 2026 | 21 models and 129 tests; 150 successful resources. | Full refresh 146.58 s; subsequent incremental run 158.94 s. |
-| October 18, 2026 | 25 models, three seeds and 167 tests; 195 successful resources, zero warnings, errors or skips. | dbt 126.69 s. |
-
-The original cloud run outputs behind these reviewed historical records are not included in the public serving export, and these builds were not rerun for this documentation batch. The [job definition](../../resources/build_dbt.job.yml) describes configured work; it does not independently prove a successful execution. Times describe those runs and are not a sustained throughput benchmark or a guarantee for another environment.
-
-## Local verification during the rewrite
-
-On October 19, 2026, the preceding documentation stages verified:
-
-- One selected root dashboard smoke test passed against local snapshots.
-- 55 selected configuration, job-result and load/confirmation-boundary tests passed using temporary state and mocked remote boundaries.
-- Current documentation links resolved.
-
-Run the analytical and snapshot checks from the repository root, using the project's Python environment with its existing test dependencies:
-
-```powershell
-python -B -m pytest streamlit_app/tests/test_metrics.py streamlit_app/tests/test_population.py streamlit_app/tests/test_population_standardization.py streamlit_app/tests/test_population_views.py streamlit_app/tests/test_experience.py streamlit_app/tests/test_ranked_share.py streamlit_app/tests/test_business_sample.py streamlit_app/tests/test_story.py streamlit_app/tests/test_snapshot_contracts.py src/sample/tests/test_business_sample.py -q
-```
-
-This selection passed **59 tests** on October 19, 2026, using the existing project virtual environment. It covers metrics, rank adjustment, direct standardization, experience intervals, ranked-activity estimates, commercial summaries, growth-story calculations, snapshot contracts and small generated-scenario fixtures. It does not represent the entire repository test suite. Live collection, a cloud build and a serving refresh are separate operations.
-
-## Family workflow finalization checks
-
-On October 23, 2026, `python -m pytest streamlit_app/tests -q` passed **331 tests**
-in the existing project environment. This run includes the full and anchored family
-helpers, cohort editing and selection, Compact objectives, experiment resume/export
-boundaries, dashboard rendering and snapshot contracts. It completed with 24 pandas
-categorical deprecation warnings from the existing analysis helper.
-
-The accepted 87.5% family-cohort alternative was separately checked for its 173
-champions, 25 families, 251 memberships, saved source identities, portable loading,
-all review gates and frozen reference-pool checksum. Finalization renamed display
-labels without changing selected memberships or source evidence. These are local
-implementation and artifact checks; this step ran no new discovery/bootstrap,
-cloud build or serving refresh.
-
-## Recorded execution evidence
-
-Read-only inspection on October 25, 2026 reconciled two local archives under ignored `data/evidence/`. Each console records 12 completed rounds and four completed ingestion/build cycles. The October 19 archive also contains 12 successful round reports, 4,920 reported player-refresh operations and an archived SQLite ledger. Its timer records exit code 0 and 16,520.49 seconds, but has no start timestamp. The October 20 archive's timer and console timestamps align: 03:05:49–07:44:35 UTC, exit code 0 and 16,725.88 seconds. These durations cover whole invocations, including collection, pacing and cloud waits; they are not extraction-throughput measurements.
-
-The October 20 context file had copied October 19 details. It was corrected using its own console, timing, commit, Python and working-tree captures; the original text remains alongside it. Historical environment overrides, complete initial backlog and cold/warm compute state were not captured independently. The two archives remain separate: October 19's round report and ledger must not be assigned to October 20. Successful recorded execution is supported within that scope, without claiming that every retained source or dashboard row has been traced to these runs.
-
-The default Streamlit story now exposes sanitized run timelines and one linked task/compaction/load example from the October 19 ledger. Family evidence uses exact saved source matrices and member-fit summaries; these selection diagnostics are not independent held-out validation. The earlier sandbox remains a local backup. The migrated interface is locally verified; public hosting remains unverified.
-
-A live injected failure followed by successful retry has not been demonstrated; failure/retry behavior is covered by tests. This distinction does not create a requirement for a new collection campaign. Task-attempt counts are not exact HTTP request totals, and an ETA based on 50 requests per minute is an assumption rather than measured sustained performance.
-
-Claims about successful service execution, recovery, request totals or performance should identify the matching dated outputs when available. Current evidence also does not establish real spending, causal rank improvement, a proven zero effect, exactly-once delivery, or an achieved 200,000-player deployment.

@@ -6,13 +6,13 @@ Rank adjustment changes how observed players contribute to a summary. It does no
 
 ## Ownership and reference input
 
-Shared [Python helpers](../../streamlit_app/app_core/population.py) own calibration, weighted summaries and direct standardization. There is no current dbt population-weight mart. Exporters can attach weights, but runtime `population_weights` recalculates them from the maintained local [rank reference CSV](../../league_pipeline/seeds/rank_population_reference.csv), replacing cached values.
+Shared [Python helpers](../../streamlit_app/app_core/population.py) own calibration, weighted summaries and direct standardization. There is no current dbt population-weight mart. Exporters can attach weights. Legacy population explorers use runtime `population_weights` to recalculate them from the maintained local [rank reference CSV](../../league_pipeline/seeds/rank_population_reference.csv), replacing cached values.
 
 The CSV requires all ten recognized tiers exactly once, with positive finite shares summing to one within absolute tolerance `1e-8`. Each metadata column must contain one common nonmissing value: `reference_version`, `recorded_on`, `review_after`, `source` and `reference_scope`. The review date must follow the recorded date. A fingerprint is calculated from canonical sorted CSV content. Structural validation does not authenticate the external source.
 
 The saved October 10, 2026 shares are accepted by the author, who corrects their source to [OP.GG tier statistics](https://op.gg/lol/statistics/tiers), with North America ranked solo/duo as the intended scope. On October 23 the metadata was aligned as version `2026-10-10-v2-provenance`, retaining every numeric share, the October 10 recorded date and April 10, 2027 review date. This changes the canonical fingerprint but not calibrated weights. The live page confirms the source location and NA selector; it is not an independently matched historical capture. No replacement values were scraped.
 
-The dashboard shows reference metadata and warns when review is due; it does not automatically fetch a replacement or stop using the file at that date. The [new audience-segment contract](audience-segments.md) freezes the reference with the profile snapshot. Historical family-discovery files retain their original reference hashes; correcting provenance does not change the accepted champion memberships.
+Legacy population views show reference metadata and warn when review is due; they do not automatically fetch a replacement or stop using the file at that date. The default story calibrates from the reference frozen in its matching `audience_segments_reference.json`; it does not fetch a new reference during viewing. Historical family-discovery files retain their original reference hashes; correcting provenance does not change the accepted champion memberships.
 
 ## Calibration before filtering
 
@@ -79,7 +79,7 @@ Weighted quantiles use ordinary pandas quantiles when weights are equal. With un
 
 ## Frozen profile example
 
-These values belong to the October 10 serving export and the current reference, not a promised future release. They use all 37,172 frozen profiles; historical or filtered cohorts require their own diagnostics.
+These values belong to the October 10 serving export and its accepted numeric reference shares, not a promised future release. They use all 37,172 frozen profiles; historical or filtered cohorts require their own diagnostics.
 
 | Tier | Reference share | Observed profiles | Weight |
 |---|---:|---:|---:|
@@ -94,11 +94,11 @@ These values belong to the October 10 serving export and the current reference, 
 | Grandmaster | .0004 | 0 | Unsupported |
 | Challenger | .0002 | 0 | Unsupported |
 
-Supported coverage is .9994, full-cohort Kish size is approximately 28,734.54, and the largest-to-smallest tier-weight ratio is approximately 17.82. High aggregate coverage does not remove the sensitivity of a small observed tier. These calculations can be reproduced locally from the `players` dataset identified in the [manifest](../../streamlit_app/data/manifest.json) and the reference CSV.
+Supported coverage is .9994, full-cohort Kish size is approximately 28,734.54, and the largest-to-smallest tier-weight ratio is approximately 17.82. High aggregate coverage does not remove the sensitivity of a small observed tier. Reproducing these historical values requires that October 10 profile artifact and its reference. The installed manifests now describe later snapshots; applying the same calculation to them produces a new result, not a reproduction of these figures.
 
 ## Interpretation and maintenance
 
-Population calculations are used by supported explorer views and the guided behavioral chapters. Guided pages 1–4 freeze individual-tier weights on the complete current profile scope before filtering; page 6 reports that same coverage. Page 5 and commercial summaries use unweighted scenario customers, and the experience explorer retains its sample-based estimator. A dashboard-wide label must not be taken as evidence that every chart uses the same estimator.
+The default story retains full-base individual-tier weights through behavioral filtering, including Combine. Purchases uses unweighted scenario customers. Legacy population views use their declared weighted estimator, while the legacy experience explorer retains its sample-based estimator. A dashboard-wide label must not be taken as evidence that every chart uses the same estimator.
 
 Tier weighting cannot correct within-tier selection, division/page selection, refresh behavior, sparse Master collection, complete-profile requirements or selection into observable outcomes. It cannot establish that specialization causes rank improvement or that simulated spending reflects real customers. Reference coverage measures represented target mass, not freedom from bias.
 

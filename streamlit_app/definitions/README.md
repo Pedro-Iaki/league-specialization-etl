@@ -14,8 +14,7 @@ boundary for downstream work. The pure
 definition to calculate vectors and primary/tied categories. The optional
 [joint export](../../docs/guides/refresh-dashboard-data.md#family-enriched-profile-and-business-exports)
 calculates these fields on correctly associated profiles and business rows
-before anonymization. The loader checks their versions and hashes; dashboard
-chapters use the versioned affinities and primary categories in the coherent local serving package. The definition file's original export-status note is historical; its immutable hash and memberships are preserved.
+before anonymization. The loader checks their versions and hashes; legacy family charts use these affinities and primary categories. The current story uses the family definition to construct the distinct archetype input vector and exposes saved family evidence for explanation. The definition file's original export-status note is historical; its immutable hash and memberships are preserved.
 
 [Rank reference v1](rank-population-20261010-v1.csv) preserves the exact historical
 reference used by saved family-lab scenarios and libraries. Its generic metadata

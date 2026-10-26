@@ -1,110 +1,69 @@
 # Understanding the analysis
 
-[Project README](../../README.md) · [Documentation index](../README.md) · [Architecture](architecture.md) · [Metrics and methods](../reference/metrics-and-methods.md)
+[Project overview](../../README.md) / [Documentation](../README.md)
 
-The analysis asks which behavioral patterns define useful audiences, how those audiences differ and what customer questions those differences could help investigate. Two people with similar spending can still prefer very different content. Behavioral context gives a transaction model more detail than a spending category alone.
+The analysis asks how observed behavior can define useful audiences. Its source is League of Legends, where people choose playable characters and may participate in competitive play. The transferable problem is understanding preferences from repeated usage observations, without access to every individual event.
 
-The available source is League of Legends. Its players choose characters, called champions, and can participate in competitive play with visible ranks. Riot's API supplies rank and character activity observations. **Purchases in this project are simulated**: they demonstrate the analytical connection to customer questions, without revealing actual buying behavior.
+The dashboard develops this question in stages: describe activity, add competitive standing, compare interests, construct an audience, then inspect simulated purchases. Each stage introduces a dimension before using it in a comparison. Purchases are generated; the behavioral observations are real.
 
-This chapter explains how to read the comparisons. Exact formulas, defaults and eligibility rules live in [metrics and methods](../reference/metrics-and-methods.md).
+## Separate the dimensions of activity
 
-## Start with the audience and the window
+Someone can have a long history but play infrequently now, or participate frequently in competitive play without a large accumulated activity score. Those distinctions motivate three separate measures:
 
-A character audience can mean several things: people who hold an activity record for that character, people whose inferred recent pool includes it, or people who concentrate heavily on it. Those groups answer different questions. A holder is not automatically a current fan, and audiences for several characters can contain the same person.
-
-The four analysis windows keep accumulated context, current interests and observed outcomes separate:
-
-| Window | Useful question | What to keep in mind |
+| Dimension | What the story uses | Interpretation |
 |---|---|---|
-| Lifetime | What has this person accumulated across characters? | An old favorite can dominate the activity score after interests change. This is not a complete lifetime match history. |
-| Recent activity | Which characters appear relevant to current behavior? | Membership is inferred from recency and, with sufficient tracking history, activity gains. |
-| Recent activity with rank follow-up | How do recent profiles compare among people with a usable latest outcome? | The outcome may be positive, zero or negative. Filtering changes the audience, without making activity ranked-only. |
-| Observed rank periods | How did period-aligned behavior compare with rank movement over retained intervals? | Completed periods and usable outcomes have additional observation and eligibility requirements. |
+| Accumulated play | Lifetime character mastery, with an optional hours equivalent | A cumulative activity proxy across game modes; hours are inferred from a fixed conversion, not observed. |
+| Competitive frequency | Recorded competitive wins plus losses | Participation under an annual-season assumption, not total play across all modes. |
+| Retained history | Earliest retained last-play marker | A lower bound on history, not account creation or time under collection. |
 
-For current audience membership, begin with Recent activity and use Lifetime as context. A hypothetical person with years of activity on character A but a recent focus on B illustrates why the two can disagree. That disagreement can be useful evidence of changed interests rather than a classification error.
+Standing adds current competitive position. The saved rank reference shows how common those tiers are in the reference population; the audience's own rank distribution answers a different question. Current position does not demonstrate improvement or skill gained through a particular interest.
 
-Recent activity is still an estimate. With fewer than 30 tracked days, the default rule admits characters last played within 30 days, without requiring a measured gain. Pool shares use observed gains when available and equal membership weights otherwise. Thus an evenly divided recent pool can describe equally weighted evidence of membership rather than equally measured use. The included frozen export has short tracking histories throughout; [dated support counts](../reference/validation-and-evidence.md#cohort-counts-branch-by-question) show how much of it uses each weighting basis.
+## From individual characters to interpretable interests
 
-## Describe both focus and breadth
+A single favorite loses secondary interests, while a list of every character is difficult to compare. The project therefore developed two distinct grouping layers:
 
-The activity score, or mastery, is a cumulative source measure associated with playing a character. It is a useful preference signal, but it does not directly measure matches, hours or skill, and it can increase outside competitive play.
+```mermaid
+flowchart LR
+    observations["Active character audiences"] --> families["25 overlapping champion families"]
+    families --> affinity["Each player's family-affinity vector"]
+    affinity --> archetypes["8 frozen player-pool archetypes"]
+    archetypes --> comparisons["Audience slices and comparisons"]
+```
 
-Several measures describe its distribution. Top-character share shows how dominant the leading choice is. Preferred-character count describes the size of the more prominent set. Concentration and evenness measures describe how activity is distributed within a pool.
+**Champion families group characters whose audiences overlap.** Initial graph clustering supplied candidates, but a single exclusive partition could hide shared interests or force awkward placements. Full-roster and anchored searches explored alternatives; saved resampling diagnostics and member-level review supported selection of 25 overlapping families covering 173 characters. The accepted definition preserves each family's evidence and allows a character to belong to several groups.
 
-For example, two equally used characters and ten equally used characters both have perfect normalized evenness. Their breadth is very different. Reading only the evenness score would hide that difference; reading only the count would hide whether one character dominates.
+**Player-pool archetypes summarize combinations of those family affinities.** Nonnegative matrix factorization (NMF) finds eight recurring profiles that players can express in mixtures. A player may express one component, several, or no component strongly enough for an active label: Single, Blend and Diffuse. Names such as Bruisers And Tanks and Control Mages describe these profiles; informal player feedback checked recognizability, not statistical accuracy.
 
-The four labels—specialist, multispecialist, versatile and generalist—summarize these features through configurable SQL scoring. They are descriptive rules, rather than learned predictions or psychological types. A recent label and a Lifetime label can differ. Concentration also does not establish loyalty: persistence would need to be measured over time.
+Recent membership and accumulated preference are separate decisions. Existing models determine which characters belong to an active pool using recency and, once tracking history is sufficient, activity gains. Archetype features then use lifetime mastery within that pool, without requiring competitive observations. Both short-history and mature membership rules apply in the current snapshot.
 
-The intended plain label **Fan** refers to a more specific character-focused selection. The current code still uses `one_trick_*` names and an explicit activity/concentration filter; its final public definition remains deferred. Use the [implemented rule](../reference/metrics-and-methods.md#audience-comparisons) when interpreting those outputs rather than assuming every specialist is a fan of their leading character.
+The accepted transformation is frozen. Exports apply the same components and training weights to new rows; opening the dashboard never fits a model. The [family reference](../reference/character-family-cohort.md) explains selection and evidence, and the [archetype reference](../reference/player-pool-archetypes.md) specifies scoring. It also distinguishes archetype inputs from the older cutoff-based family-affinity measure.
 
-## Compare audiences through the right denominator
+## Use interests to ask questions, not rank popularity
 
-Character summaries describe the people associated with a character. They can show activity depth, rank composition and inferred roles. Roles are estimated from character metadata and associated players, rather than observed positions in individual matches. A role chart therefore needs its audience definition; it is not a direct character lane-use rate.
+A larger archetype audience is not necessarily a stronger or more meaningful preference. Family size, overlap, character popularity and the training sample all affect assignments. Loading strengths are not probabilities, and family consistency is not independent validation of the player model.
 
-Audience overlap asks how often two characters occur in the same recent pools. Conditional overlap also has a direction: the fraction of A's audience associated with B need not equal the fraction of B's audience associated with A. A very popular character can overlap with many audiences simply because it is common; lift compares the overlap with what the two audience sizes would suggest.
+The Interests chapter therefore uses archetypes as **audience slicers**: how do people expressing different interests compare in activity, standing and other interests? Reach establishes how much evidence supports a comparison. Underlying family matrices and component profiles are available as method detail rather than a second ranking of audiences.
 
-Shared audiences can suggest content or recommendation hypotheses to investigate. They do not establish switching, competitive synergy or a recommendation's effectiveness. Similarly, combining character-holder records can count one person several times; it does not automatically produce the reach of a distinct audience.
+A comparable business application would group items by overlapping usage audiences, then describe users through mixtures of item groups. Applying that idea to sales would require actual purchase or exposure records and suitable windows; this project does not observe all sales or demonstrate recommendation performance.
 
-## Separate rank composition from rank movement
+## Compare within an explicit context
 
-A rank-distribution chart describes where an observed audience sits. It does not show which people improved or whether their character choice helped them do so. The project's small higher-rank groups also inherit discovery and refresh selection, so they should not be treated as representative samples of all high-ranked players.
+Guided questions compare two groups inside a stated parent audience. For example, standing groups are compared within a shared competitive-frequency band. Other traits can still differ: this is a descriptive comparison, not matching or a controlled experiment.
 
-Historical comparisons instead pair retained rank observations and use actual endpoint spacing. At the default weekly setting, usable completed periods need adjacent buckets, suitable spacing and no intervening counter reset. LP/game comparisons additionally require positive observed games and a bounded ranking-points change per game. A player can have a current profile without qualifying for that outcome.
+Combine lets a reader construct shared conditions and independent A/B selections across the introduced dimensions. Groups can overlap. Interest over/under compares each selection's share with its shared parent; it does not remove structural popularity or family-size bias. The [story contract](../reference/dashboard-story.md) owns the exact predicates and denominators.
 
-Period lift compares ranking points per game with the pooled eligible baseline for the same queue and starting rank. Higher lift means a result above that observed baseline, rather than proof that a behavior caused improvement. The baseline can change when periods are added. Summaries can aggregate period lift within each player before comparing groups; this differs from pooling all game totals. [Growth definitions](../reference/metrics-and-methods.md#competitive-outcomes-and-attribution) explain those aggregations.
+Behavioral summaries use rank weights calibrated on the full base and retained through filtering. This adjusts the observed rank mix toward the saved reference, without repairing selection within tiers or supplying missing people. Customer summaries use unweighted scenario members. Sparse results retain their denominator but may lack a supported estimate; an unavailable measurement is not zero.
 
-Character-level outcomes add another inference. The model allocates period outcomes according to positive activity-gain shares for preferred characters, leaving other mass unassigned. Fractional attributed games are therefore expected. They are not directly observed character-specific matches or wins.
+## Extend the audience to purchasing
 
-The separate estimate of competitive activity assumes activity-score gains per win and loss. It is sensitive to those coefficients and does not reveal an observed fraction of matches or hours spent in competitive play. These distinctions keep progression useful as one audience feature without turning it into a general climbing recommendation.
+The purchase chapter applies the same audience definition to linked customers and separates participation, spending per purchaser, purchase frequency and content acquisition. This demonstrates an identity-safe integration and coherent reporting over a second domain.
 
-## Account for different rank and experience mixes
+The scenario was generated from a frozen real cohort using configured relationships and randomness. Archetypes were attached later and were not generator inputs. Current interests therefore cannot be interpreted as purchase-date preferences or predictive evidence. [Simulated transactions](simulated-transactions.md) explains what was generated and how cash is counted once.
 
-The collected sample does not mirror the supplied rank distribution. Pooling its rows gives the collected sample's result, which can differ from an estimate adjusted toward that reference. There are three distinct ways to summarize a selected audience:
+## What earlier exploration contributed
 
-| Approach | Interpretation |
-|---|---|
-| Collected sample | Give each eligible observed person equal weight. |
-| Inherited population weights | Adjust the calibration cohort's rank mix, then retain those weights when selecting an audience. The selected audience can still have a different rank mix. |
-| Direct-standardized mean | Select an audience, calculate supported rank-specific means, then combine them under a common supported reference mix. |
+Earlier work described concentration and breadth through rule-based specialist/generalist labels, then investigated period-aligned rank movement. It helped establish the need for dated observations, explicit eligibility and distinct denominators. The default story now prioritizes the broader audience dimensions and interpretable interest mixtures; those older classifications are not the eight archetypes.
 
-These are different questions, so disagreement between their values is not automatically a defect. The default story uses reference-weighted distributions and supported medians, calibrated on the full profile base before filters. Customer charts use unweighted scenario rows. The raw experience explorer retains its sample-based definition. Adjustment cannot supply missing outcomes or fix selection within ranks. The [population reference](../reference/population-adjustment.md) explains calibration, support and effective sample size.
+The legacy explorers retain those windows, growth comparisons and standardization tools. Historical growth results were inconclusive, and character-level outcomes were inferred rather than observed match records. Their formulas remain in [metrics and methods](../reference/metrics-and-methods.md); they are optional research depth, not prerequisites for reading the dashboard.
 
-The default seven-chapter story introduces three activity dimensions together:
-estimated accumulated playtime, competitive frequency under an annual-season
-assumption, and retained history as a lower bound. Standing then adds competitive
-position and saved reference prevalence. None of these cross-sections establishes
-rank movement, account creation or a causal effect.
-
-Interests introduces eight frozen NMF archetypes as audience slicers, with Single,
-Blend and Diffuse expression states. Underlying overlapping families explain their
-inputs. The cutoff-based family affinity and the all-active-mastery archetype vector
-are distinct representations; see the [archetype contract](../reference/player-pool-archetypes.md).
-Inferred role comes from character behavior, not observed match positions.
-
-Guided questions keep one explicit shared context while comparing A/B groups;
-other traits are allowed to differ. Combine supports compound shared and independent
-conditions, with overlap and joint distributions. Purchases uses the last applied
-definition on unweighted scenario members. The [dashboard story contract](../reference/dashboard-story.md)
-specifies each chapter, fixed predicates, support and denominators. The legacy
-explorers retain the wider window, growth and standardization tools described above.
-
-## Connect behavior to commercial questions
-
-With an authorized real purchase source, an analyst could investigate whether character-focused audiences buy related cosmetics, how buying patterns differ across audiences, or whether a content group appears underserved. Those questions would need purchase exposure, timing, availability and other relevant context. Return on investment would also require costs and an appropriate comparison.
-
-The included scenario demonstrates that connection using generated purchases attached to frozen real profiles. Its spending patterns are configured assumptions, rather than discoveries about actual customers. A simulated association is useful for inspecting joins, currency treatment, denominators and reporting behavior. It cannot establish demand, price sensitivity, promotion effectiveness or real revenue lift. [Simulated transactions](simulated-transactions.md) follows that branch in more detail.
-
-## Check support before interpreting a result
-
-Interests uses archetypes to compare activity, history, standing and expression.
-Assignment prevalence is not a comparable popularity ranking: family size,
-character prevalence, overlap and training composition influence it. Selected
-reach describes support; conditional comparisons describe associations. Popularity
-normalization remains a separate research question. The new interface and its
-archetype package are implemented and locally verified, rather than pending promotion.
-
-Read the cohort, window, counting unit, estimator and date alongside a comparison. Current profiles, classified recent profiles, latest-outcome profiles and historical growth rows form different branches. Missing follow-up can mean insufficient observation or ineligibility; it should not become zero performance. The current profile also uses the dataset's latest completed bucket, without falling back to each person's older usable period.
-
-Observed counts describe how many eligible rows support a result. Effective sample size describes concentration in a particular set of weights, rather than additional observed people or a confidence interval. Support rules and uncertainty methods vary by calculation; direct-standardized means currently have no calculated interval.
-
-Growth comparisons remain inconclusive. The reviewed historical bootstrap intervals included zero, which does not prove equal outcomes or no effect. The [methods reference](../reference/metrics-and-methods.md#support-and-uncertainty) distinguishes that verification from the retained older row-bootstrap helper. [Validation and evidence](../reference/validation-and-evidence.md) records the snapshot, branching counts and limits of the available checks. The analytical value is a traceable description of audiences and testable hypotheses, with stronger customer claims reserved for suitable real outcomes and study designs.
+Continue with [Architecture](architecture.md) to see how the collection and delivery design supports these distinctions, or inspect [Validation and evidence](../reference/validation-and-evidence.md) for the accepted artifacts and measured limits.

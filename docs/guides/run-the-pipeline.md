@@ -149,7 +149,7 @@ Inspect these outputs together:
 | `data/database/extraction.db` | Local runs, tasks, file lineage and compaction/load status. |
 | Databricks job results | Confirm ingestion and build outcomes separately, for the recorded run identities and selected build scope. |
 
-Fixed report paths can be overwritten by later invocations. Retain dated copies with the code revision and configuration context when preparing evidence, excluding secrets. Task attempts are not exact HTTP request totals. [Validation and evidence](../reference/validation-and-evidence.md) distinguishes local checks, historical cloud records and the execution package still in progress.
+Fixed report paths can be overwritten by later invocations. Retain dated copies with the code revision and configuration context when preparing evidence, excluding secrets. Task attempts are not exact HTTP request totals. [Validation and evidence](../reference/validation-and-evidence.md) distinguishes local checks, historical cloud records and the two reconciled archived executions.
 
 ## 6. Complete a fresh warehouse's generated source
 
