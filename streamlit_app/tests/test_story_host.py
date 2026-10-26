@@ -1,10 +1,10 @@
 """Streamlit request/replay boundaries and the independently bundled story package."""
 
-import hashlib
 import json
 from pathlib import Path
 from unittest.mock import patch
 
+from app_core.snapshot_hash import sha256_file
 from app_core.story_app import ASSETS, SNAPSHOTS
 from streamlit.testing.v1 import AppTest
 
@@ -39,7 +39,7 @@ def test_published_evidence_matches_models_and_contains_no_profile_rows():
     manifest = json.loads((ASSETS / "evidence-manifest.json").read_text())
     for name, expected in manifest["files"].items():
         path = ASSETS / name if name == "public-evidence.json" else ASSETS.parent / "definitions" / name
-        assert hashlib.sha256(path.read_bytes()).hexdigest() == expected
+        assert sha256_file(path, normalize_newlines=True) == expected
     evidence = json.loads((ASSETS / "public-evidence.json").read_text())
     assert len(evidence["families"]) == 25 and len(evidence["components"]) == 8
     assert len(evidence["runs"]) == 2
@@ -47,4 +47,4 @@ def test_published_evidence_matches_models_and_contains_no_profile_rows():
     snapshot = json.loads((SNAPSHOTS / "manifest.json").read_text())
     assert set(snapshot["datasets"]) == {"players", "business_players"}
     for item in snapshot["datasets"].values():
-        assert hashlib.sha256((SNAPSHOTS / item["file"]).read_bytes()).hexdigest() == item["sha256"]
+        assert sha256_file(SNAPSHOTS / item["file"]) == item["sha256"]

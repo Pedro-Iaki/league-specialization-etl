@@ -21,6 +21,7 @@ from app_core.population import (
     reference_fingerprint,
     validate_reference,
 )
+from app_core.snapshot_hash import sha256_file
 
 DEFINITION_VERSION = 'family-audience-segments-v1'
 REFERENCE_FILE = 'audience_segments_reference.json'
@@ -81,7 +82,7 @@ def load_segment_reference() -> dict:
         path = data.DATA_DIR / REFERENCE_FILE
         reference = json.loads(path.read_text(encoding='utf-8'))
         item = data.load_manifest().get('audience_segments_reference', {})
-        if item and item.get('sha256') != hashlib.sha256(path.read_bytes()).hexdigest():
+        if item and item.get('sha256') != sha256_file(path, normalize_newlines=True):
             raise ValueError('Audience segment reference differs from its manifest')
         actual = hashlib.sha256(data.snapshot_paths()['players'].read_bytes()).hexdigest()
         if reference.get('source_profile_sha256') != actual:

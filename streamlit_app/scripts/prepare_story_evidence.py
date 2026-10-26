@@ -1,7 +1,6 @@
 """Prepare public aggregate evidence; no raw logs or player identifiers leave this step."""
 
 import gzip
-import hashlib
 import json
 import re
 import sqlite3
@@ -19,10 +18,15 @@ sys.path.insert(0, str(ROOT / "streamlit_app"))
 # The snapshot module establishes the repository app namespace.
 # isort: split
 from app_core.family_cohort import validate_cohort
+from app_core.snapshot_hash import sha256_file
 
 
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return sha256_file(path)
+
+
+def text_digest(path):
+    return sha256_file(path, normalize_newlines=True)
 
 
 def prepare():
@@ -146,7 +150,9 @@ def prepare():
         "tradeoffs": tradeoffs,
         "runs": runs,
         "lineage": lineage,
-        "family_definition_sha256": digest(ROOT / "streamlit_app/definitions/champion-audience-families-v1.json"),
+        "family_definition_sha256": text_digest(
+            ROOT / "streamlit_app/definitions/champion-audience-families-v1.json"
+        ),
         "family_cohort_sha256": digest(folder / "cohort.json.gz"),
     }
     (HERE / "public-evidence.json").write_text(json.dumps(result, allow_nan=False), encoding="utf8")
@@ -154,9 +160,9 @@ def prepare():
         "prepared_at": "2026-10-25",
         "source": "Reviewed saved family diagnostics and separate October 19/20 execution archives",
         "files": {
-            "public-evidence.json": digest(HERE / "public-evidence.json"),
+            "public-evidence.json": text_digest(HERE / "public-evidence.json"),
             **{
-                name: digest(ROOT / "streamlit_app/definitions" / name)
+                name: text_digest(ROOT / "streamlit_app/definitions" / name)
                 for name in ["champion-audience-families-v1.json", "player-pool-archetypes-v1.json"]
             },
         },

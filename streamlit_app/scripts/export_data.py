@@ -32,6 +32,7 @@ from app_core.family_exports import (
 )
 from app_core.population import load_reference, population_weights, reference_fingerprint
 from app_core.queries import DATASET_QUERIES
+from app_core.snapshot_hash import sha256_file
 
 from src.load.databricks_helper import get_connection
 from src.sample.validation import warehouse_metadata
@@ -151,7 +152,7 @@ def export_snapshots(output_dir: Path, datasets: list[str] | None = None, *, fam
         model_file = output_dir / MODEL_PATH.name
         model_file.write_bytes(MODEL_PATH.read_bytes())
         manifest['pool_archetypes'] = {'file': model_file.name,
-            'file_sha256': hashlib.sha256(model_file.read_bytes()).hexdigest(), **model_metadata(archetype_model)}
+            'file_sha256': sha256_file(model_file, normalize_newlines=True), **model_metadata(archetype_model)}
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest
 

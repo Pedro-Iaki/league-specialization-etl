@@ -5,7 +5,6 @@ Callers must supply the correctly associated player's active champion records.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import re
@@ -15,8 +14,10 @@ from numbers import Integral, Real
 from pathlib import Path
 from types import MappingProxyType
 
+from app_core.snapshot_hash import sha256_file
+
 DEFINITION_PATH = Path(__file__).resolve().parents[1] / 'definitions/champion-audience-families-v1.json'
-DEFINITION_SHA256 = 'fdb8f3eaca472fcf24b749a1d6af60ea74b0d908c1dbcfd831a5339a8029f781'
+DEFINITION_SHA256 = '2ad543a77c0ce09e9d35d3189c656a88becc079df18c0fae2fdcfaa5a463b1db'
 COHORT_ID = 'champion-audience-families-v1'
 METRIC_ID = 'active_pool_lifetime_mastery_family_affinity_v1'
 MINIMUM_MASTERY = 15_000
@@ -98,9 +99,9 @@ def player_family_affinity(members: Iterable[Mapping] | None, definition: Family
 
 
 def load_family_definition(path: Path = DEFINITION_PATH, expected_sha256: str = DEFINITION_SHA256) -> FamilyDefinition:
-    """Load a pinned definition; changing its bytes requires an explicit new identity."""
+    """Load a pinned definition; normalize line endings for a stable identity."""
     content = path.read_bytes()
-    digest = hashlib.sha256(content).hexdigest()
+    digest = sha256_file(path, normalize_newlines=True)
     if digest != expected_sha256:
         raise ValueError('Family definition SHA-256 differs from the expected version.')
     definition = prepare_family_definition(json.loads(content), definition_sha256=digest)

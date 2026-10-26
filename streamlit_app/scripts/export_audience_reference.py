@@ -15,6 +15,7 @@ sys.path.insert(0, str(APP_ROOT))
 from app_core.audience import build_reference
 from app_core.audience_segments import REFERENCE_FILE, build_segment_reference
 from app_core.family_exports import validate_family_frame
+from app_core.snapshot_hash import sha256_file
 
 
 def main() -> None:
@@ -41,7 +42,7 @@ def main() -> None:
     output.write_text(json.dumps(reference, indent=2) + "\n", encoding="utf-8")
     if manifest is not None:
         manifest['audience_segments_reference'] = {
-            'file': output.name, 'sha256': hashlib.sha256(output.read_bytes()).hexdigest(),
+            'file': output.name, 'sha256': sha256_file(output, normalize_newlines=True),
             'definition_version': reference['definition_version'],
         }
         temporary = manifest_path.with_suffix('.tmp')

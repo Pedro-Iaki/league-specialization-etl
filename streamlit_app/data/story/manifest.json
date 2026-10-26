@@ -7,14 +7,14 @@
       "file": "business_players.parquet",
       "rows": 24990,
       "columns": 91,
-      "size_bytes": 6193970,
+      "size_bytes": 6193766,
       "min_as_of_date": "2026-09-29T00:00:00",
       "max_as_of_date": "2026-09-29T00:00:00",
       "min_snapshot_date": "2026-09-16T00:00:00",
       "max_snapshot_date": "2026-09-29T00:00:00",
       "pool_archetypes": {
         "model_id": "player-pool-archetypes-v1",
-        "sha256": "acb9af8f6e530c5694b400a298c451447bc5285eea9bc96213d5d141a2a09bde",
+        "sha256": "50184c78c8c0fb36468334c87978ccd68907427a41786e015ff880938092b481",
         "feature_id": "active_pool_all_lifetime_mastery_coverage_equal_zero_fallback_v1",
         "ids": [
           "A1",
@@ -39,13 +39,13 @@
         "threshold": 0.2,
         "minimum_pool": 4
       },
-      "sha256": "31b0a5cf7927e589bcd0dd45609650f3ba60dea8689d5eb0d0d0c27b73a35786",
+      "sha256": "e5d4778d642ca8957efc56d062fc16ca6ab502f3b5dc57a1ea8522195c5ea6cb",
       "family_affinity": {
         "schema_version": 1,
         "metric_id": "active_pool_lifetime_mastery_family_affinity_v1",
         "metric_version": 1,
         "family_cohort_id": "champion-audience-families-v1",
-        "family_definition_sha256": "fdb8f3eaca472fcf24b749a1d6af60ea74b0d908c1dbcfd831a5339a8029f781",
+        "family_definition_sha256": "2ad543a77c0ce09e9d35d3189c656a88becc079df18c0fae2fdcfaa5a463b1db",
         "family_order": [
           "F01",
           "F02",
@@ -154,14 +154,14 @@
       "file": "player_profiles.parquet",
       "rows": 38403,
       "columns": 98,
-      "size_bytes": 9261220,
+      "size_bytes": 9261012,
       "min_as_of_date": "2026-10-20T00:00:00",
       "max_as_of_date": "2026-10-20T00:00:00",
       "min_snapshot_date": "2026-09-17T00:00:00",
       "max_snapshot_date": "2026-10-20T00:00:00",
       "pool_archetypes": {
         "model_id": "player-pool-archetypes-v1",
-        "sha256": "acb9af8f6e530c5694b400a298c451447bc5285eea9bc96213d5d141a2a09bde",
+        "sha256": "50184c78c8c0fb36468334c87978ccd68907427a41786e015ff880938092b481",
         "feature_id": "active_pool_all_lifetime_mastery_coverage_equal_zero_fallback_v1",
         "ids": [
           "A1",
@@ -186,13 +186,13 @@
         "threshold": 0.2,
         "minimum_pool": 4
       },
-      "sha256": "e1849f09524fc7c9b4e69ad0c76d3b157107fc0326ef33565e8e19ef5948d772",
+      "sha256": "3c180ee917ade8d36c800f29ba335364f0f9ba3d93ff3118efbc3786423f37d5",
       "family_affinity": {
         "schema_version": 1,
         "metric_id": "active_pool_lifetime_mastery_family_affinity_v1",
         "metric_version": 1,
         "family_cohort_id": "champion-audience-families-v1",
-        "family_definition_sha256": "fdb8f3eaca472fcf24b749a1d6af60ea74b0d908c1dbcfd831a5339a8029f781",
+        "family_definition_sha256": "2ad543a77c0ce09e9d35d3189c656a88becc079df18c0fae2fdcfaa5a463b1db",
         "family_order": [
           "F01",
           "F02",
@@ -256,9 +256,9 @@
   },
   "pool_archetypes": {
     "file": "player-pool-archetypes-v1.json",
-    "file_sha256": "d2d84babe82ed79ac008c39326cc013fd2653dbcfcc9425b1e8b21c4bdd6c24f",
+    "file_sha256": "c69d6af87fb9ce5b4a882e4b81f88cee2c87e9871f3837c5415eaeaef2c0a90c",
     "model_id": "player-pool-archetypes-v1",
-    "sha256": "acb9af8f6e530c5694b400a298c451447bc5285eea9bc96213d5d141a2a09bde",
+    "sha256": "50184c78c8c0fb36468334c87978ccd68907427a41786e015ff880938092b481",
     "feature_id": "active_pool_all_lifetime_mastery_coverage_equal_zero_fallback_v1",
     "ids": [
       "A1",
@@ -285,7 +285,7 @@
   },
   "audience_segments_reference": {
     "file": "audience_segments_reference.json",
-    "sha256": "ce84a3f285d20408f0c9cfe6e2a65297a84b7f49bd60374512157c7a3273a31d",
+    "sha256": "d82aebe65f635b10aa4f5d242bd31788423b32d2f411488ca5866ae40899ec37",
     "definition_version": "family-audience-segments-v1"
   }
 }

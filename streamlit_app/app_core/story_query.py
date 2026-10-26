@@ -1,6 +1,5 @@
 """Snapshot-only canonical audience predicates and aggregate summaries for the Streamlit story."""
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -12,6 +11,7 @@ from app_core.config import APP_ROOT
 from app_core.config import REPO_ROOT as ROOT
 from app_core.customer_audiences import prepare_customers
 from app_core.population import effective_sample_size, weighted_quantile
+from app_core.snapshot_hash import sha256_file
 
 IDS = [f"A{i}" for i in range(1, 9)]
 LEVELS = {
@@ -198,7 +198,9 @@ class AudienceEngine:
             ROOT / "streamlit_app/definitions" / n
             for n in ["champion-audience-families-v1.json", "player-pool-archetypes-v1.json"]
         ]
-        self.fingerprints = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
+        self.fingerprints = {
+            p.name: sha256_file(p, normalize_newlines=p.suffix == ".json") for p in paths
+        }
         for name in ["players", "business_players"]:
             entry = self.manifest["datasets"][name]
             if entry.get("sha256") and entry["sha256"] != self.fingerprints[entry["file"]]:
@@ -214,7 +216,7 @@ class AudienceEngine:
         model_path = self.path / "player-pool-archetypes-v1.json"
         if (
             model_entry["file"] != model_path.name
-            or hashlib.sha256(model_path.read_bytes()).hexdigest() != model_entry["file_sha256"]
+            or sha256_file(model_path, normalize_newlines=True) != model_entry["file_sha256"]
         ):
             raise ValueError("Frozen archetype artifact differs from its manifest")
         self.model = load_model(model_path)

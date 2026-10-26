@@ -11,6 +11,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app_core.archetype_serving import load_model, validate_archetypes
 from app_core.config import DATA_DIR
+from app_core.snapshot_hash import sha256_file
 from scripts.export_data import export_snapshots, validate_public_frame
 
 
@@ -44,7 +45,7 @@ def main():
             path.write_text(json.dumps(reference, indent=2)+'\n', encoding='utf8')
             if filename == 'audience_segments_reference.json':
                 manifest['audience_segments_reference'] = {
-                    'file': filename, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                    'file': filename, 'sha256': sha256_file(path, normalize_newlines=True),
                     'definition_version': reference['definition_version']}
     for name, item in manifest['datasets'].items():
         path = output / item['file']

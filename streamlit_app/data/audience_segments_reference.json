@@ -1,6 +1,6 @@
 {
   "definition_version": "family-audience-segments-v1",
-  "source_profile_sha256": "df3c50a63be820da3fdf25f17382cf4a6a0da7461aef30dd73aa8c1408eebf53",
+  "source_profile_sha256": "fb80d7b958c9e46ee03bc60a92582c929e8e0283b7d6052c0d70be87e7467f73",
   "source_profile_count": 38403,
   "as_of_date": "2026-10-20",
   "scope": {
@@ -12,7 +12,7 @@
     "metric_id": "active_pool_lifetime_mastery_family_affinity_v1",
     "metric_version": 1,
     "family_cohort_id": "champion-audience-families-v1",
-    "family_definition_sha256": "fdb8f3eaca472fcf24b749a1d6af60ea74b0d908c1dbcfd831a5339a8029f781",
+    "family_definition_sha256": "2ad543a77c0ce09e9d35d3189c656a88becc079df18c0fae2fdcfaa5a463b1db",
     "family_order": [
       "F01",
       "F02",

@@ -19,18 +19,18 @@
       "file": "business_players.parquet",
       "rows": 24990,
       "columns": 80,
-      "size_bytes": 4923785,
+      "size_bytes": 4923650,
       "min_as_of_date": "2026-09-29T00:00:00",
       "max_as_of_date": "2026-09-29T00:00:00",
       "min_snapshot_date": "2026-09-16T00:00:00",
       "max_snapshot_date": "2026-09-29T00:00:00",
-      "sha256": "38764b33bcf87b171f1c96fc81385cae9ec353d5dc903bbab74700fe4229a054",
+      "sha256": "c91a098fcaddab7c86928fadc4dc5e4357bcdfafbeabecdf1f1eaf27078e42b0",
       "family_affinity": {
         "schema_version": 1,
         "metric_id": "active_pool_lifetime_mastery_family_affinity_v1",
         "metric_version": 1,
         "family_cohort_id": "champion-audience-families-v1",
-        "family_definition_sha256": "fdb8f3eaca472fcf24b749a1d6af60ea74b0d908c1dbcfd831a5339a8029f781",
+        "family_definition_sha256": "2ad543a77c0ce09e9d35d3189c656a88becc079df18c0fae2fdcfaa5a463b1db",
         "family_order": [
           "F01",
           "F02",
@@ -151,18 +151,18 @@
       "file": "player_profiles.parquet",
       "rows": 38403,
       "columns": 87,
-      "size_bytes": 7832925,
+      "size_bytes": 7832794,
       "min_as_of_date": "2026-10-20T00:00:00",
       "max_as_of_date": "2026-10-20T00:00:00",
       "min_snapshot_date": "2026-09-17T00:00:00",
       "max_snapshot_date": "2026-10-20T00:00:00",
-      "sha256": "df3c50a63be820da3fdf25f17382cf4a6a0da7461aef30dd73aa8c1408eebf53",
+      "sha256": "fb80d7b958c9e46ee03bc60a92582c929e8e0283b7d6052c0d70be87e7467f73",
       "family_affinity": {
         "schema_version": 1,
         "metric_id": "active_pool_lifetime_mastery_family_affinity_v1",
         "metric_version": 1,
         "family_cohort_id": "champion-audience-families-v1",
-        "family_definition_sha256": "fdb8f3eaca472fcf24b749a1d6af60ea74b0d908c1dbcfd831a5339a8029f781",
+        "family_definition_sha256": "2ad543a77c0ce09e9d35d3189c656a88becc079df18c0fae2fdcfaa5a463b1db",
         "family_order": [
           "F01",
           "F02",
@@ -289,12 +289,12 @@
   },
   "audience_reference": {
     "file": "audience_reference.json",
-    "sha256": "c328d21d749668c3d71e47c67ceff6a4be69131f3276faca8a3413b983655e4a",
+    "sha256": "0c78679092c4e8d4f99199c4674326cc48f21d8e56cf2f56cb9b6d3a61a39154",
     "status": "Matching legacy paired reference for compatibility; stage04 freezes the wider audience map contract."
   },
   "audience_segments_reference": {
     "file": "audience_segments_reference.json",
-    "sha256": "a619f4815fdbce3ef22e0de7e2056c69a66d4ced94348428bdbff7d5777c8cab",
+    "sha256": "f2cd3f2c0aeb3f2b86e4d625d8bbe8d485bdde4ef3c9c18f2638c80b3e034dd7",
     "definition_version": "family-audience-segments-v1"
   },
   "population_reference_alignment": {

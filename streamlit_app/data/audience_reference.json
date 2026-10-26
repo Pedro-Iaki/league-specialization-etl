@@ -2,7 +2,7 @@
   "definition_version": "active-pool-lifetime-v1",
   "cohort_id": "audience-paired-20261020-v1",
   "band_version": "paired-quintiles-20261020-v1",
-  "source_profile_sha256": "df3c50a63be820da3fdf25f17382cf4a6a0da7461aef30dd73aa8c1408eebf53",
+  "source_profile_sha256": "fb80d7b958c9e46ee03bc60a92582c929e8e0283b7d6052c0d70be87e7467f73",
   "source_profile_count": 38403,
   "cohort_n": 20636,
   "as_of_date": "2026-10-20",

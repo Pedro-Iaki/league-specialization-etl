@@ -12,6 +12,7 @@ from app_core.business import BUSINESS_PUBLIC_COLUMNS
 from app_core.config import DATA_DIR, DATASET_FILES, MANIFEST_PATH, TIER_ORDER
 from app_core.contracts import REQUIRED_COLUMNS
 from app_core.i18n import t
+from app_core.snapshot_hash import sha256_file
 
 
 class DashboardDataError(RuntimeError):
@@ -60,7 +61,7 @@ def _read_snapshot(name: str) -> pd.DataFrame:
         from app_core.archetype_serving import load_model, model_metadata
         entry = load_manifest().get('pool_archetypes', {})
         model_path = DATA_DIR / entry.get('file', 'missing-archetype-model')
-        if (not model_path.is_file() or hashlib.sha256(model_path.read_bytes()).hexdigest() != entry.get('file_sha256')
+        if (not model_path.is_file() or sha256_file(model_path, normalize_newlines=True) != entry.get('file_sha256')
                 or item.get('sha256') != hashlib.sha256(path.read_bytes()).hexdigest()
                 or item.get('pool_archetypes') != model_metadata(load_model(model_path))):
             raise DashboardDataError('Archetype snapshot/model does not match its manifest.')

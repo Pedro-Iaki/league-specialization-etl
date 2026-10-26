@@ -1,12 +1,12 @@
 """Streamlit host for the approved story component and local aggregate queries."""
 
-import hashlib
 import json
 
 import streamlit as st
 import streamlit.components.v1 as components
 
 from app_core.config import APP_ROOT
+from app_core.snapshot_hash import sha256_file
 from app_core.story_localization import host_text, load_catalogs
 from app_core.story_query import AudienceEngine
 
@@ -88,7 +88,7 @@ def load_bootstrap(revision, _engine):
     manifest = json.loads((ASSETS / "evidence-manifest.json").read_text(encoding="utf8"))
     for name, expected in manifest["files"].items():
         path = ASSETS / name if name == "public-evidence.json" else APP_ROOT / "definitions" / name
-        if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+        if sha256_file(path, normalize_newlines=True) != expected:
             raise ValueError(f"Story evidence differs from its publication manifest: {name}")
     bootstrap = _engine.bootstrap()
     bootstrap["localization"] = load_catalogs()

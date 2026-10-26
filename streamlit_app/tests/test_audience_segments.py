@@ -23,6 +23,7 @@ from app_core.audience_segments import (
 )
 from app_core.data import DashboardDataError
 from app_core.family_affinity import affinity_metadata, load_family_definition
+from app_core.snapshot_hash import sha256_file
 
 
 @pytest.fixture
@@ -189,7 +190,7 @@ def test_reference_loader_checks_actual_snapshot_and_manifest(tmp_path, profiles
     reference = build_segment_reference(profiles, hashlib.sha256(file.read_bytes()).hexdigest())
     path = tmp_path / 'audience_segments_reference.json'
     path.write_text(json.dumps(reference), encoding='utf-8')
-    manifest = {'audience_segments_reference': {'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}}
+    manifest = {'audience_segments_reference': {'sha256': sha256_file(path, normalize_newlines=True)}}
     with patch.object(data, 'DATA_DIR', tmp_path), patch.object(data, 'load_manifest', return_value=manifest):
         assert load_segment_reference() == reference
         reference['source_profile_sha256'] = 'wrong'

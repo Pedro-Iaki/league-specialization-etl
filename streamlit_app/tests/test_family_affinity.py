@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import math
 
@@ -20,6 +19,7 @@ from app_core.family_affinity import (
     player_family_affinity,
     prepare_family_definition,
 )
+from app_core.snapshot_hash import sha256_file
 
 
 @pytest.fixture
@@ -193,7 +193,7 @@ def test_frozen_definition_identity_and_versioned_metadata(tmp_path):
     assert definition.cohort_id == COHORT_ID
     assert definition.family_order == tuple(f'F{i:02}' for i in range(1, 26))
     assert len(definition.champion_families) == 173
-    assert definition.sha256 == hashlib.sha256(DEFINITION_PATH.read_bytes()).hexdigest() == DEFINITION_SHA256
+    assert definition.sha256 == sha256_file(DEFINITION_PATH, normalize_newlines=True) == DEFINITION_SHA256
     metadata = affinity_metadata(definition)
     assert metadata['metric_id'] == METRIC_ID and metadata['metric_version'] == 1
     assert metadata['family_order'] == list(definition.family_order)

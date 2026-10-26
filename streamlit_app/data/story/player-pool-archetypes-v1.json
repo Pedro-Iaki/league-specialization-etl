@@ -1,7 +1,7 @@
 {
   "model_id": "player-pool-archetypes-v1",
   "feature_id": "active_pool_all_lifetime_mastery_coverage_equal_zero_fallback_v1",
-  "family_sha256": "fdb8f3eaca472fcf24b749a1d6af60ea74b0d908c1dbcfd831a5339a8029f781",
+  "family_sha256": "2ad543a77c0ce09e9d35d3189c656a88becc079df18c0fae2fdcfaa5a463b1db",
   "family_order": [
     "F01",
     "F02",
