@@ -15,7 +15,7 @@ from app_core.i18n import LANGUAGE_KEY, TERMINOLOGY_KEY
 from app_core.story import STORY_PAGES
 from streamlit.testing.v1 import AppTest
 
-APP = Path(__file__).resolve().parents[1] / 'app.py'
+APP = Path(__file__).resolve().parents[1] / 'legacy_app.py'
 
 
 @pytest.fixture

@@ -19,6 +19,7 @@ For an engineering review, follow architecture into engineering decisions and va
 | I want to… | Read |
 |---|---|
 | View the bundled result locally without infrastructure credentials | [Run the dashboard](guides/run-the-dashboard.md) |
+| Maintain the Portuguese and English story catalogs | [Story translation guide](../streamlit_app/story_component/locales/README.md) |
 | Prepare services and operate collection and warehouse delivery | [Run the pipeline](guides/run-the-pipeline.md) |
 | Export, check and replace the local serving snapshot | [Refresh dashboard data](guides/refresh-dashboard-data.md) |
 | Explore full and anchored champion families locally | [Character family laboratory](guides/explore-character-families.md) |

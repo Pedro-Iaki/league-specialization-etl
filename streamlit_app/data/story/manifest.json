@@ -1,0 +1,291 @@
+{
+  "exported_at_utc": "2026-10-24T05:30:04.216051+00:00",
+  "source": "league_pipeline.gold",
+  "privacy": "Player and interval identifiers excluded from public extracts.",
+  "datasets": {
+    "business_players": {
+      "file": "business_players.parquet",
+      "rows": 24990,
+      "columns": 91,
+      "size_bytes": 6193970,
+      "min_as_of_date": "2026-09-29T00:00:00",
+      "max_as_of_date": "2026-09-29T00:00:00",
+      "min_snapshot_date": "2026-09-16T00:00:00",
+      "max_snapshot_date": "2026-09-29T00:00:00",
+      "pool_archetypes": {
+        "model_id": "player-pool-archetypes-v1",
+        "sha256": "acb9af8f6e530c5694b400a298c451447bc5285eea9bc96213d5d141a2a09bde",
+        "feature_id": "active_pool_all_lifetime_mastery_coverage_equal_zero_fallback_v1",
+        "ids": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "A5",
+          "A6",
+          "A7",
+          "A8"
+        ],
+        "names": [
+          "Bruisers And Tanks",
+          "Mages And Enchanters",
+          "ADCs",
+          "Assassins And Duelists",
+          "Front-Line Disablers",
+          "Control Mages",
+          "Burst Mages",
+          "Aggressive Junglers"
+        ],
+        "threshold": 0.2,
+        "minimum_pool": 4
+      },
+      "sha256": "31b0a5cf7927e589bcd0dd45609650f3ba60dea8689d5eb0d0d0c27b73a35786",
+      "family_affinity": {
+        "schema_version": 1,
+        "metric_id": "active_pool_lifetime_mastery_family_affinity_v1",
+        "metric_version": 1,
+        "family_cohort_id": "champion-audience-families-v1",
+        "family_definition_sha256": "fdb8f3eaca472fcf24b749a1d6af60ea74b0d908c1dbcfd831a5339a8029f781",
+        "family_order": [
+          "F01",
+          "F02",
+          "F03",
+          "F04",
+          "F05",
+          "F06",
+          "F07",
+          "F08",
+          "F09",
+          "F10",
+          "F11",
+          "F12",
+          "F13",
+          "F14",
+          "F15",
+          "F16",
+          "F17",
+          "F18",
+          "F19",
+          "F20",
+          "F21",
+          "F22",
+          "F23",
+          "F24",
+          "F25"
+        ],
+        "minimum_mastery": 15000,
+        "denominator": "All lifetime mastery within the full model-selected active pool",
+        "attribution": "Full membership in every containing family; coordinates are not additive",
+        "membership_source": "fct_players_champion_activity.is_recent_pool_champion",
+        "weight_source": "fct_masteries_current.champion_points",
+        "date_basis": "Model active membership as of its observation; lifetime points at their retained snapshot. Exporter must record actual source/as-of/snapshot dates.",
+        "tie_atol": 1e-12,
+        "tie_rtol": 0,
+        "weighting_fallback": false,
+        "null_vector_states": [
+          "no_active_pool",
+          "insufficient_mastery",
+          "unmapped_pool",
+          "unavailable_pool"
+        ]
+      },
+      "private_association": {
+        "method": "Actual player key; family fields calculated before anonymous projection",
+        "profile_rows_validated_unique": 38403,
+        "business_join": "player_id + queue; frozen traits retained, current traits prefixed audience_"
+      },
+      "min_audience_as_of_date": "2026-10-20T00:00:00",
+      "max_audience_as_of_date": "2026-10-20T00:00:00",
+      "min_audience_snapshot_date": "2026-09-17T00:00:00",
+      "max_audience_snapshot_date": "2026-10-20T00:00:00",
+      "current_audience_matched_rows": 24990,
+      "date_interpretation": "Current audience traits attached to older frozen synthetic purchases; not historical preferences.",
+      "scenario": {
+        "as_of_date": "2026-09-29",
+        "cash_spent_usd_alltime": "7439491.86",
+        "cohort_fingerprint": "94f8adc25f33f1553a5e7b3f9d357c9c714c05fd4d1928700ffc82c61b5d35d6",
+        "cohort_policy": "all complete current ranked profiles at one as-of date; no row cap",
+        "config_fingerprint": "9d212a7ad4aec2d2033c1d8d2139f3109f24e095cee4c632b76a119c99dd413e",
+        "fiat_transaction_count": 447282,
+        "generator_seed": 42,
+        "generator_version": "1.2",
+        "history_end_at": "2026-09-29T23:59:51+00:00",
+        "history_start_at": "2018-10-02T00:38:39+00:00",
+        "max_snapshot_date": "2026-09-29",
+        "min_snapshot_date": "2026-09-16",
+        "observed_optional_feature_counts": {
+          "games_per_day_recent": 1074,
+          "ranked_mastery_share": 1066
+        },
+        "optional_real_features": [
+          "games_per_day_recent",
+          "ranked_mastery_share"
+        ],
+        "player_count": 24990,
+        "provenance": "Purchase history and spending patterns are synthetic; frozen player metrics are real Riot API data.",
+        "purchase_window_end": "2026-09-29",
+        "purchase_window_start": "2026-08-01",
+        "queue": "RANKED_SOLO_5x5",
+        "ranked_share_source": "median valid observed ranked-mastery estimate; null when unobserved; optional for eligibility",
+        "required_real_features": [
+          "player_id",
+          "region",
+          "queue",
+          "tier",
+          "main_role",
+          "active_playstyle",
+          "snapshot_date",
+          "as_of_date",
+          "active_primary_champion_key",
+          "active_primary_champion_name",
+          "active_top1_share",
+          "active_normalized_entropy",
+          "champions_with_mastery",
+          "total_mastery_points",
+          "alltime_top1_share"
+        ],
+        "scenario_id": "business-8bd0372374d1daa4f5859fab",
+        "source": "league_pipeline.gold.mart_player_profile + mart_player_delta_history",
+        "top1_champion_share_source": "mart_player_profile.active_top1_share",
+        "transaction_count": 3900172
+      }
+    },
+    "players": {
+      "file": "player_profiles.parquet",
+      "rows": 38403,
+      "columns": 98,
+      "size_bytes": 9261220,
+      "min_as_of_date": "2026-10-20T00:00:00",
+      "max_as_of_date": "2026-10-20T00:00:00",
+      "min_snapshot_date": "2026-09-17T00:00:00",
+      "max_snapshot_date": "2026-10-20T00:00:00",
+      "pool_archetypes": {
+        "model_id": "player-pool-archetypes-v1",
+        "sha256": "acb9af8f6e530c5694b400a298c451447bc5285eea9bc96213d5d141a2a09bde",
+        "feature_id": "active_pool_all_lifetime_mastery_coverage_equal_zero_fallback_v1",
+        "ids": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "A5",
+          "A6",
+          "A7",
+          "A8"
+        ],
+        "names": [
+          "Bruisers And Tanks",
+          "Mages And Enchanters",
+          "ADCs",
+          "Assassins And Duelists",
+          "Front-Line Disablers",
+          "Control Mages",
+          "Burst Mages",
+          "Aggressive Junglers"
+        ],
+        "threshold": 0.2,
+        "minimum_pool": 4
+      },
+      "sha256": "e1849f09524fc7c9b4e69ad0c76d3b157107fc0326ef33565e8e19ef5948d772",
+      "family_affinity": {
+        "schema_version": 1,
+        "metric_id": "active_pool_lifetime_mastery_family_affinity_v1",
+        "metric_version": 1,
+        "family_cohort_id": "champion-audience-families-v1",
+        "family_definition_sha256": "fdb8f3eaca472fcf24b749a1d6af60ea74b0d908c1dbcfd831a5339a8029f781",
+        "family_order": [
+          "F01",
+          "F02",
+          "F03",
+          "F04",
+          "F05",
+          "F06",
+          "F07",
+          "F08",
+          "F09",
+          "F10",
+          "F11",
+          "F12",
+          "F13",
+          "F14",
+          "F15",
+          "F16",
+          "F17",
+          "F18",
+          "F19",
+          "F20",
+          "F21",
+          "F22",
+          "F23",
+          "F24",
+          "F25"
+        ],
+        "minimum_mastery": 15000,
+        "denominator": "All lifetime mastery within the full model-selected active pool",
+        "attribution": "Full membership in every containing family; coordinates are not additive",
+        "membership_source": "fct_players_champion_activity.is_recent_pool_champion",
+        "weight_source": "fct_masteries_current.champion_points",
+        "date_basis": "Model active membership as of its observation; lifetime points at their retained snapshot. Exporter must record actual source/as-of/snapshot dates.",
+        "tie_atol": 1e-12,
+        "tie_rtol": 0,
+        "weighting_fallback": false,
+        "null_vector_states": [
+          "no_active_pool",
+          "insufficient_mastery",
+          "unmapped_pool",
+          "unavailable_pool"
+        ]
+      },
+      "population_reference": {
+        "sha256": "942b37f83a6351771ddeace1c5c16cad5a908626ee9d6878e14be580f80f182c",
+        "versions": [
+          "2026-10-10-v2-provenance"
+        ],
+        "weighting": "Individual-tier calibration on the unfiltered profile scope"
+      },
+      "private_association": {
+        "method": "Actual player key; family fields calculated before anonymous projection",
+        "profile_rows_validated_unique": 38403,
+        "business_join": "player_id + queue; frozen traits retained, current traits prefixed audience_"
+      },
+      "min_mastery_source_min_snapshot_date": "2026-09-17T00:00:00",
+      "max_mastery_source_min_snapshot_date": "2026-10-20T00:00:00",
+      "min_mastery_source_max_snapshot_date": "2026-09-17T00:00:00",
+      "max_mastery_source_max_snapshot_date": "2026-10-20T00:00:00"
+    }
+  },
+  "pool_archetypes": {
+    "file": "player-pool-archetypes-v1.json",
+    "file_sha256": "d2d84babe82ed79ac008c39326cc013fd2653dbcfcc9425b1e8b21c4bdd6c24f",
+    "model_id": "player-pool-archetypes-v1",
+    "sha256": "acb9af8f6e530c5694b400a298c451447bc5285eea9bc96213d5d141a2a09bde",
+    "feature_id": "active_pool_all_lifetime_mastery_coverage_equal_zero_fallback_v1",
+    "ids": [
+      "A1",
+      "A2",
+      "A3",
+      "A4",
+      "A5",
+      "A6",
+      "A7",
+      "A8"
+    ],
+    "names": [
+      "Bruisers And Tanks",
+      "Mages And Enchanters",
+      "ADCs",
+      "Assassins And Duelists",
+      "Front-Line Disablers",
+      "Control Mages",
+      "Burst Mages",
+      "Aggressive Junglers"
+    ],
+    "threshold": 0.2,
+    "minimum_pool": 4
+  },
+  "audience_segments_reference": {
+    "file": "audience_segments_reference.json",
+    "sha256": "ce84a3f285d20408f0c9cfe6e2a65297a84b7f49bd60374512157c7a3273a31d",
+    "definition_version": "family-audience-segments-v1"
+  }
+}

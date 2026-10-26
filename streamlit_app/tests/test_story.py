@@ -19,7 +19,7 @@ from app_core.story_analysis import (
 )
 from streamlit.testing.v1 import AppTest
 
-APP = Path(__file__).resolve().parents[1] / "app.py"
+APP = Path(__file__).resolve().parents[1] / "legacy_app.py"
 
 
 @pytest.mark.parametrize("language", ["EN", "PT"])

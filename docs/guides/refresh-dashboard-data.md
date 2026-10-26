@@ -1,5 +1,29 @@
 # Refresh dashboard data
 
+The default seven-chapter story reads `streamlit_app/data/story`. The previous
+interface in `legacy_app.py` continues to read the original `streamlit_app/data`.
+The instructions below describe export and validation boundaries for both; choose
+the intended package explicitly rather than replacing both during a UI change.
+
+For a new story snapshot, export to an isolated candidate directory with
+`--pool-archetypes` (which implies family enrichment), including `players` and
+`business_players`. Keep the frozen scenario and keyed enrichment rules described
+below. After validation, install the two Parquets, their complete matching
+`audience_segments_reference.json`, `player-pool-archetypes-v1.json` and
+`manifest.json` together under `streamlit_app/data/story`, retaining a rollback
+copy. A full exporter manifest may contain additional datasets; the story consumes
+only these two. Restart Streamlit and verify counts, original behavioral weights,
+customer cash and the guided/custom comparisons. Rendering never performs this
+export or refits the model. The shipped story package was copied from the validated
+October 24 archetype candidate, retaining the original Parquet bytes and scenario.
+
+The public family/run evidence is a separate dated publication under
+`streamlit_app/story_component`. Refresh it offline with
+`scripts/prepare_story_evidence.py` only when its reviewed source archives change;
+do not substitute raw logs or databases. Its checksum manifest pins both adopted
+definitions and the sanitized evidence file. It does not claim those historical
+runs produced every row of a later story snapshot.
+
 [Documentation index](../README.md) · [Run the pipeline](run-the-pipeline.md) · [Run the dashboard](run-the-dashboard.md)
 
 The dashboard reads local Parquet files. Refreshing them is a manual export from warehouse models, followed by review and replacement of the serving snapshot. Collection, a successful dbt build and restarting Streamlit do not perform that export.

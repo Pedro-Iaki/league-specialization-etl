@@ -22,6 +22,60 @@ Inspect [configuration validation](../../src/pydantic_models.py), [dbt schema te
 
 ## Inspectable serving snapshot
 
+The default Streamlit entry point now serves the approved seven-chapter v2 story.
+Its separate [story manifest](../../streamlit_app/data/story/manifest.json) registers
+the archetype-enriched behavioral and customer snapshots from the validated October
+24 candidate: **38,403 profiles**, **13,348 scored archetype profiles**, **17,765 empty
+pools**, **7,290 below-minimum pools**, and the unchanged **24,990-member** simulated
+scenario with **6,790 purchasers** and **USD 283,693.66** in the cash window. Guided
+profile counts remain 2,109/3,107 (frequency), 2,817/3,883 (standing), 2,357/2,736
+(primary interests), and 2,430/1,026 (Single/Blend). These are snapshot diagnostics,
+not constants enforced on future exports.
+
+The component assets contain only presentation and sanitized saved evidence.
+`app_core/story_query.py` applies the canonical predicates to local Python frames;
+Streamlit sends aggregates through its component bridge. No warehouse, local-lab
+directory, run database or sandbox HTTP service is required to view the shipped
+story. Public evidence and adopted definitions are pinned by
+`story_component/evidence-manifest.json`. The earlier source-validation work and its
+interpretation limits remain applicable. `legacy_app.py` preserves the prior
+interface against its original snapshots. The October 23 validation below describes
+that legacy package and remains historical evidence.
+
+The October 25 Streamlit migration passed **98 focused analytical, component-host,
+offline-loading and legacy rendering tests**. A final **12-test** query/host recheck
+also passed after formatting. The actual Streamlit component passed **90 browser
+states** across desktop/mobile widths and Plain/Precise terminology, including all
+guided options, compound and expressed-interest filters, Apply/pending edits,
+purchase carry, dropdown keyboard behavior, disclosure persistence, invalid-query
+recovery and delayed responses. JavaScript syntax, new Python lint, package hashes
+and lack of raw Parquet exposure over HTTP were checked. The legacy entry matches
+the previous app and all 95 original sandbox backup files are unchanged. Existing
+legacy explorer checks emit pandas categorical deprecation warnings; they did not
+fail. These are local acceptance results, not public deployment or load testing.
+
+The initial localization preparation centralized 450 English messages and
+provided an identical-key empty PT-BR draft, initially publishing only English.
+Catalog/schema, placeholder, fallback, escaping, plural,
+default-publication and Intl formatting checks passed within a 24-test focused
+query/host/localization run. The existing 90-state browser sweep passed after
+extraction; 28 additional synthetic-locale states verified copy coverage and
+desktop/mobile layout, selection/disclosure/scroll preservation, no query on locale
+change and switching during an in-flight comparison. Physical scrolling checks
+passed all seven chapters at both widths. These initial checks prepared translation;
+pseudo-localization alone does not establish Portuguese wording quality.
+
+The subsequent Portuguese publication supplies all 450 translated messages and
+makes PT-BR the default, with English selectable in the header. The 24 focused
+tests passed against the published catalogs. Actual Portuguese browser checks
+cover 28 chapter/width/terminology states, selection and pending-edit preservation,
+switching during a query, and untranslated-source-message detection. Physical
+wheel scrolling and footer reach passed all seven chapters at both widths;
+PageDown and navigation reset also passed. Display labels were reviewed for
+Portuguese meaning and diagram fit. This is local implementation review, not an
+independent professional translation review. Analytical IDs, source evidence,
+model artifacts, predicates and scenario amounts are unchanged.
+
 The current [manifest](../../streamlit_app/data/manifest.json) records the family-enriched export on **October 23, 2026, 11:06:08 UTC**. Its **38,403 profiles are as of October 20**, with retained player snapshots spanning September 17–October 20. The **24,990-customer scenario stays frozen at September 29**; its purchase window is August 1–September 29 inclusive. All customers were associated with current audience context by actual private player key and queue before anonymous projection. Later context is not evidence of purchase-date preference or prediction.
 
 | Dataset | Rows | Columns |
@@ -176,9 +230,13 @@ labels without changing selected memberships or source evidence. These are local
 implementation and artifact checks; this step ran no new discovery/bootstrap,
 cloud build or serving refresh.
 
-## Execution evidence still in progress
+## Recorded execution evidence
 
-The local execution showcase is being packaged under ignored `data/evidence/`. The reviewed inspection found blank start/finish/result fields in the dated run-context record and a separate timing record with no start time and exit code 1. Console logs were present but were not authenticated as one complete successful representative run. These artifacts are not public proof of end-to-end success, and separate timing output must not be assigned to a dated folder without matching identity.
+Read-only inspection on October 25, 2026 reconciled two local archives under ignored `data/evidence/`. Each console records 12 completed rounds and four completed ingestion/build cycles. The October 19 archive also contains 12 successful round reports, 4,920 reported player-refresh operations and an archived SQLite ledger. Its timer records exit code 0 and 16,520.49 seconds, but has no start timestamp. The October 20 archive's timer and console timestamps align: 03:05:49–07:44:35 UTC, exit code 0 and 16,725.88 seconds. These durations cover whole invocations, including collection, pacing and cloud waits; they are not extraction-throughput measurements.
+
+The October 20 context file had copied October 19 details. It was corrected using its own console, timing, commit, Python and working-tree captures; the original text remains alongside it. Historical environment overrides, complete initial backlog and cold/warm compute state were not captured independently. The two archives remain separate: October 19's round report and ledger must not be assigned to October 20. Successful recorded execution is supported within that scope, without claiming that every retained source or dashboard row has been traced to these runs.
+
+The local dashboard-story sandbox exposes sanitized run timelines and one linked task/compaction/load example from the October 19 ledger. Family evidence similarly uses exact saved source matrices and member-fit summaries; these selection diagnostics are not independent held-out validation. The sandbox is a separate local preview; the bundled production Streamlit presentation has not been migrated.
 
 A live injected failure followed by successful retry has not been demonstrated; failure/retry behavior is covered by tests. This distinction does not create a requirement for a new collection campaign. Task-attempt counts are not exact HTTP request totals, and an ETA based on 50 requests per minute is an assumption rather than measured sustained performance.
 

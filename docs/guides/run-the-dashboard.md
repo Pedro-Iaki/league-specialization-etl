@@ -44,61 +44,64 @@ On a POSIX shell:
 .venv/bin/python -m streamlit run streamlit_app/app.py
 ```
 
-Open the local URL printed by Streamlit. Keep the terminal running while browsing, and press `Ctrl+C` there to stop the server. Launching `app.py` provides the shared navigation and language control; individual page files are not the intended starting point.
+Open the local URL printed by Streamlit. Keep the terminal running while browsing, and press `Ctrl+C` there to stop the server. Launching `app.py` opens the new seven-chapter story. Its approved controls and diagrams run in a bundled Streamlit component; Python handles the audience queries through Streamlit. No separate sandbox HTTP server, Node build, warehouse connection or credentials are needed.
 
-## 3. Follow the story, then inspect the data
+## 3. Follow the story
 
-Start with **The story**. Its current sequence is:
+1. **Purpose** introduces the observed behavior, interpreted audiences and simulated purchases.
+2. **Activity** distinguishes accumulated play, competitive frequency and retained history.
+3. **Standing** adds competitive context and the saved reference distribution.
+4. **Interests** compares the eight frozen player-pool archetypes and their mixtures, with underlying family evidence available to inspect.
+5. **Combine** constructs shared conditions and independent A/B audiences. Horizontal bars and the archetype grid allow multiple selections; dropdowns cover expression, evidence and inferred role. Collapsing a section keeps its filters active.
+6. **Purchases** applies the same audience predicates to already-associated simulated customer rows. It shows purchaser participation, cash per purchaser, purchase frequency and the cosmetic share of content purchases.
+7. **Engineering** links the architecture, design decisions, saved family diagnostics and separate recorded execution timelines to their sources.
 
-1. **The audience question** — purpose, a genuine audience-map preview, observed traits versus synthetic purchases, and a compact source-to-reporting flow.
-2. **Activity and engagement** — accumulated activity versus recorded ranked volume, fixed ranges, optional estimated-hour labels and a retained-history lens.
-3. **Rank and activity** — activity shares within Lowest/Medium/High/Highest rank groups, saved reference percentages, ranked-volume and retained-history filters, and axis inversion.
-4. **Character interests** - adopted families, primary-label coverage, a selectable affinity/primary map, inferred-type comparisons and optional focus/breadth detail.
-5. **Audiences and customers** - synthetic purchaser share, cash per purchaser and customer-versus-cash composition by primary family, with one current audience refinement at a time.
-6. **Engineering and evidence** — the source-to-reporting flow, concrete design decisions, current coverage, snapshot dates and verification limits.
+The question dropdown opens two comparison cards in place of the overview. Guided adjustments keep their shared parent context. Ordinary chapter changes reset the question; moving from Combine directly to Purchases carries the **last applied** definition. Builder edits remain pending until **Apply comparison**. Multiple choices within a field use OR; fields and shared conditions use AND. Empty selections are unrestricted, including unavailable values. A/B may overlap; the intersection is reported explicitly.
 
-**The audience question** is the default landing page. All six chapters implement the audience-first direction. The new views require a matching family-enriched profile export and `audience_segments_reference.json`, described in [refresh dashboard data](refresh-dashboard-data.md). An older bundled package shows an availability note and preserves navigation rather than inventing bands or substituting the narrower paired cohort. The coherent bundled package includes these inputs; restore them together when replacing a snapshot.
+**Linguagem simples / Termos precisos** (Plain language / Precise terms) changes labels while preserving selections. The story opens in Brazilian Portuguese. Use **Idioma / Language**, beside the terminology selector, to switch between **Português (BR)** and **English**. Switching preserves the current question, applied audience, pending edits and open details. Numbers and dates follow the selected locale; monetary amounts remain USD. The [translation guide](../../streamlit_app/story_component/locales/README.md) covers catalog maintenance. Linked source documentation and downloaded diagnostic evidence retain their original language. Legacy language controls are unchanged.
 
-Use **Explore the data** for a more detailed question:
+Activity and standing charts, maps and builder bars hide categories that contain
+no profiles in either complete behavioral or customer population. The displayed
+categories stay fixed when filtering; a future snapshot automatically restores
+populated zero/unknown categories. Internal states and denominators are retained.
 
-| Page | Use it to inspect |
-|---|---|
-| Population | Audience composition, character focus and activity context. |
-| Specialization and rank | Focus, rank and window comparisons. |
-| Cross-champion | Differences and shared audiences across characters. |
-| Champion Explorer | One character's audience in more depth. |
-| Population Estimates | Sample/adjusted comparisons, support diagnostics, standardization and downloads. |
-| Business sample | Generated spending, simulated tenure, cosmetic acquisition and discounts. |
+The approved layout is maintained in [story_component](../../streamlit_app/story_component). [story_query.py](../../streamlit_app/app_core/story_query.py) owns the canonical predicates, original population weights, support checks, summaries and integer-cent customer reporting. Streamlit sends only aggregate summaries and sanitized evidence to the component. All profiles remain in Python memory.
 
-The optional **Local laboratory** section appears when its separate local membership export is available. **Character families** provides discovery controls, family naming, stability checks, overlapping assignment review and scenario save/load. **Full Family Sweep** collects alternatives from shared global Leiden ensembles. **Anchored Family Sweep** runs independent character-centered searches in configurable local neighborhoods, with neighborhood rebuilding during player-bootstrap evaluation. **Family cohort builder** compares scenarios and sweep libraries, supports manual family/member selection, character resolution, coverage/overlap diagnostics and separate cohort save/load. See [Explore character families locally](explore-character-families.md) for setup and interpretation. These pages do not change the six story chapters or adopt exploratory groups as a taxonomy.
+### Keep using the previous interface
 
-The **EN / PT** language control supports English and Brazilian Portuguese. All six story pages also have an independent **Plain language / League terms** control. Both preferences survive story navigation; changing terminology changes wording, not the data. Explorer pages retain their current terminology: champion means character, tier means rank, and mastery is a cumulative activity score. That score is neither hours nor an exact match count.
+The original story, analytical explorers and optional local laboratories remain runnable:
 
-Page 1 previews an audience map and explains the route from observed behavior to reporting. Page 2 contrasts accumulated activity with recorded ranked volume on the complete profile base. Missing family, type or focus evidence does not remove players. Bands and individual-tier weights are frozen before filtering; counts and support belong in methods and hovers rather than headline audience-size claims.
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run streamlit_app/legacy_app.py --server.port 8502
+```
 
-Page 3 answers **P(activity band | rank group)** within any selected ranked-volume/history lens. Each rank group's shares total 100% before sparse cells are hidden. The 0–100% color scale and underlying score cuts stay fixed. **Put rank groups across the chart** transposes the same estimates; it does not change their denominator. The methods expander offers chart data, aggregate CSV, individual-tier support and the actual selected-audience rank mix when filters apply.
+This preserves the previous six chapters, EN/PT controls and explorer pages. It reads the original `streamlit_app/data` package. The new default story independently reads `streamlit_app/data/story`; switching the entry point does not replace the legacy files or trigger an export.
 
-Rank labels retain the saved October 10, 2026 NA solo/duo reference: Lowest 42.03% (Iron–Silver), Medium 41.16% (Gold–Platinum), High 12.34% (Emerald), Highest 4.47% (Diamond–Challenger). The reference is attributed to [OP.GG tier statistics](https://op.gg/lol/statistics/tiers); it is distinct from the filtered audience's composition. Challenger's 0.02% has no observations; the Highest group's observed behavior covers 4.45 reference percentage points, including sparsely observed Grandmaster. These are cross-sectional comparisons, not evidence of climbing speed or a specialization effect.
+### Evidence preparation and verification
 
-Optional hour equivalents use mastery / 1,200, assuming 600 points per match and 30 minutes per match. This changes labels, not band membership, and does not measure actual hours. The optional retained-history marker is a lower bound from positive-mastery champion last-play timestamps, not account creation or tracking duration. See [audience segments](../reference/audience-segments.md) for the exact cuts, denominator and suppression contracts.
+The story ships sanitized saved family matrices, frozen component explanations, threshold tradeoffs and two separate execution summaries. Viewing these needs no local research archives or run databases. Maintainers with those source archives can reproduce the publication offline:
 
-Page 4 uses the frozen 25-family definition rather than a leading-character surrogate. The overview shows five primary families, Other families, Shared top and missing-evidence states. **Choose a character family** searches all families by ID and character examples, then shows its actual members. The map defaults to **Mean affinity** among scored pools; **Primary share** instead uses everyone in a cell, including tied and missing states. Each tile exposes scoring coverage and its own support in the hover. The original activity/rank geometry, tier weights and engagement/history filters remain fixed.
+```powershell
+.\.venv\Scripts\python.exe streamlit_app/scripts/prepare_story_evidence.py
+```
 
-The inferred-type comparison shows the selected unique-primary audience versus all unique-primary audiences. Plain wording uses A-E; League wording uses Top/Jungle/Middle/Bottom/Support. Both views disclose known-type coverage. The profile adds supported medians of activity, ranked games, top affinity and the top-versus-next gap, with rank context. No minimum gap forces a different assignment. The collapsed optional lens starts Off and offers all four whole-history focus classes or scored-pool/positive-family breadth. Positive-family breadth overlaps and does not count independent interests; character counts inside a family are unavailable in the exported rows. Methods include complete tables and aggregate CSV downloads. See [audience segments](../reference/audience-segments.md) and the [family definition](../reference/character-family-cohort.md).
+This script verifies source hashes and numerical diagnostics before writing `story_component/public-evidence.json` and its publication manifest. It does not run during rendering or discover/refit families. Do not copy raw logs or the archived ledger into component assets.
 
-Page 5 keeps the existing synthetic purchase scenario and uses the already attached current audience fields. It starts with three complementary family charts: purchaser share (including nonbuyers), cash per purchaser and profile share versus cash share. Ordering uses the six largest primary families in the complete scenario before filters, with Other families, Shared top and missing-evidence states retained. **Refine the scenario audience** chooses one activity, ranked-volume, rank or inferred-type range at a time. These use the same fixed behavioral definitions as the earlier chapters, without applying gameplay population weights to customer cash.
+Focused analytical and host checks:
 
-The purchase window and original frozen profile date remain separate from the later current-audience cutoff. Current families are not historical purchase preferences or predictors. A prominent simulation marker, chart captions and the provenance expander explain the editable generator assumptions and cash-counted-once rule. Cash is summed in integer cents. Displayed purchaser shares require 30 profiles, and cash per purchaser requires 30 purchasers; zero purchasers leave the latter undefined. Sparse values stay in denominators and raw aggregate downloads. The methods expander provides the complete selected family summary and CSV. See [synthetic transactions](../wiki/simulated-transactions.md) for the source and interpretation contract.
+```powershell
+.\.venv\Scripts\python.exe -m pytest streamlit_app/tests/test_story_query.py streamlit_app/tests/test_story_host.py -q
+```
 
-Page 6 connects API/task state, Bronze/Silver/Gold, private audience export and local reporting. Expand individual decisions for their maintained public contracts, or inspect the manifest inventory and coverage boundaries. The competitive-growth extracts remain separate explorer evidence rather than a causal conclusion to the audience story.
+For the real-browser regression sweep, run the new app on port 8510 and Edge with its existing debugging endpoint at `127.0.0.1:9251`, then run `streamlit_app/tests/browser_story.py`. This checks the actual Streamlit component, not the sandbox viewer. Local reports/screenshots go under the ignored `sandbox/streamlit_story_validation.tmp` directory. Browser verification uses the existing development environment; browser tooling is not a dashboard runtime dependency.
 
 ## 4. Read dates and support alongside results
 
-The app reads files under [streamlit_app/data](../../streamlit_app/data). The [manifest](../../streamlit_app/data/manifest.json) records `exported_at_utc`, dataset counts and available analytical dates, plus generated-scenario metadata. An export date and a profile's analytical date have different meanings, and profiles can use older latest-known observations.
+The default story reads [streamlit_app/data/story](../../streamlit_app/data/story). Its [manifest](../../streamlit_app/data/story/manifest.json) records `exported_at_utc`, dataset counts and available analytical dates, plus generated-scenario metadata. An export date and a profile's analytical date have different meanings, and profiles can use older latest-known observations.
 
 The bundled result stays frozen until an operator exports again. Restarting Streamlit, changing a filter or running a warehouse build does not refresh those files. Selective exports can also leave different datasets with different freshness. The [evidence reference](../reference/validation-and-evidence.md#inspectable-serving-snapshot) records the inspected snapshot.
 
-Explorer controls can change the cohort, window and estimator. A filtered weighted audience is different from a directly standardized mean; unsupported outcomes are different from zero outcomes. Use [understanding the analysis](../wiki/understanding-the-analysis.md) for the reading guide and [population adjustment](../reference/population-adjustment.md) for the exact methods. The Business sample's commercial relationships remain fictional under every filter.
+Explorer controls can change the cohort, window and estimator. A filtered weighted audience is different from a directly standardized mean; unsupported outcomes are different from zero outcomes. Use [understanding the analysis](../wiki/understanding-the-analysis.md) for the reading guide and [population adjustment](../reference/population-adjustment.md) for the exact methods. The simulated commercial relationships remain designed assumptions under every filter.
 
 ## Troubleshoot the local launch
 

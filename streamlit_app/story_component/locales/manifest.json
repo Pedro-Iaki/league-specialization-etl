@@ -1,0 +1,20 @@
+{
+  "defaultLocale": "pt-BR",
+  "locales": [
+    {
+      "id": "en",
+      "label": "English",
+      "formatLocale": "en-US",
+      "status": "ready",
+      "file": "en.json"
+    },
+    {
+      "id": "pt-BR",
+      "label": "Português (BR)",
+      "formatLocale": "pt-BR",
+      "status": "ready",
+      "file": "pt-BR.json"
+    }
+  ],
+  "fallbackLocale": "en"
+}

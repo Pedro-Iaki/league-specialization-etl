@@ -15,6 +15,7 @@ APP_ROOT = Path(__file__).resolve().parents[1]
     "relative_path",
     [
         "app.py",
+        "legacy_app.py",
         "overview.py",
         "pages/1_Overall_Analysis.py",
         "pages/2_Champion_Explorer.py",

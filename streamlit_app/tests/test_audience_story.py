@@ -17,7 +17,7 @@ from app_core.segment_presentation import audience_map_figure
 from app_core.story import STORY_PAGES
 from streamlit.testing.v1 import AppTest
 
-APP = Path(__file__).resolve().parents[1] / 'app.py'
+APP = Path(__file__).resolve().parents[1] / 'legacy_app.py'
 
 
 @pytest.fixture

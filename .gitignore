@@ -251,6 +251,7 @@ sandbox/Plots/
 !/streamlit_app/data/growth_players.parquet
 !/streamlit_app/data/player_profiles.parquet
 !/streamlit_app/data/ranked_mastery_cohorts.parquet
+!/streamlit_app/data/story/
 
 # Local configuration; sanitized examples belong in Git.
 /config/*

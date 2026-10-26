@@ -9,7 +9,7 @@ from app_core.data import DashboardDataError
 from app_core.i18n import LANGUAGE_KEY, TERMINOLOGY_KEY
 from streamlit.testing.v1 import AppTest
 
-APP = Path(__file__).resolve().parents[1] / 'app.py'
+APP = Path(__file__).resolve().parents[1] / 'legacy_app.py'
 
 
 @pytest.mark.parametrize('language,terms', [('EN', 'Plain'), ('PT', 'League')])

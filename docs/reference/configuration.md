@@ -85,6 +85,9 @@ For modules named `extract`, `load` or `sample`, run from the repository root wi
 
 | Entrypoint | Controls |
 |---|---|
+| `python -m streamlit run streamlit_app/app.py` | Default seven-chapter audience story. Reads `streamlit_app/data/story`; the bundled component uses Streamlit's aggregate request bridge. English only pending localization; Plain/Precise terminology remains available. |
+| `python -m streamlit run streamlit_app/legacy_app.py` | Previous six-chapter story, explorers and optional laboratories. Reads the original `streamlit_app/data` package; existing language controls are preserved. |
+| `python streamlit_app/scripts/prepare_story_evidence.py` | Offline publication from the reviewed local research/run archives into sanitized component evidence and its checksum manifest. Not called during rendering. |
 | `python -m extract.run_pipeline` | Uses the default extraction file. Python callers can supply a different path to `run_pipeline(config_path)`; this entrypoint has no command-line config-path flag. |
 | `python -m sample.generate_transactions` | `--cohort PATH` reuses an existing cohort offline; `--refresh-cohort` explicitly replaces it from Gold. These options are mutually exclusive. Defaults: `--output-dir data/business_sample`, `--seed 42`, `--queue RANKED_SOLO_5x5`. |
 | `python -m load.load_business_sample` | `--input-dir` defaults to `data/business_sample`. `--validate-only` checks local files without connecting or writing to the warehouse. |
@@ -94,6 +97,13 @@ For modules named `extract`, `load` or `sample`, run from the repository root wi
 With no explicit cohort option, generation reuses `cohort.parquet` in its output directory when present, otherwise fetching and freezing a new cohort. Scenario assumptions live in [scenario.py](../../src/sample/scenario.py); identity includes configuration, seed, cohort and generator version.
 
 ## Paths and fixed operational policy
+
+The default story's locale publication settings are in
+`streamlit_app/story_component/locales/manifest.json`. Brazilian Portuguese is the
+published default; English is also published and remains the permanent fallback.
+The header language selector switches display copy and locale formatting without
+changing audience predicates or converting USD amounts. See the
+[translation handoff](../../streamlit_app/story_component/locales/README.md).
 
 The local ledger is `data/database/extraction.db`; raw observations are under `data/raw/players` and `data/raw/masteries`; compacted files are `data/compacted/players_compacted.parquet` and `masteries_compacted.parquet`. Diagnostics go to `data/logs`, and startup reconciliation quarantines unreferenced raw files under `data/quarantine`. Normal successful cleanup retains the ledger.
 
