@@ -85,7 +85,7 @@ For modules named `extract`, `load` or `sample`, run from the repository root wi
 
 | Entrypoint | Controls |
 |---|---|
-| `python -m streamlit run streamlit_app/app.py` | Default seven-chapter audience story. Reads `streamlit_app/data/story`; the bundled component uses Streamlit's aggregate request bridge. English only pending localization; Plain/Precise terminology remains available. |
+| `python -m streamlit run streamlit_app/app.py` | Default seven-chapter audience story. Reads `streamlit_app/data/story`; the bundled component uses Streamlit's aggregate request bridge. Brazilian Portuguese by default, selectable English, and independent Plain/Precise terminology. |
 | `python -m streamlit run streamlit_app/legacy_app.py` | Previous six-chapter story, explorers and optional laboratories. Reads the original `streamlit_app/data` package; existing language controls are preserved. |
 | `python streamlit_app/scripts/prepare_story_evidence.py` | Offline publication from the reviewed local research/run archives into sanitized component evidence and its checksum manifest. Not called during rendering. |
 | `python -m extract.run_pipeline` | Uses the default extraction file. Python callers can supply a different path to `run_pipeline(config_path)`; this entrypoint has no command-line config-path flag. |

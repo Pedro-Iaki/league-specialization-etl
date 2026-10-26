@@ -128,6 +128,15 @@ The integration is implemented, while purchases, ownership and commercial behavi
 
 The exporter queries warehouse outputs, removes operational identifiers, checks public contracts and writes Parquet files plus a manifest. Streamlit reads those local files. Viewing the bundled result requires neither source credentials nor a live warehouse connection.
 
-A successful collection or dbt build leaves this serving snapshot unchanged until an operator exports again. Files are replaced individually, and selective exports can retain older unselected datasets, so the manifest's top-level timestamp is not proof of one atomic refresh. The [serving manifest](../../streamlit_app/data/manifest.json) identifies the included snapshot; the [refresh guide](../guides/refresh-dashboard-data.md) explains candidate checks and replacement.
+A successful collection or dbt build leaves this serving snapshot unchanged until an operator exports again. Files are replaced individually, and selective exports can retain older unselected datasets, so the manifest's top-level timestamp is not proof of one atomic refresh. The [story manifest](../../streamlit_app/data/story/manifest.json) identifies the default story snapshot; the [legacy manifest](../../streamlit_app/data/manifest.json) describes the separate explorer package; the [refresh guide](../guides/refresh-dashboard-data.md) explains candidate checks and replacement.
+
+The default viewer uses a bundled HTML/JavaScript Streamlit component. Python's
+`story_query.py` applies canonical audience predicates to local profiles and
+already-linked customer traits; `story_app.py` returns aggregate summaries through
+the component bridge. Browser state distinguishes pending filters from applied
+results. There is no separate sandbox server, browser-side profile table or live
+warehouse mode. Frozen archetype inference belongs to keyed export, not rendering.
+The [story contract](../reference/dashboard-story.md) documents owners and denominators.
+Portuguese and English catalogs change presentation without changing analytical IDs.
 
 Readers who want to reproduce the bundled view can [run the dashboard](../guides/run-the-dashboard.md). Operating collection and warehouse delivery requires the separate services and manual prerequisites in [run the pipeline](../guides/run-the-pipeline.md). Python coordination and manual snapshot serving are deliberate boundaries of this version; automatic publication, Airflow, Docker and infrastructure as code are outside its scope.

@@ -10,6 +10,7 @@ The [project README](../README.md) gives the project overview and the argument f
 | Understand how audience questions become measurements and comparisons | [Understanding the analysis](wiki/understanding-the-analysis.md) |
 | Review design choices, tradeoffs and ownership | [Engineering decisions](wiki/engineering-decisions.md) |
 | Assess checks, inspectable artifacts and the limits of recorded evidence | [Validation and evidence](reference/validation-and-evidence.md) |
+| Understand the default story, comparison predicates and denominators | [Dashboard story contract](reference/dashboard-story.md) |
 | Understand what generated purchases demonstrate | [Simulated transactions](wiki/simulated-transactions.md) |
 
 For an engineering review, follow architecture into engineering decisions and validation. For an analytical review, begin with understanding the analysis, then follow its links to the relevant definitions and evidence.

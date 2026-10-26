@@ -91,6 +91,16 @@ Generated money fields use fixed two-decimal precision, and events distinguish c
 
 ## Serving datasets
 
+The default story reads only `players` and `business_players` from the separate
+`streamlit_app/data/story` package, plus its audience reference, frozen archetype
+artifact and manifest. Both datasets contain validated `archetype_*` fields;
+customer rows also carry current `audience_*` traits associated by private key
+before anonymization. The app requires this enriched package; the generic helper's
+older-snapshot fallback is not a promise that the default story accepts old files.
+The legacy interface reads the larger `streamlit_app/data` inventory below.
+See [archetype row fields](player-pool-archetypes.md#anonymous-row-contract) and
+[story serving ownership](dashboard-story.md#implementation-and-evidence-ownership).
+
 The [export queries](../../streamlit_app/app_core/queries.py) define these datasets. Names below are manifest keys; filenames are owned by [app configuration](../../streamlit_app/app_core/config.py).
 
 | Dataset | Row meaning before identity columns are removed |

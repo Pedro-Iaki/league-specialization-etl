@@ -19,12 +19,60 @@ October 24 archetype candidate, retaining the original Parquet bytes and scenari
 
 The public family/run evidence is a separate dated publication under
 `streamlit_app/story_component`. Refresh it offline with
-`scripts/prepare_story_evidence.py` only when its reviewed source archives change;
+`streamlit_app/scripts/prepare_story_evidence.py` only when its reviewed source archives change;
 do not substitute raw logs or databases. Its checksum manifest pins both adopted
 definitions and the sanitized evidence file. It does not claim those historical
 runs produced every row of a later story snapshot.
 
 [Documentation index](../README.md) · [Run the pipeline](run-the-pipeline.md) · [Run the dashboard](run-the-dashboard.md)
+
+## Default story: candidate and replacement
+
+Use a new directory; export requires warehouse access. The source-build and
+scenario decisions in sections 1–2 below apply to both interfaces.
+
+```powershell
+$storyCandidate = Join-Path "data" ("story_candidate_" + (Get-Date -Format "yyyyMMdd_HHmmss"))
+if (Test-Path -LiteralPath $storyCandidate) { throw "Choose a new candidate directory." }
+.\.venv\Scripts\python.exe streamlit_app/scripts/export_data.py --output-dir $storyCandidate --pool-archetypes --dataset players --dataset business_players
+if ($LASTEXITCODE -ne 0) { throw "Export failed; keep serving unchanged." }
+.\.venv\Scripts\python.exe streamlit_app/scripts/export_audience_reference.py --audience-segments --snapshot (Join-Path $storyCandidate "player_profiles.parquet") --output (Join-Path $storyCandidate "audience_segments_reference.json")
+if ($LASTEXITCODE -ne 0) { throw "Reference failed; keep serving unchanged." }
+@'
+import sys
+sys.path.insert(0, "streamlit_app")
+from app_core.story_query import AudienceEngine
+engine = AudienceEngine(sys.argv[1])
+result = engine.compare({"schema_version": 1})
+print({"profiles": result["parent"]["profiles"],
+       "scored_profiles": result["parent"]["archetypes"]["scored"],
+       "customers": result["parent"]["synthetic"]})
+'@ | .\.venv\Scripts\python.exe -B - $storyCandidate
+if ($LASTEXITCODE -ne 0) { throw "Story loader validation failed; keep serving unchanged." }
+```
+
+Review dates, archetype coverage, source provenance and scenario identity before
+promotion. The current package has 38,403 profiles, 13,348 scored profiles, 24,990
+customers, 6,790 cash purchasers and 28,369,366 cash cents in the 60-day window.
+These are dated checks, not constants to force onto future behavioral snapshots.
+An unchanged frozen purchase scenario should preserve its amounts and identity.
+
+After review, stop readers of `streamlit_app/data/story`, copy that complete
+directory to a new backup under `data/`, and replace these five files from the
+same candidate: `player_profiles.parquet`, `business_players.parquet`,
+`audience_segments_reference.json`, `player-pool-archetypes-v1.json`, then
+`manifest.json` last. Do not copy private research archives or mix candidates.
+If replacement fails, keep readers stopped and restore the complete package.
+Repeat the loader check with `streamlit_app/data/story` as its argument. Reopen
+`app.py` and check guided comparisons, custom Apply, purchase carry, both languages
+and evidence links. This does not replace legacy data, regenerate purchases,
+refit archetypes or publish hosting.
+
+## Full legacy/explorer package workflow
+
+The numbered export, full-inventory validation and copy examples below target
+`streamlit_app/data` for `legacy_app.py`. A two-dataset story candidate is complete
+for the new story but deliberately fails the legacy full-inventory check.
 
 The dashboard reads local Parquet files. Refreshing them is a manual export from warehouse models, followed by review and replacement of the serving snapshot. Collection, a successful dbt build and restarting Streamlit do not perform that export.
 
@@ -101,7 +149,7 @@ Existing business traits and dates remain unchanged. Current profile context has
 
 The manifest records the family definition hash, metric version, coordinate order, scoring rules, dataset hashes, source dates, association coverage and existing scenario metadata. The loader rejects mismatched hashes, incompatible metric metadata and invalid vectors or categories. `oldest_retained_play_at` is the earliest valid last-play marker among retained positive-mastery champions; its elapsed days are a history lower bound, not account creation. Family scoring uses lifetime mastery within model-selected active membership, not preferred characters or recent gain weights.
 
-The family-enriched package, loader, wider audience aggregations and all six guided chapters are implemented in local serving. A new export is still only a candidate until the complete package and its references pass review and are installed together.
+The family-enriched package and six legacy guided chapters remain implemented. The default story additionally requires archetype enrichment. A new export is only a candidate until the intended package and its references pass review and are installed together.
 
 ### Freeze the matching audience reference
 
@@ -216,6 +264,9 @@ foreach ($entry in $candidateManifest.datasets.PSObject.Properties.Value) {
     Copy-Item -LiteralPath (Join-Path $refreshDir $entry.file) -Destination streamlit_app/data -ErrorAction Stop
 }
 Copy-Item -LiteralPath (Join-Path $refreshDir "audience_reference.json") -Destination streamlit_app/data/audience_reference.json -ErrorAction Stop
+if ($candidateManifest.pool_archetypes) {
+    Copy-Item -LiteralPath (Join-Path $refreshDir $candidateManifest.pool_archetypes.file) -Destination streamlit_app/data -ErrorAction Stop
+}
 if (Test-Path -LiteralPath (Join-Path $refreshDir "audience_segments_reference.json")) {
     Copy-Item -LiteralPath (Join-Path $refreshDir "audience_segments_reference.json") -Destination streamlit_app/data/audience_segments_reference.json -ErrorAction Stop
     Copy-Item -LiteralPath (Join-Path $refreshDir "rank_population_reference.csv") -Destination streamlit_app/data/rank_population_reference.csv -ErrorAction Stop
@@ -225,7 +276,7 @@ Copy-Item -LiteralPath (Join-Path $refreshDir "manifest.json") -Destination stre
 
 For a directory swap, prepare a sibling staging directory by copying the existing package, overlay only the reviewed release files above, validate it again and verify every resolved path stays inside the intended workspace before moving directories. Preserve the old directory at a new backup path, then rename the staged package into serving; restore the backup if the second move fails. Do not replace files under a running reader. The copy example above is still a sequence of file operations. If copying fails, keep the app stopped and restore the entire backed-up directory or complete replacement from the validated candidate. Preserve the failed directory separately when restoring; overlaying old files can leave incompatible newer reference files behind. Do not mix files from unrelated attempts. Private cohort/event files under `data/business_sample` do not belong in the public serving directory.
 
-Launch the app using [run the dashboard](run-the-dashboard.md). Check the story, representative explorer views, dates and the business scenario. The loader keys its cache on manifest modification time; restarting also avoids retaining old cached frames. For repository verification, the existing snapshot-contract checks can then run against the active serving path:
+Launch `legacy_app.py` using [run the dashboard](run-the-dashboard.md). Check the legacy story, representative explorer views, dates and the business scenario. The loader keys its cache on manifest modification time; restarting also avoids retaining old cached frames. For repository verification, the existing snapshot-contract checks can then run against the active serving path:
 
 ```powershell
 .\.venv\Scripts\python.exe -B -m pytest streamlit_app/tests/test_snapshot_contracts.py -q

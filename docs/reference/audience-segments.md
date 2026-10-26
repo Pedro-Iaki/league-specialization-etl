@@ -2,19 +2,17 @@
 
 [Documentation index](../README.md) · [Metrics](metrics-and-methods.md#player-family-affinity) · [Population adjustment](population-adjustment.md)
 
-The implemented [audience helpers](../../streamlit_app/app_core/audience_segments.py)
-define the wider audience without requiring a focus classification, known type,
-active pool, scored family or purchase. Family evidence is a lens on that base,
-not an entry condition. The opening four guided chapters now use these measures
-with shared maps, independent language/terminology controls, optional estimated
-hours and a history lens. Page 3 adds within-rank activity shares, recorded-ranked-volume
-and history filters, saved reference percentages and axis inversion. Page 4 adds
-the adopted family definitions, overlapping affinity, exclusive primary labels,
-type comparisons and optional focus/breadth. Page 5 reuses the family labels and
-fixed ranges for unweighted synthetic customer measures, separately from gameplay
-population estimates. The final guided chapter explains the engineering and evidence
-boundaries. All six use the coherent local serving package; existing paired focus
-views retain their separate contract.
+This reference documents the cutoff-based family-segment helpers and the retained
+six-chapter **legacy** presentation in `streamlit_app/legacy_app.py`, including its
+October 23 evidence. The default interface is the seven-chapter archetype story;
+see [dashboard story](dashboard-story.md) for its current comparisons and controls.
+The fixed bands and full-base calibration below are shared inputs, but the old
+family maps, Primary share switch and optional focus lens are not the new UI.
+
+The [audience helpers](../../streamlit_app/app_core/audience_segments.py) define
+the wider base without requiring a focus classification, known role, active pool,
+scored family or purchase. Family and archetype evidence are lenses on that base,
+not general entry conditions.
 
 ## Frozen inputs and bands
 
@@ -147,6 +145,6 @@ than verified account tenure. Use this as optional context.
 
 The numerical chart inputs remain with the local analytical candidate; its
 matching frozen reference and enriched datasets are installed in serving.
-All six guided chapters use the coherent package. The business demonstration retains
+The retained six-chapter legacy story uses that family-enriched package. The business demonstration retains
 its September 29 synthetic scenario and attaches October audience traits by
 actual private key before anonymization, with both dates disclosed.

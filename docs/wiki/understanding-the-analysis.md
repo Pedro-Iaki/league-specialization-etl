@@ -67,13 +67,26 @@ The collected sample does not mirror the supplied rank distribution. Pooling its
 | Inherited population weights | Adjust the calibration cohort's rank mix, then retain those weights when selecting an audience. The selected audience can still have a different rank mix. |
 | Direct-standardized mean | Select an audience, calculate supported rank-specific means, then combine them under a common supported reference mix. |
 
-These are different questions, so disagreement between their values is not automatically a defect. Guided behavioral pages use reference-weighted shares and supported means, calibrated on the full profile base before filters. Customer charts use unweighted scenario rows. The raw experience explorer retains its sample-based definition. Adjustment cannot supply missing outcomes or fix selection within ranks. The [population reference](../reference/population-adjustment.md) explains calibration, support and effective sample size.
+These are different questions, so disagreement between their values is not automatically a defect. The default story uses reference-weighted distributions and supported medians, calibrated on the full profile base before filters. Customer charts use unweighted scenario rows. The raw experience explorer retains its sample-based definition. Adjustment cannot supply missing outcomes or fix selection within ranks. The [population reference](../reference/population-adjustment.md) explains calibration, support and effective sample size.
 
-The guided story starts with accumulated activity and recorded ranked volume. These separate past investment from competitive engagement at the observed counter date; ranked games are not a verified current-season frequency. The optional oldest retained play marker gives a lower bound on history, not account creation. Fixed activity, engagement and history ranges survive every subsequent slice. Page 3 adds rank through P(activity band | rank group), with saved reference prevalence shown separately from a filtered audience's composition. Axis inversion preserves that conditional question.
+The default seven-chapter story introduces three activity dimensions together:
+estimated accumulated playtime, competitive frequency under an annual-season
+assumption, and retained history as a lower bound. Standing then adds competitive
+position and saved reference prevalence. None of these cross-sections establishes
+rank movement, account creation or a causal effect.
 
-Page 4 adds the accepted 25 overlapping character families. Each player's affinity is lifetime mastery among model-active characters, with a 15,000-point numerator cutoff and all active mastery in the denominator. A character can contribute to several families, so affinities are not additive probabilities. A unique highest score gives the simple primary label; ties and missing evidence remain visible. Top affinity and the gap to the next coordinate show how distinct that label is without forcing a new taxonomy. The [family contract](../reference/character-family-cohort.md) documents its selected evidence and limits; adoption is not independent validation.
+Interests introduces eight frozen NMF archetypes as audience slicers, with Single,
+Blend and Diffuse expression states. Underlying overlapping families explain their
+inputs. The cutoff-based family affinity and the all-active-mastery archetype vector
+are distinct representations; see the [archetype contract](../reference/player-pool-archetypes.md).
+Inferred role comes from character behavior, not observed match positions.
 
-Inferred character types A–E complement families and map to Top/Jungle/Middle/Bottom/Support in League wording. They use the existing Recent-pool role weighting, not the family's lifetime weights. Unknown type is excluded only from type-specific charts, with coverage disclosed. Whole-history focus and positive-family breadth are optional detail after the main audience definition. The progressive map preserves activity/rank geometry and offers mean family affinity among scored pools or primary share of the whole cell; it does not repeat a leading-character surrogate. These cross-sections do not show switching, rank movement or a causal recommendation. Approximate hour labels assume 600 points and 30 minutes per match, change no band membership and do not measure actual playtime.
+Guided questions keep one explicit shared context while comparing A/B groups;
+other traits are allowed to differ. Combine supports compound shared and independent
+conditions, with overlap and joint distributions. Purchases uses the last applied
+definition on unweighted scenario members. The [dashboard story contract](../reference/dashboard-story.md)
+specifies each chapter, fixed predicates, support and denominators. The legacy
+explorers retain the wider window, growth and standardization tools described above.
 
 ## Connect behavior to commercial questions
 
@@ -83,9 +96,12 @@ The included scenario demonstrates that connection using generated purchases att
 
 ## Check support before interpreting a result
 
-The proposed Interests chapter uses archetypes to slice audiences and compare previously introduced activity, history and standing dimensions. Assignment prevalence is not presented as a comparable popularity ranking: family size, champion prevalence, overlap and training composition influence it. Selected reach describes support; conditional comparisons describe associations. Popularity normalization remains an explicitly separate research question.
-
-The proposed story now uses the [eight player-pool archetypes](../reference/player-pool-archetypes.md) as its readable interests summary, followed by underlying family explanations. The implemented candidate supports strongest-match and overlapping expressed-interest selections, with explicit scored, weak-match and missing-evidence states. The planned audience-comparison and purchase chapters carry those selections alongside activity, history and standing. Current story pages have not yet been redesigned or promoted to that candidate.
+Interests uses archetypes to compare activity, history, standing and expression.
+Assignment prevalence is not a comparable popularity ranking: family size,
+character prevalence, overlap and training composition influence it. Selected
+reach describes support; conditional comparisons describe associations. Popularity
+normalization remains a separate research question. The new interface and its
+archetype package are implemented and locally verified, rather than pending promotion.
 
 Read the cohort, window, counting unit, estimator and date alongside a comparison. Current profiles, classified recent profiles, latest-outcome profiles and historical growth rows form different branches. Missing follow-up can mean insufficient observation or ineligibility; it should not become zero performance. The current profile also uses the dataset's latest completed bucket, without falling back to each person's older usable period.
 

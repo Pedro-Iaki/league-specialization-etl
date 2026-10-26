@@ -190,6 +190,16 @@ The prior paired concentration reference remains a legacy artifact, separate fro
 
 Optional hour equivalents use mastery / 1,200, assuming 600 points per match and 30 minutes per match. These are illustrative assumptions, not calibrated estimates of match duration or point accrual. Rescaling does not change band membership, measure account age or establish time to reach a rank. Differences between game modes or players can affect both assumptions.
 
+## Default story aggregation
+
+The [dashboard story contract](dashboard-story.md#measures-and-denominators)
+defines the seven-chapter viewer's aggregate outputs. `story_query.py` retains
+original population weights for behavior and uses unweighted scenario members
+for purchases. In particular, its all-history cosmetic fraction pools event counts;
+the legacy explorer's mean player fraction below is a different statistic.
+Activity maps use the original base, Combine joint maps use the selected audience,
+and interest over/under compares scored profiles against the shared-context parent.
+
 ## Simulated commercial measures
 
 All measures below describe generated events attached to frozen real profiles. [Spending SQL](../../league_pipeline/models/gold/mart_player_spending.sql) defines player measures; [business helpers](../../streamlit_app/app_core/business.py) define dashboard aggregation. Lifetime means generated history; recent means the inclusive 60-day purchase window ending at the scenario as-of date.
@@ -203,15 +213,15 @@ All measures below describe generated events attached to frozen real profiles. [
 | Payment frequency | Cash-active calendar months divided by inclusive calendar tenure from the first generated purchase of **any** currency to the as-of month. |
 | Payment intensity | Cash USD per cash-active month; undefined without a cash-active month. |
 | Payment consistency | `1 / (1 + population_SD(gaps) / mean(gaps))`, using gaps between distinct cash-purchase dates; requires at least two gaps. |
-| Cosmetic fraction | Cosmetic events divided by character-plus-cosmetic content events; cash top-ups are excluded. The view averages player fractions, which differs from a pooled event share. |
+| Cosmetic fraction | Cosmetic events divided by character-plus-cosmetic content events; cash top-ups are excluded. The legacy Business sample explorer averages player fractions, which differs from a pooled event share. |
 | Discounted purchase share | Discounted fiat events divided by all fiat events. |
 | Discount depth | Mean fractional reduction conditional on discounted fiat events. Aggregate player means using their discounted-event counts, rather than giving each player equal weight. |
 
-Simulated account age starts at the first fictional purchase. Activity bands are relative mastery-based proxies, even where current code retains a `playtime` name; they do not measure hours. Empty denominators produce missing measures where undefined. Zero spending for a nonpayer is meaningful and is retained.
+Simulated account age starts at the first simulated purchase. Activity bands are relative mastery-based proxies, even where current code retains a `playtime` name; they do not measure hours. Empty denominators produce missing measures where undefined. Zero spending for a nonpayer is meaningful and is retained.
 
-The guided customer chapter uses [customer audience helpers](../../streamlit_app/app_core/customer_audiences.py) on the identity-safe family-enriched business export. Each customer belongs to one primary family or explicit tied/missing state. Other families is reaggregated before ratios, keeping every row and cash amount once. It does not allocate revenue across overlapping affinity coordinates. Cash totals use integer cents; rates and per-purchaser USD are calculated from those totals. Customer summaries ignore gameplay calibration weights.
+The retained legacy guided customer chapter uses [customer audience helpers](../../streamlit_app/app_core/customer_audiences.py) on the identity-safe family-enriched business export. Each customer belongs to one primary family or explicit tied/missing state. Other families is reaggregated before ratios, keeping every row and cash amount once. It does not allocate revenue across overlapping affinity coordinates. Cash totals use integer cents; rates and per-purchaser USD are calculated from those totals. Customer summaries ignore gameplay calibration weights.
 
-Its three plots show purchaser share, cash per purchaser, and profile versus cash composition for the same selection. Fixed activity/engagement ranges and current rank/type use the attached `audience_` traits. These later observations remain distinct from frozen scenario traits and purchases. The default retains the complete scenario, including nonbuyers. The display masks purchaser/composition estimates below 30 profiles and purchaser-amount estimates below 30 cash purchasers, keeping raw totals and denominators unchanged. A supported zero purchaser share is zero; cash per purchaser and cash composition are undefined without cash purchasers or total cash respectively. These are descriptive fictional outputs, not confidence intervals or market estimates. See [synthetic transactions](../wiki/simulated-transactions.md#connect-the-family-audience-definition).
+Its three plots show purchaser share, cash per purchaser, and profile versus cash composition for the same selection. Fixed activity/engagement ranges and current rank/type use the attached `audience_` traits. These later observations remain distinct from frozen scenario traits and purchases. The default retains the complete scenario, including nonbuyers. The display masks purchaser/composition estimates below 30 profiles and purchaser-amount estimates below 30 cash purchasers, keeping raw totals and denominators unchanged. A supported zero purchaser share is zero; cash per purchaser and cash composition are undefined without cash purchasers or total cash respectively. These are descriptive simulated outputs, not confidence intervals or market estimates. See [synthetic transactions](../wiki/simulated-transactions.md#connect-the-family-audience-definition).
 
 ## Support and uncertainty
 

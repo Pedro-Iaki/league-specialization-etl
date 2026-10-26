@@ -67,6 +67,9 @@ populated zero/unknown categories. Internal states and denominators are retained
 
 The approved layout is maintained in [story_component](../../streamlit_app/story_component). [story_query.py](../../streamlit_app/app_core/story_query.py) owns the canonical predicates, original population weights, support checks, summaries and integer-cent customer reporting. Streamlit sends only aggregate summaries and sanitized evidence to the component. All profiles remain in Python memory.
 
+The [dashboard story contract](../reference/dashboard-story.md) documents chapter
+responsibilities, exact guided parents, builder semantics and chart denominators.
+
 ### Keep using the previous interface
 
 The original story, analytical explorers and optional local laboratories remain runnable:
@@ -94,6 +97,13 @@ Focused analytical and host checks:
 ```
 
 For the real-browser regression sweep, run the new app on port 8510 and Edge with its existing debugging endpoint at `127.0.0.1:9251`, then run `streamlit_app/tests/browser_story.py`. This checks the actual Streamlit component, not the sandbox viewer. Local reports/screenshots go under the ignored `sandbox/streamlit_story_validation.tmp` directory. Browser verification uses the existing development environment; browser tooling is not a dashboard runtime dependency.
+
+Run `streamlit_app/tests/browser_story_localization.py --published` for actual
+Portuguese layout and language-switch state checks, and `browser_scroll.py` in
+the same tests directory for physical scrolling and navigation reset. Run browser
+sweeps sequentially: they share the same preview tab. Catalog validation is
+available through `streamlit_app/scripts/check_story_locales.py`; focused catalog
+and formatting tests are in `streamlit_app/tests/test_story_localization.py`.
 
 ## 4. Read dates and support alongside results
 

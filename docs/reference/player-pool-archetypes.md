@@ -45,7 +45,7 @@ Use [archetype_serving.py](../../streamlit_app/app_core/archetype_serving.py): `
 
 Archetypes summarize Interests and carry into audience construction and purchasing in the default seven-chapter Streamlit story; underlying families remain available for explanation. Role comparisons should use the eligible, known-role parent audience under the same non-archetype filters and original weights; a uniform 20% split is not the audience baseline. Inferred character-role composition is not a player's observed match position.
 
-## Planned dashboard placement
+## Current dashboard placement
 
 The revised sample design uses four paired questions: accumulated investment versus competitive participation, standing groups within a shared frequency band, different primary archetypes among all primary-eligible profiles, and Single versus Blend within primary A4. The last two comparisons have no preset activity/frequency restriction. In the default Streamlit story, the question dropdown opens A/B comparisons; chapter changes start a fresh overview, except Combine to Purchases retains the applied selection. Combine supports actual compound shared/A/B conditions, overlap and paired joint distributions through snapshot-only Python queries over the Streamlit component bridge. The browser receives summaries, never profile rows. The shared-context summary defines the parent for over/under charts. Model identity or expression states fixed by these predicates are definitions, not findings. Guided adjustments retain their fixed parent context; changing questions resets incompatible settings. The approved v2 presentation is now the default `streamlit_app/app.py`; the previous interface remains in `legacy_app.py`.
 
@@ -53,13 +53,18 @@ Interest comparisons in the default story include Single/Blend expression, addit
 
 Combine includes interest over/under inside each audience comparison box using centered horizontal bars: selected weighted archetype share divided by its explicit parent's weighted share, minus one. Shares condition on all scored profiles, with unscored coverage separate. Zero is parity; +50% is 1.5 times the parent's share. Undefined parent-zero cases remain unavailable. This contextual comparison is not a correction for structural popularity or family-size bias. Archetypes fixed by the selection are labeled as filter consequences and their deltas remain expandable detail. The storyboard's over/under parent is the question's shared eligible context; activity-map cells retain the whole behavioral base as their denominator.
 
-Updated presentation decision: archetypes act as audience slicers. Page 4 introduces their meaning, then compares playtime, competitive frequency, account history and standing against an explicit eligible parent or another archetype. Reach is support context, not a ranked measure of interest popularity. The earlier primary-share chart proposal below is superseded. Family size, overlap, champion popularity and the training sample influence assignments; the fitted rare-family weights do not establish popularity normalization. Describe cross-sectional associations, not effects. A champion-playrate baseline requires a defined measure, population/window and overlap-aware aggregation; it is deferred rather than inferred from lifetime mastery or role shares.
+Updated presentation decision: archetypes act as audience slicers. Page 4 introduces their meaning, then compares playtime, competitive frequency, account history and standing against an explicit eligible parent or another archetype. Reach is support context, not a ranked measure of interest popularity. The earlier primary-share chart proposal is superseded. Family size, overlap, champion popularity and the training sample influence assignments; the fitted rare-family weights do not establish popularity normalization. Describe cross-sectional associations, not effects. A champion-playrate baseline requires a defined measure, population/window and overlap-aware aggregation; it is deferred rather than inferred from lifetime mastery or role shares.
 
-The proposed seven-chapter story introduces archetypes in Interests, combines them with activity/history/standing in audience synthesis, and carries the identical predicate into all four customer questions. Engineering explains the frozen definition and private-key inference boundary. These page changes are proposed; the candidate export and serving helpers are implemented.
-
-Interests opens with coverage against the full selected behavioral audience, then eight primary-archetype shares plus separate weak/tied-match categories within scored profiles. Strongest clear match is the default; expressed-interest mode permits overlap at the frozen 0.20 threshold. Single/Blend/Diffuse becomes One expressed interest / Several expressed interests / No strong match in plain language. Family detail explains shared inputs and preserves the distinct cutoff-based family metric.
-
-The shared predicate stores archetype ID, selection mode and optional expression state alongside activity/history/rank and advanced family/role refinements. A/B reports intersection size for overlapping audiences. Customer reporting recalculates its own coverage and retains nonbuyers; the candidate has 12,008 scored members out of 24,990. Neither eligibility nor loading strengths imply purchase propensity. Default examples must be chosen for support and clarity, not dramatic synthetic spending differences.
+The default story implements these chapters using the promoted archetype package.
+Its [story contract](dashboard-story.md) defines guided parents, builder predicates,
+denominators and navigation. Primary mode requires a unique non-Diffuse strongest
+match; expressed mode accepts any selected component reaching 0.20. Single, Blend
+and Diffuse describe expression, not activity concentration or statistical confidence.
+The builder uses archetypes, expression, evidence and inferred role alongside the
+four behavioral dimensions; it does not offer individual family-coordinate filters.
+Customer reporting retains nonbuyers and applies the identical predicate to linked
+traits. The promoted package has 12,008 scored members out of 24,990 customers.
+Neither eligibility nor loading strength implies purchase propensity.
 
 ## Candidate preparation
 

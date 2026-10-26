@@ -57,6 +57,12 @@ The implemented workflow is a bounded collection loop followed by a small set of
 
 That choice keeps execution operator-started and leaves inspection and recovery responsibilities explicit. It does not provide every managed scheduling, alerting or backfill capability. A changed operating context could justify a different choice, but Airflow, Docker, infrastructure as code and automatic publication are outside this version's scope.
 
+The new story retains a local snapshot boundary while moving its approved controls
+into a bundled Streamlit component. Python owns predicates and aggregate results;
+JavaScript owns presentation and draft/applied state. This preserves the reviewed
+interaction design without a separate production HTTP service or Node build.
+The previous interface remains explicitly available as `legacy_app.py`.
+
 Serving follows the same principle. A manual export gives Streamlit local Parquet files and a manifest, so reviewers can explore the output without pipeline credentials or warehouse availability. The cost is visible staleness and an explicit refresh operation. A successful warehouse build does not update the app, and individual file replacement does not create an atomic refresh of the whole snapshot.
 
 ## Demonstrate the missing commercial domain explicitly

@@ -4,6 +4,9 @@
 
 The optional **Local laboratory → Character families** page discovers candidate groups from shared active-character audiences. It is a review tool for parameter exploration, naming and manual assignments. Saving a scenario does not adopt it as a validated taxonomy or change story pages.
 
+Laboratories live in `legacy_app.py`. The default seven-chapter app exposes saved
+method evidence but does not run family discovery or archetype fitting.
+
 ## Prepare the local input
 
 From the repository root in PowerShell:
@@ -11,7 +14,7 @@ From the repository root in PowerShell:
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r streamlit_app/requirements-families.txt
 .\.venv\Scripts\python.exe streamlit_app/scripts/export_character_families.py
-.\.venv\Scripts\python.exe -m streamlit run streamlit_app/app.py
+.\.venv\Scripts\python.exe -m streamlit run streamlit_app/legacy_app.py
 ```
 
 Only the export command requires the existing Databricks connection configuration. It reads existing marts/current mastery without changing models or refreshing transactions. The laboratory subsequently uses local files without warehouse access. The navigation section appears when `data/character_families/membership.parquet` exists. Restart a previously running app if its file watcher is disabled.

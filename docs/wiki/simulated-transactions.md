@@ -11,11 +11,11 @@ Behavioral profiles can describe an audience's interests, but customer questions
 | Part of the scenario | Origin | Meaning |
 |---|---|---|
 | Competitive status and character activity | Real Riot API observations | The frozen cohort's available behavioral context, including its collection and measurement limits. |
-| Purchase history, cash spending and discounts | Generated events | Fictional commercial behavior used to exercise the data path. |
+| Purchase history, cash spending and discounts | Generated events | Simulated commercial behavior used to exercise the data path. |
 | Customer types, owned characters and tenure | Scenario assumptions | Generation controls and simulated context, rather than observed customer attributes. |
-| Product and currency references | Fictional demonstration catalog | Coherent event categories and currency treatment; not a reproduction of Riot's catalog, prices or exchange rates. |
+| Product and currency references | Simulated demonstration catalog | Coherent event categories and currency treatment; not a reproduction of Riot's catalog, prices or exchange rates. |
 
-The source is generated in Python, rather than delivered by a demonstrated deployed HTTP endpoint. Its long fictional history does not mean the project observed the same people or their purchases over that span. The [evidence reference](../reference/validation-and-evidence.md#frozen-transaction-scenario) records the included scenario's dates and counts without presenting generated revenue as a portfolio achievement.
+The source is generated in Python, rather than delivered by a demonstrated deployed HTTP endpoint. Its long simulated history does not mean the project observed the same people or their purchases over that span. The [evidence reference](../reference/validation-and-evidence.md#frozen-transaction-scenario) records the included scenario's dates and counts without presenting generated revenue as a portfolio achievement.
 
 ## Freeze the audience before generating events
 
@@ -29,7 +29,7 @@ This cohort inherits the original collection process and the additional complete
 
 ## Generate relationships deliberately
 
-The generator uses real profile features, fictional controls and randomness to shape events. For example, a relationship between character focus and cosmetic acquisition can be inserted through the scenario configuration. Seeing it in a downstream chart demonstrates that the pipeline preserved the scenario; it does not independently validate that relationship.
+The generator uses real profile features, simulated controls and randomness to shape events. For example, a relationship between character focus and cosmetic acquisition can be inserted through the scenario configuration. Seeing it in a downstream chart demonstrates that the pipeline preserved the scenario; it does not independently validate that relationship.
 
 These settings give the views useful variation and exercise different reporting cases. They were not calibrated against actual customers. Generator controls with names such as frequency or intensity also describe event production; the reporting measures are calculated from the resulting events and have their own definitions.
 
@@ -64,13 +64,30 @@ The Business sample explorer carries a selected rank/role audience through four 
 | Comparison | What it illustrates | Interpretation limit |
 |---|---|---|
 | Spending by player traits | Separate payer participation and purchaser spending across behavioral groups. | Configured relationships do not establish actual purchasing differences. |
-| Experience within simulated tenure | Compare relative activity-score context within generated account-age groups. | Activity score is not hours; tenure begins at the first fictional purchase, rather than actual account creation. |
+| Experience within simulated tenure | Compare relative activity-score context within generated account-age groups. | Activity score is not hours; tenure begins at the first simulated purchase, rather than actual account creation. |
 | Cosmetic acquisition | Compare cosmetic fractions among content events. | Event fractions are not emotional attachment or cash-revenue shares; averaging player fractions differs from pooling events. |
 | Cash discounts | Separate the frequency of discounted fiat purchases from depth conditional on those discounted purchases. | Neither measure demonstrates price sensitivity, promotion effectiveness or revenue lift. |
 
-The guided customer chapter now plots primary-family purchaser share, cash per purchaser and profile-versus-cash composition on the family-enriched candidate. One activity, ranked-volume, rank or inferred-type lens can refine the same customer rows. The separate explorer retains its four detailed commercial questions. Exact denominators, payment-frequency/intensity/consistency definitions and discount aggregation are in [simulated commercial measures](../reference/metrics-and-methods.md#simulated-commercial-measures).
+The retained legacy guided customer chapter plots primary-family purchaser share, cash per purchaser and profile-versus-cash composition on the family-enriched candidate. One activity, ranked-volume, rank or inferred-type lens can refine the same customer rows. The separate explorer retains its four detailed commercial questions. Exact denominators, payment-frequency/intensity/consistency definitions and discount aggregation are in [simulated commercial measures](../reference/metrics-and-methods.md#simulated-commercial-measures).
+
+## Current story customer questions
+
+The default Purchases chapter follows Combine's last applied audience definition.
+It uses the same current-trait predicates on unweighted customer rows and reports
+buyer participation, USD per cash purchaser, repeat purchase share/frequency and
+pooled cosmetic share of content events. Cash uses the 60-day window; content mix
+uses all simulated history. Nonbuyers remain in the selected audience. See the
+[story denominators](../reference/dashboard-story.md#measures-and-denominators).
+
+Expandable method detail explains configured assumptions and reproducible random
+variation. The specialist modifier adds 0.10 to a generation control; it does not
+guarantee a ten-percentage-point difference in final reports. The eight archetypes
+were attached later and were not generator inputs. Association uses actual private
+keys before export; current traits do not establish purchase-date preferences.
 
 ## Connect the family audience definition
+
+The following family-based displays belong to the retained legacy story.
 
 The guided chapter uses current family and audience traits already attached by private player key and queue before anonymous export. Original September 29, 2026 scenario traits and the inclusive August 1-September 29 purchase window remain unchanged. Current audience traits have an October 20 cutoff and separately recorded snapshot dates; their later measurement prevents treating them as historical purchase preferences or a spending predictor. There is no row-order join between anonymous extracts.
 
