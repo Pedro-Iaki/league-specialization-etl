@@ -83,14 +83,10 @@ The customer questions needed purchase history that was not available. I built a
 
 The [simulated-transactions chapter](simulated-transactions.md) explains that boundary. Its relationships illustrate possible analyses; they are not validated customer findings. The generated branch is a valid completion point, rather than a promise of eventual access to private financial data.
 
-## Keep ownership and review visible
-
-This is a solo project. **AI assisted review and implementation; architecture, decisions and final review remained mine.** I used it for consultation and co-review, scoped repetitive edits, and implementation help concentrated in dashboard/frontend prototyping. My strongest implementation ownership is the pipeline and backend.
-
-My process uses small reviewed changes and maintained project guidance. I also keep curated context notes that distinguish decisions, personal accounts, checked measurements and planned work, then review and update them as the project changes. That supplies explicit context for later work; it does not give a model automatic memory or make a planned feature implemented.
+## Lessons from building the pipeline
 
 Over several months, the lesson was how much remains after a rudimentary extract/load/transform path works. State, data quality, modeling, lineage and delivery took much longer than I initially expected. I deliberately built some parts by hand to understand them, which was a learning choice rather than a production recommendation.
 
-I would start with a smaller scope and finish it more deliberately. Loosely directed AI changes can also look plausible while increasing review and rework; a clear goal and constrained edits matter. This release is judged by an explainable implementation and its evidence, rather than a conclusive gameplay result or an unachieved population-size target.
+I would start with a smaller scope and finish it more deliberately. Small reviewed changes help keep that scope manageable.
 
 Continue with [Validation and evidence](../reference/validation-and-evidence.md) to inspect the current result, recorded runs and boundaries of those claims.
