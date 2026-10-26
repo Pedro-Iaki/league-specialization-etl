@@ -5,8 +5,12 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytest
-from app_core.experience import experience_bands, experience_cells, experience_chart, experience_display
+from app_core.experience import (
+    TIER_GROUPS, experience_bands, experience_cells, experience_chart, experience_display, experience_focus_cells,
+    experience_overall, experience_ranges, role_focus_cells,
+)
 from app_core.i18n import LANGUAGE_KEY, localize_figure, t
+from app_core.story_charts import audience_band_chart, audience_composition_chart
 from streamlit.testing.v1 import AppTest
 
 
@@ -90,6 +94,102 @@ def test_wilson_interval_for_zero_and_all_specialists():
     assert zero["upper"] == pytest.approx(0.2775328)
     assert one["lower"] == pytest.approx(0.7224672)
     assert one["upper"] == pytest.approx(1)
+
+
+def test_overall_pools_counts_instead_of_averaging_band_shares():
+    banded = pd.DataFrame({
+        "tier": ["IRON"] * 12,
+        "mastery_band": [1] * 3 + [2] * 9,
+        "lifetime_playstyle": ["specialist"] * 3 + ["generalist"] * 9,
+        "population_weight": [100] * 3 + [1] * 9,
+    })
+    overall = experience_overall(experience_focus_cells(banded))
+    assert overall.groupby("tier_group")["members"].sum().tolist() == [0, 0, 0, 12]
+    overall = overall.loc[overall["playstyle"].eq("specialist")].set_index("tier_group")
+    assert overall.loc["Iron-Silver", "n"] == 12
+    assert overall.loc["Iron-Silver", "members"] == 3
+    assert overall.loc["Iron-Silver", "share"] == .25
+    assert overall.loc["Diamond+", "n"] == 0
+    assert pd.isna(overall.loc["Diamond+", "share"])
+
+
+def test_focus_charts_keep_supported_zero_and_break_at_sparse_cells():
+    banded = pd.DataFrame({
+        "tier": ["IRON"] * 3 + ["GOLD"] * 2,
+        "mastery_band": [1] * 5,
+        "lifetime_playstyle": ["generalist"] * 3 + ["specialist"] * 2,
+    })
+    cells = experience_focus_cells(banded)
+    specialist = cells.loc[cells["playstyle"].eq("specialist")]
+    chart = audience_band_chart(specialist, intervals=True)
+    assert chart.data[0].y[0] == 0
+    assert pd.isna(chart.data[0].y[1])
+    assert chart.data[0].connectgaps is False
+    assert chart.data[0].error_y.array[0] == pytest.approx(specialist.iloc[0]["upper"])
+    assert chart.data[0].customdata[1][:2] == [2, 2]
+    inverted = audience_band_chart(specialist, intervals=True, bands_on_x=True)
+    assert inverted.data[0].y[0] == 0
+    assert pd.isna(inverted.data[0].y[1])
+    assert inverted.data[0].connectgaps is False
+    assert pd.isna(inverted.data[1].y[0])
+    assert inverted.data[1].customdata[0][:2] == [2, 2]
+    overall = audience_composition_chart(experience_overall(cells))
+    assert overall.data[0].x[0] == 0
+    assert pd.isna(overall.data[0].x[1])
+    assert any("n = 2" in label for label in overall.layout.yaxis.ticktext)
+    assert "Low support" in [annotation.text for annotation in overall.layout.annotations]
+
+
+def test_axis_switch_transposes_the_same_counts_shares_and_intervals():
+    banded = pd.DataFrame([
+        {"tier": tier, "mastery_band": band, "lifetime_playstyle": "specialist" if index < band else "generalist"}
+        for band in range(1, 6) for tier in ["IRON", "GOLD", "EMERALD", "DIAMOND"] for index in range(10)
+    ])
+    cells = experience_focus_cells(banded)
+    frame = cells.loc[cells["playstyle"].eq("specialist")]
+    original = audience_band_chart(frame, intervals=True)
+    inverted = audience_band_chart(frame, intervals=True, bands_on_x=True)
+    assert original.layout.yaxis.range == inverted.layout.yaxis.range
+    assert list(inverted.layout.xaxis.tickvals) == [1, 2, 3, 4, 5]
+    for band_index, band_trace in enumerate(original.data):
+        for rank_index, rank in enumerate(TIER_GROUPS):
+            trace = inverted.data[rank_index]
+            assert trace.name == rank
+            assert trace.y[band_index] == band_trace.y[rank_index]
+            assert trace.customdata[band_index][:4] == band_trace.customdata[rank_index][:4]
+            assert trace.error_y.array[band_index] == band_trace.error_y.array[rank_index]
+            assert trace.error_y.arrayminus[band_index] == band_trace.error_y.arrayminus[rank_index]
+
+
+def test_all_focus_counts_reconcile_and_roles_retain_unknown_profiles():
+    banded = pd.DataFrame({
+        "tier": ["IRON"] * 5,
+        "mastery_band": [1] * 5,
+        "lifetime_playstyle": ["specialist", "multispecialist", "versatile", "generalist", "generalist"],
+        "main_role": ["Top", "Top", None, "unexpected", "Support"],
+    })
+    cells = experience_focus_cells(banded)
+    assert cells["members"].sum() == 5
+    first = cells.iloc[:4]
+    assert first["n"].eq(5).all()
+    assert first["share"].sum() == pytest.approx(1)
+    expected = experience_cells(banded)
+    specialist = cells.loc[cells["playstyle"].eq("specialist")].reset_index(drop=True)
+    pd.testing.assert_frame_equal(expected[["share", "lower", "upper"]], specialist[["share", "lower", "upper"]])
+    roles = role_focus_cells(banded)
+    assert roles["members"].sum() == 5
+    assert roles.loc[roles["main_role"].eq("Unknown role"), "members"].sum() == 2
+
+
+def test_hour_equivalents_use_declared_assumptions_without_changing_bands():
+    players = pd.DataFrame({"tier": ["GOLD"] * 10, "lifetime_playstyle": ["generalist"] * 10,
+                            "lifetime_mastery_points": np.arange(10) * 1200})
+    banded = experience_bands(players)
+    original = banded.copy(deep=True)
+    ranges = experience_ranges(banded)
+    assert ranges["hours_low"].tolist() == pytest.approx([0, 2, 4, 6, 8])
+    assert ranges["hours_high"].tolist() == pytest.approx([1, 3, 5, 7, 9])
+    pd.testing.assert_frame_equal(banded, original)
 
 
 def test_page_layout_and_master_toggles_render():

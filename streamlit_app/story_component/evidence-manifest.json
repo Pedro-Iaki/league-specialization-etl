@@ -1,0 +1,9 @@
+{
+  "prepared_at": "2026-10-25",
+  "source": "Reviewed saved family diagnostics and separate October 19/20 execution archives",
+  "files": {
+    "public-evidence.json": "a8f0041b7c3df4c4f5e2f41983ca397c94ac09e3226b36bc8affd8a80ae93fd9",
+    "champion-audience-families-v1.json": "fdb8f3eaca472fcf24b749a1d6af60ea74b0d908c1dbcfd831a5339a8029f781",
+    "player-pool-archetypes-v1.json": "d2d84babe82ed79ac008c39326cc013fd2653dbcfcc9425b1e8b21c4bdd6c24f"
+  }
+}

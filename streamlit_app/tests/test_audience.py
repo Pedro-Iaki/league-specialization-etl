@@ -1,0 +1,215 @@
+import hashlib
+import json
+
+import numpy as np
+import pandas as pd
+import pytest
+from app_core import data
+from app_core.audience import (
+    RANK_GROUPS,
+    WINDOWS,
+    audience_grid,
+    band_distributions,
+    build_reference,
+    character_type_counts,
+    concentration_cells,
+    historical_mix,
+    label_comparison,
+    leader_states,
+    leading_characters,
+    load_reference,
+    overview_grid,
+    paired_profiles,
+    prepare_audience,
+)
+from app_core.audience_charts import concentration_chart
+from app_core.data import DashboardDataError
+from app_core.experience import experience_focus_cells
+
+
+@pytest.fixture
+def profiles():
+    frame = pd.DataFrame(
+        {
+            "as_of_date": ["2026-10-19"] * 40,
+            "tier": ["IRON", "GOLD", "EMERALD", "GRANDMASTER"] * 10,
+            "lifetime_mastery_points": np.repeat(np.arange(1, 11) * 100, 4),
+            "recent_playstyle": ["generalist"] * 40,
+            "lifetime_playstyle": ["specialist", "multispecialist", "versatile", "generalist"] * 10,
+            "active_pool_lifetime_mastery_points": [50] * 40,
+            "active_pool_lifetime_top1_share": np.linspace(0.1, 1, 40),
+            "active_pool_lifetime_hhi": [0.3] * 40,
+            "lifetime_top1_share": [0.2] * 40,
+            "lifetime_hhi": [0.1] * 40,
+            "days_tracked": [0, 33] * 20,
+            "recent_mastery_points": [0] * 40,
+            "main_role": [None] * 40,
+            "population_weight": [999, 1, 1, 1] * 10,
+        }
+    )
+    return frame
+
+
+def test_cohort_keeps_apex_missing_type_and_zero_gain_but_excludes_undefined(profiles):
+    invalid = profiles.head(4).copy()
+    invalid.loc[0, "recent_playstyle"] = None
+    invalid.loc[1, "active_pool_lifetime_mastery_points"] = 0
+    invalid.loc[2, "lifetime_mastery_points"] = -1
+    invalid.loc[3, "active_pool_lifetime_top1_share"] = np.inf
+    combined = pd.concat([profiles, invalid], ignore_index=True)
+    paired = paired_profiles(combined)
+    assert len(paired) == 40
+    assert paired.rank_group.eq("Diamond+").sum() == 10
+    assert paired.main_role.isna().all()
+    assert paired.recent_mastery_points.eq(0).all()
+    assert "population_weight" not in paired
+
+
+def test_fixed_numeric_cuts_keep_ties_and_survive_subsetting_and_row_order(profiles):
+    reference = build_reference(profiles, "test-source")
+    banded = prepare_audience(profiles, reference)
+    assert reference["right_closed_score_cuts"] == [280, 460, 640, 820]
+    assert banded.groupby("lifetime_mastery_points").activity_band.nunique().eq(1).all()
+    shuffled = prepare_audience(profiles.sample(frac=1, random_state=42), reference).sort_index()
+    pd.testing.assert_series_equal(banded.activity_band, shuffled.activity_band)
+    assert banded.loc[banded.rank_group.eq("Diamond+"), "activity_band"].tolist() == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
+    with pytest.raises(DashboardDataError, match="does not match"):
+        prepare_audience(profiles.head(5), reference)
+
+
+def test_exact_cut_is_upper_inclusive(profiles):
+    reference = build_reference(profiles, "test-source")
+    reference["right_closed_score_cuts"] = [200, 400, 600, 800]
+    banded = prepare_audience(profiles, reference)
+    assert banded.loc[banded.lifetime_mastery_points.eq(200), "activity_band"].eq(1).all()
+    assert banded.loc[banded.lifetime_mastery_points.eq(300), "activity_band"].eq(2).all()
+
+
+def test_medians_are_unweighted_and_counts_reconcile(profiles):
+    banded = prepare_audience(profiles, build_reference(profiles, "test-source"))
+    summary = concentration_cells(banded)
+    for window in WINDOWS:
+        cells = summary.loc[summary.window.eq(window)]
+        assert cells.n.sum() == 40
+        row = cells.loc[cells.activity_band.eq(1) & cells.rank_group.eq("Iron-Silver")].iloc[0]
+        values = banded.loc[banded.activity_band.eq(1) & banded.rank_group.eq("Iron-Silver"), f"{window}_top1_share"]
+        assert row["median"] == pytest.approx(values.median())
+        assert row.q1 == pytest.approx(values.quantile(0.25))
+        assert row.q3 == pytest.approx(values.quantile(0.75))
+    historical = experience_focus_cells(banded.rename(columns={"activity_band": "mastery_band"}))
+    assert historical.members.sum() == 40
+    assert historical.loc[historical.tier_group.eq("Diamond+"), "members"].sum() == 10
+
+
+def test_grid_includes_full_concentration_and_preserves_empty_observed_bins(profiles):
+    profiles.loc[0, "active_pool_lifetime_top1_share"] = 0
+    profiles.loc[1, "active_pool_lifetime_top1_share"] = 1
+    banded = prepare_audience(profiles, build_reference(profiles, "test-source"))
+    for window in WINDOWS:
+        grid = audience_grid(banded, window)
+        assert len(grid) == 200
+        assert grid.profiles.sum() == 40
+        assert grid.profiles.eq(0).any()
+        assert grid.focus_bin.between(0, 9).all()
+        assert grid.groupby("rank_group").profiles.sum().to_dict() == {r: 10 for r in RANK_GROUPS}
+    active = audience_grid(banded, "active_pool_lifetime")
+    assert (
+        active.loc[
+            active.rank_group.eq("Gold-Platinum") & active.activity_band.eq(1) & active.focus_bin.eq(9), "profiles"
+        ].item()
+        == 1
+    )
+
+
+def test_orientation_preserves_median_quartiles_support_and_scale(profiles):
+    banded = prepare_audience(profiles, build_reference(profiles, "test-source"))
+    cells = concentration_cells(banded)
+    cells = cells.loc[cells.window.eq("active_pool_lifetime")].copy()
+    cells["n"] = 10
+    cells.loc[cells.activity_band.eq(3) & cells.rank_group.eq("Emerald"), "n"] = 1
+    normal = concentration_chart(cells, bands_on_x=False, quartiles=True)
+    inverted = concentration_chart(cells, bands_on_x=True, quartiles=True)
+    assert normal.layout.yaxis.range == inverted.layout.yaxis.range == (0, 1)
+    for band, trace in enumerate(normal.data):
+        for rank in range(4):
+            other = inverted.data[rank]
+            if rank == 2 and band == 2:
+                assert pd.isna(trace.y[rank]) and pd.isna(other.y[band])
+                assert trace.connectgaps is False
+            else:
+                assert trace.y[rank] == other.y[band]
+                assert trace.error_y.array[rank] == other.error_y.array[band]
+                assert trace.error_y.arrayminus[rank] == other.error_y.arrayminus[band]
+            assert trace.customdata[rank][:4] == other.customdata[band][:4]
+
+
+def test_reference_rejects_changed_source_and_invalid_contract(tmp_path, monkeypatch, profiles):
+    monkeypatch.setattr(data, "DATA_DIR", tmp_path)
+    snapshot = tmp_path / data.DATASET_FILES["players"]
+    snapshot.write_bytes(b"test-snapshot-v1")
+    reference = build_reference(profiles, hashlib.sha256(snapshot.read_bytes()).hexdigest())
+    (tmp_path / "audience_reference.json").write_text(json.dumps(reference))
+    assert load_reference() == reference
+    snapshot.write_bytes(b"test-snapshot-v2")
+    with pytest.raises(DashboardDataError, match="different player snapshot"):
+        load_reference()
+    reference["right_closed_score_cuts"] = [1, 1, 2, 3]
+    with pytest.raises(DashboardDataError, match="increasing"):
+        prepare_audience(profiles, reference)
+
+
+def test_bundled_reference_reproduces_approved_cohort_and_bands():
+    reference = load_reference()
+    frame = data.load_dataset("players", include_all_tiers=True)
+    banded = prepare_audience(frame, reference)
+    assert len(banded) == reference["cohort_n"]
+    # A refreshed serving package has its own paired cohort; preserve every
+    # eligible tier and apply the saved cuts rather than asserting old counts.
+    expected = paired_profiles(frame)
+    pd.testing.assert_series_equal(banded.groupby("tier").size(), expected.groupby("tier").size())
+    expected_bands = pd.cut(expected.lifetime_mastery_points,
+                            [-np.inf, *reference["right_closed_score_cuts"], np.inf], labels=range(1, 6))
+    assert banded.activity_band.tolist() == expected_bands.tolist()
+    assert banded.groupby("lifetime_mastery_points").activity_band.nunique().eq(1).all()
+    active = concentration_cells(banded).query("window=='active_pool_lifetime'")
+    assert active.n.sum() == len(banded)
+    assert audience_grid(banded, "lifetime").profiles.sum() == len(banded)
+
+
+def test_page_two_distributions_and_map_reconcile_to_rank_facets(profiles):
+    banded = prepare_audience(profiles, build_reference(profiles, "test-source"))
+    summary = band_distributions(banded)
+    for window in WINDOWS:
+        rows = summary.loc[summary.window.eq(window)]
+        assert rows.n.sum() == len(banded)
+        for row in rows.itertuples():
+            values = banded.loc[banded.activity_band.eq(row.activity_band), f"{window}_top1_share"]
+            assert [row.p10, row.q1, row.median, row.q3, row.p90] == pytest.approx(np.quantile(values, [.1, .25, .5, .75, .9]))
+            assert row.median_hhi == pytest.approx(banded.loc[banded.activity_band.eq(row.activity_band), f"{window}_hhi"].median())
+        expected = audience_grid(banded, window).groupby(["activity_band", "focus_bin"], as_index=False).profiles.sum()
+        pd.testing.assert_frame_equal(overview_grid(banded, window), expected)
+        assert expected.profiles.sum() == len(banded)
+    mix = historical_mix(banded)
+    assert mix.profiles.sum() == len(banded)
+    assert mix.groupby("activity_band").share.sum().eq(1).all()
+    assert label_comparison(banded).to_numpy().sum() == len(banded)
+
+
+def test_character_cutoff_and_unknown_type_do_not_redefine_concentration_or_bands(profiles):
+    banded = prepare_audience(profiles, build_reference(profiles, "test-source"))
+    banded["main_role"] = ["Top", "Jungle", "unknown", None] * 10
+    banded["active_pool_lifetime_primary_champion_key"] = [1, 2, 3, None] * 10
+    banded["active_pool_lifetime_primary_champion_name"] = ["A", "B", "C", None] * 10
+    banded["active_pool_lifetime_primary_champion_points"] = [14_999, 15_000, 30_000, 30_000] * 10
+    original = banded.copy(deep=True)
+    states = leader_states(banded)
+    assert states.value_counts().to_dict() == {"qualified": 20, "below": 10, "unavailable": 10}
+    assert states.loc[1] == "qualified"  # the cutoff is inclusive
+    assert leading_characters(banded).profiles.sum() == 20
+    types = character_type_counts(banded)
+    assert types.character_type.tolist() == list("ABCDE")
+    assert types.profiles.tolist() == [10, 10, 0, 0, 0]
+    for window in WINDOWS:
+        assert audience_grid(banded.loc[states.eq("below")], window).profiles.sum() == 10
+        assert audience_grid(banded.iloc[:0], window).profiles.sum() == 0
+    pd.testing.assert_frame_equal(banded, original)

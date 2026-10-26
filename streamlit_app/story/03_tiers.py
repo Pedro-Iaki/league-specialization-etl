@@ -1,3 +1,3 @@
-from app_core.story import tiers_page
+from app_core.rank_story import tiers_page
 
 tiers_page()

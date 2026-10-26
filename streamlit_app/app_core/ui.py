@@ -212,10 +212,10 @@ h1, h2, h3 {
 """
 
 
-def setup_page(title: str, icon: str = "◈") -> None:
+def setup_page(title: str, icon: str = "◈", *, project_name: str = "League Specialization") -> None:
     if not st.session_state.get("_dashboard_app_shell"):
         st.set_page_config(
-            page_title=f"{title} · League Specialization",
+            page_title=f"{title} · {project_name}",
             page_icon=icon,
             layout="wide",
             initial_sidebar_state="expanded",

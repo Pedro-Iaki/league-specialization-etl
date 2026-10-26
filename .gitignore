@@ -235,6 +235,9 @@ sandbox/Plots/
 /streamlit_app/data/*
 !/streamlit_app/data/.gitkeep
 !/streamlit_app/data/manifest.json
+!/streamlit_app/data/audience_reference.json
+!/streamlit_app/data/audience_segments_reference.json
+!/streamlit_app/data/rank_population_reference.csv
 !/streamlit_app/data/business_players.parquet
 !/streamlit_app/data/champion_cooccurrence.parquet
 !/streamlit_app/data/champion_growth_players.parquet
@@ -248,6 +251,7 @@ sandbox/Plots/
 !/streamlit_app/data/growth_players.parquet
 !/streamlit_app/data/player_profiles.parquet
 !/streamlit_app/data/ranked_mastery_cohorts.parquet
+!/streamlit_app/data/story/
 
 # Local configuration; sanitized examples belong in Git.
 /config/*
@@ -256,6 +260,9 @@ sandbox/Plots/
 # TODO
 TODO
 # Local planning notes and agent handoffs
+/PROJECT_CONTEXT_QA*.md
+# Historical documentation stays local.
+/docs/deprecated/
 **/TODO*.md
 **/todo*.md
 **/*_plan.md

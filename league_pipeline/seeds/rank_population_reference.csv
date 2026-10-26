@@ -1,11 +1,11 @@
 tier,population_share,reference_version,recorded_on,review_after,source,reference_scope
-IRON,0.0406,2026-10-10-v1,2026-10-10,2027-04-10,User-provided estimate,Unspecified region and queue
-BRONZE,0.1660,2026-10-10-v1,2026-10-10,2027-04-10,User-provided estimate,Unspecified region and queue
-SILVER,0.2137,2026-10-10-v1,2026-10-10,2027-04-10,User-provided estimate,Unspecified region and queue
-GOLD,0.2353,2026-10-10-v1,2026-10-10,2027-04-10,User-provided estimate,Unspecified region and queue
-PLATINUM,0.1763,2026-10-10-v1,2026-10-10,2027-04-10,User-provided estimate,Unspecified region and queue
-EMERALD,0.1234,2026-10-10-v1,2026-10-10,2027-04-10,User-provided estimate,Unspecified region and queue
-DIAMOND,0.0368,2026-10-10-v1,2026-10-10,2027-04-10,User-provided estimate,Unspecified region and queue
-MASTER,0.0073,2026-10-10-v1,2026-10-10,2027-04-10,User-provided estimate,Unspecified region and queue
-GRANDMASTER,0.0004,2026-10-10-v1,2026-10-10,2027-04-10,User-provided estimate,Unspecified region and queue
-CHALLENGER,0.0002,2026-10-10-v1,2026-10-10,2027-04-10,User-provided estimate,Unspecified region and queue
+IRON,0.0406,2026-10-10-v2-provenance,2026-10-10,2027-04-10,OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers,North America (NA) ranked solo/duo
+BRONZE,0.1660,2026-10-10-v2-provenance,2026-10-10,2027-04-10,OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers,North America (NA) ranked solo/duo
+SILVER,0.2137,2026-10-10-v2-provenance,2026-10-10,2027-04-10,OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers,North America (NA) ranked solo/duo
+GOLD,0.2353,2026-10-10-v2-provenance,2026-10-10,2027-04-10,OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers,North America (NA) ranked solo/duo
+PLATINUM,0.1763,2026-10-10-v2-provenance,2026-10-10,2027-04-10,OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers,North America (NA) ranked solo/duo
+EMERALD,0.1234,2026-10-10-v2-provenance,2026-10-10,2027-04-10,OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers,North America (NA) ranked solo/duo
+DIAMOND,0.0368,2026-10-10-v2-provenance,2026-10-10,2027-04-10,OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers,North America (NA) ranked solo/duo
+MASTER,0.0073,2026-10-10-v2-provenance,2026-10-10,2027-04-10,OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers,North America (NA) ranked solo/duo
+GRANDMASTER,0.0004,2026-10-10-v2-provenance,2026-10-10,2027-04-10,OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers,North America (NA) ranked solo/duo
+CHALLENGER,0.0002,2026-10-10-v2-provenance,2026-10-10,2027-04-10,OP.GG (author-supplied saved reference): https://op.gg/lol/statistics/tiers,North America (NA) ranked solo/duo

@@ -19,11 +19,28 @@ Use this skill for the project's working conventions and engineering decision ru
 
 Read only the sources needed for the task. Resolve these paths from this skill's directory; verify current behavior against code when documentation and implementation differ.
 
-- [Project README](../../../README.md): purpose, architecture, setup and configuration.
-- [Orchestration guide](../../../docs/orchestration.md): stage ordering, state transitions, integrity gates and operational failure behavior.
-- [Model reference](../../../league_pipeline/docs/model_reference.md): model grains, metric definitions and analysis windows.
-- [Population weighting](../../../docs/population_weighting.md): sampling, reference weights and interpretation limits.
-- [Dashboard README](../../../streamlit_app/README.md): serving and export workflow.
+- [Project README](../../../README.md): purpose, analysis, architecture, engineering decisions and validation overview.
+- [Documentation index](../../../docs/README.md): current wiki, guides and references organized by reader task.
+- [Architecture chapter](../../../docs/wiki/architecture.md): data flow, component responsibilities, source branches and serving boundary.
+- [Understanding the analysis](../../../docs/wiki/understanding-the-analysis.md): audience questions, windows, comparison methods and interpretation limits.
+- [Simulated transactions](../../../docs/wiki/simulated-transactions.md): frozen real cohort, generated commercial domain, cash semantics and business interpretation limits.
+- [Engineering decisions](../../../docs/wiki/engineering-decisions.md): design tradeoffs, attributed development lessons, ownership and AI assistance.
+- [Configuration reference](../../../docs/reference/configuration.md): settings, defaults, service boundaries and manual entrypoints.
+- [Orchestration reference](../../../docs/reference/orchestration.md): stage ordering, state transitions, integrity gates and failure behavior.
+- [Data-model reference](../../../docs/reference/data-models.md): model grains, identities, lineage boundaries and serving contracts.
+- [Metrics and methods](../../../docs/reference/metrics-and-methods.md): analysis windows, formulas, eligibility, attribution and denominators.
+- [Population adjustment](../../../docs/reference/population-adjustment.md): calibration, conditional estimates, direct standardization, support and interpretation limits.
+- [Validation and evidence](../../../docs/reference/validation-and-evidence.md): validation boundaries, dated artifacts, local checks and limits of live-service evidence.
+- [Run the dashboard](../../../docs/guides/run-the-dashboard.md): local environment, snapshot launch, navigation, language and troubleshooting.
+- [Run the pipeline](../../../docs/guides/run-the-pipeline.md): manual prerequisites, job/configuration setup, first-build scope, execution and operator recovery.
+- [Refresh dashboard data](../../../docs/guides/refresh-dashboard-data.md): scenario/reference decisions, candidate export, local checks, serving-file replacement and analyst bundle.
+
+## Working journal during active iteration
+
+- When project work advances faster than formal documentation, maintain the local [working journal](../../../sandbox/project_working_notes.tmp/working-journal.md). Read its relevant entries when resuming work; create it at that path if absent. Keep it loosely structured and update it at meaningful implementation, discussion, evidence or direction changes, rather than recording every command.
+- Capture what was done, what was discussed, why decisions changed, the evolving audience/business story, and unresolved branches. Clearly distinguish implemented and verified behavior, agreed direction, proposals and deferred work; verify implementation claims against code when needed.
+- Preserve useful research with its title, direct source link, relevance to the project and evidence limits. State whether a method is merely a reference, proposed for evaluation, tested or adopted; a cited paper does not validate our data or findings.
+- Keep this intermediary journal local under the existing ignore rules. Link to detailed artifacts instead of copying transcripts or maintained documentation. When conclusions settle, reconcile them into the appropriate project documents and mark superseded or incorporated notes; do not defer necessary metric-contract or operator-instruction updates.
 
 ## Scope and review
 
@@ -81,6 +98,7 @@ Read only the sources needed for the task. Resolve these paths from this skill's
 
 - Use temporary databases and files, and mock cloud boundaries. Inspect actual connection arguments and captured default paths; patching one module may leave another touching the working ledger.
 - Verify meaningful state boundaries when they change: interrupted work, rollback, retry and preservation of completed work. Avoid tests that only mirror implementation wording or require a large framework for a small change.
+- For interactive view changes, verify the rendered states through actual browser controls: replacement versus addition, selected data, reset and navigation. Check that obsolete panels disappear as well as new panels appearing. DOM stubs that invent missing elements cannot establish browser correctness.
 - Before committing or handing off changes, perform a simplicity pass over the completed diff. For each addition, identify the requirement or concrete failure it addresses and compare it with the simplest correct alternative. Remove unnecessary branches, indirection, state, configuration and optimizations whose benefit is negligible or speculative. Preserve meaningful helpers and necessary safeguards, then rerun checks affected by simplification.
 - Report what changed, why, what was checked and the limits of that evidence. Local mocked tests do not demonstrate live-service behavior.
 - For authorized commits, use cohesive changes and plain-language imperative subjects with normal capitalization and no type/scope prefixes. Keep pending unrelated work outside the commit.

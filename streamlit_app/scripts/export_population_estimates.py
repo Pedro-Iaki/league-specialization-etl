@@ -112,11 +112,11 @@ def export_bundle(snapshot: Path, output_dir: Path) -> dict:
     (output_dir / "manifest.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     report = f"""# Population estimates — analyst handoff
 
-Reference: **{metadata["reference_version"]}**. Received on {metadata["reference_recorded_on"]}; observation date and region/queue are unspecified.
+Reference: **{metadata["reference_version"]}**. Recorded on {metadata["reference_recorded_on"]}; review after {reference["review_after"].iloc[0]}. Source: {reference["source"].iloc[0]}. Scope: {metadata["reference_scope"]}. The reference records no separate observation date.
 
 This bundle uses {metadata["observed_players"]:,} anonymous player profiles ({metadata["eligible_players"]:,} eligible for weighting). Effective sample size is {metadata["effective_players"]:,.1f}. Reference coverage across scopes ranges from {metadata["covered_share_min"]:.2%} to {metadata["covered_share_max"]:.2%}. Missing tiers are not imputed; results describe represented tiers only.
 
-Open **Population Estimates** in the Streamlit dashboard to compare sample and weighted estimates, filter the cohort and download tables. **Population Analysis** also offers the denominator selector for its player-based analyses. Other dashboard pages retain their documented sample aggregates.
+Open **Population Estimates** in the Streamlit dashboard to compare sample and weighted estimates, filter the cohort and download tables. Supported calculations in **Population**, **Specialization and rank**, **Champion Explorer** and **Cross-champion** also offer population views; check each calculation's estimator and support. The guided story, commercial summaries and raw experience comparison remain sample-based.
 
 ## Bundle contents
 

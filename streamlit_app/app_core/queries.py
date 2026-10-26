@@ -139,6 +139,35 @@ DATASET_QUERIES = {
         group by champion_name, minimum_mastery, rollup(tier)
     """,
     "players": """
+        with active_pool_mastery as (
+            select p.player_id, m.champion_key, c.name as champion_name, m.champion_points
+            from league_pipeline.gold.mart_player_profile p
+            join league_pipeline.silver.fct_masteries_current m on p.player_id = m.puuid
+            join league_pipeline.silver.dim_champions c on m.champion_key = c.key
+            where array_contains(p.recent_champion_names, c.name)
+        ), active_pool_shares as (
+            select *,
+                   cast(champion_points as double)
+                       / nullif(sum(champion_points) over (partition by player_id), 0) as champion_share,
+                   row_number() over (
+                       partition by player_id order by champion_points desc, champion_key
+                   ) as points_rank
+            from active_pool_mastery
+        ), active_pool_profiles as (
+            select player_id,
+                   count(*) as active_pool_lifetime_champion_count,
+                   sum(champion_points) as active_pool_lifetime_mastery_points,
+                   max(case when points_rank = 1 and champion_share > 0 then champion_key end)
+                       as active_pool_lifetime_primary_champion_key,
+                   max(case when points_rank = 1 and champion_share > 0 then champion_name end)
+                       as active_pool_lifetime_primary_champion_name,
+                   max(case when points_rank = 1 and champion_share > 0 then champion_points end)
+                       as active_pool_lifetime_primary_champion_points,
+                   max(champion_share) as active_pool_lifetime_top1_share,
+                   sum(champion_share * champion_share) as active_pool_lifetime_hhi
+            from active_pool_shares
+            group by player_id
+        )
         select
             as_of_date,
             snapshot_date,
@@ -179,6 +208,13 @@ DATASET_QUERIES = {
             recent_favoured_champions_share,
             recent_hhi,
             recent_normalized_entropy,
+            coalesce(a.active_pool_lifetime_champion_count, 0) as active_pool_lifetime_champion_count,
+            coalesce(a.active_pool_lifetime_mastery_points, 0) as active_pool_lifetime_mastery_points,
+            a.active_pool_lifetime_primary_champion_key,
+            a.active_pool_lifetime_primary_champion_name,
+            a.active_pool_lifetime_primary_champion_points,
+            a.active_pool_lifetime_top1_share,
+            a.active_pool_lifetime_hhi,
             lifetime_champion_count,
             lifetime_mastery_points,
             lifetime_primary_champion_key,
@@ -192,7 +228,8 @@ DATASET_QUERIES = {
             tracked_mastery_points_per_day,
             days_since_last_play,
             days_tracked
-        from league_pipeline.gold.mart_player_profile
+        from league_pipeline.gold.mart_player_profile p
+        left join active_pool_profiles a on p.player_id = a.player_id
     """,
     "champions": """
         select *

@@ -74,7 +74,7 @@ def test_business_summaries_preserve_denominators_and_weight_cash_discounts(busi
 def test_four_business_views_and_controls_render(business_frame):
     root = Path(__file__).resolve().parents[1]
     with patch("app_core.data.load_optional_dataset", return_value=business_frame):
-        app = AppTest.from_file(str(root / "app.py"), default_timeout=30).run().switch_page("business.py").run()
+        app = AppTest.from_file(str(root / "legacy_app.py"), default_timeout=30).run().switch_page("business.py").run()
         assert not app.exception
         assert len(app.get("plotly_chart")) == 4
         assert sum("patterns are synthetic" in caption.value for caption in app.caption) == 4
@@ -122,11 +122,11 @@ def test_older_business_snapshot_and_absent_sample_still_render(business_frame):
     _validate_dataset("business_players", legacy)
     root = Path(__file__).resolve().parents[1]
     with patch("app_core.data.load_optional_dataset", return_value=legacy):
-        app = AppTest.from_file(str(root / "app.py"), default_timeout=30).run().switch_page("business.py").run()
+        app = AppTest.from_file(str(root / "legacy_app.py"), default_timeout=30).run().switch_page("business.py").run()
         assert not app.exception
         assert len(app.get("plotly_chart")) == 3
         assert any("cash-only discount breakdown" in notice.value for notice in app.info)
     with patch("app_core.data.load_optional_dataset", return_value=None):
-        app = AppTest.from_file(str(root / "app.py"), default_timeout=30).run().switch_page("business.py").run()
+        app = AppTest.from_file(str(root / "legacy_app.py"), default_timeout=30).run().switch_page("business.py").run()
         assert not app.exception
         assert any("no business sample" in info.value for info in app.info)
